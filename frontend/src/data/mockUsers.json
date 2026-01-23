@@ -1,0 +1,41 @@
+[
+  {
+    "id": "1",
+    "username": "john_student",
+    "email": "john@example.com",
+    "password": "password123",
+    "type": "student",
+    "fullName": "John Doe",
+    "college": "MIT",
+    "year": "3rd Year",
+    "branch": "Computer Science",
+    "skills": ["React", "Node.js", "Python"],
+    "bio": "Passionate software developer"
+  },
+  {
+    "id": "2",
+    "username": "jane_student",
+    "email": "jane@example.com",
+    "password": "password123",
+    "type": "student",
+    "fullName": "Jane Smith",
+    "college": "Stanford",
+    "year": "2nd Year",
+    "branch": "Data Science",
+    "skills": ["Python", "Machine Learning", "SQL"],
+    "bio": "Data science enthusiast"
+  },
+  {
+    "id": "3",
+    "username": "tech_corp",
+    "email": "hr@techcorp.com",
+    "password": "password123",
+    "type": "recruiter",
+    "companyName": "Tech Corp",
+    "contactNumber": "+1-234-567-8900",
+    "website": "https://techcorp.com",
+    "description": "Leading tech company"
+  }
+]
+
+

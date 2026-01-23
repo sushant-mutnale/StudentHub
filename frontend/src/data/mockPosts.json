@@ -1,0 +1,28 @@
+[
+  {
+    "id": "1",
+    "author": "john_student",
+    "authorName": "John Doe",
+    "content": "Just finished my React project! Learned so much about hooks and state management.",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "likes": 5
+  },
+  {
+    "id": "2",
+    "author": "jane_student",
+    "authorName": "Jane Smith",
+    "content": "Working on a machine learning project. Any recommendations for datasets?",
+    "timestamp": "2024-01-15T09:15:00Z",
+    "likes": 3
+  },
+  {
+    "id": "3",
+    "author": "john_student",
+    "authorName": "John Doe",
+    "content": "Excited about the upcoming hackathon! Who else is participating?",
+    "timestamp": "2024-01-14T16:45:00Z",
+    "likes": 8
+  }
+]
+
+
