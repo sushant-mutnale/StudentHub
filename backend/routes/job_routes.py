@@ -1,0 +1,136 @@
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from ..models import job as job_model
+from ..schemas.job_schema import (
+    JobApplicationCreate,
+    JobApplicationResponse,
+    JobCreate,
+    JobResponse,
+)
+from ..utils.dependencies import get_current_recruiter, get_current_student, get_current_user
+
+router = APIRouter()
+
+
+def db_job_to_public(db_job: dict) -> JobResponse:
+    """Convert MongoDB job document to JobResponse with string IDs."""
+    return JobResponse(
+        id=str(db_job.get("_id") or db_job.get("id")),
+        recruiter_id=str(db_job.get("recruiter_id")),
+        title=db_job.get("title"),
+        description=db_job.get("description"),
+        skills_required=db_job.get("skills_required", []),
+        location=db_job.get("location"),
+        created_at=db_job.get("created_at"),
+        visibility=db_job.get("visibility", "public"),
+        company_name=db_job.get("company_name"),
+    )
+
+
+def db_application_to_public(doc: dict) -> JobApplicationResponse:
+    return JobApplicationResponse(
+        id=str(doc.get("_id") or doc.get("id")),
+        job_id=str(doc.get("job_id")),
+        student_id=str(doc.get("student_id")),
+        student_name=doc.get("student_name"),
+        student_username=doc.get("student_username"),
+        message=doc.get("message", ""),
+        resume_url=doc.get("resume_url"),
+        created_at=doc.get("created_at"),
+    )
+
+
+@router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+async def create_job(payload: JobCreate, recruiter=Depends(get_current_recruiter)):
+    doc = await job_model.create_job(recruiter, payload.dict())
+    return db_job_to_public(doc)
+
+
+@router.get("/", response_model=list[JobResponse])
+async def list_jobs(
+    q: str | None = Query(default=None, description="Search in job title and description"),
+    skills: str | None = Query(
+        default=None,
+        description="Comma-separated skills to match (e.g. React,Node,SQL)",
+    ),
+    location: str | None = Query(
+        default=None, description="Location filter (partial, case-insensitive)"
+    ),
+    limit: int = Query(default=20, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
+    current_user=Depends(get_current_user),
+):
+    skills_list = (
+        [s.strip() for s in skills.split(",") if s.strip()] if skills is not None else None
+    )
+    jobs = await job_model.list_jobs_for_user(
+        current_user,
+        q=q,
+        skills=skills_list,
+        location=location,
+        limit=limit,
+        skip=skip,
+    )
+    return [db_job_to_public(job) for job in jobs]
+
+
+@router.get("/my", response_model=list[JobResponse])
+async def my_jobs(recruiter=Depends(get_current_recruiter)):
+    jobs = await job_model.list_jobs_by_recruiter(str(recruiter["_id"]))
+    return [db_job_to_public(job) for job in jobs]
+
+
+@router.get("/{job_id}", response_model=JobResponse)
+async def get_job(job_id: str, current_user=Depends(get_current_user)):
+    job = await job_model.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Enforce visibility for student users: they should not be able to fetch
+    # non-public jobs directly by ID.
+    if current_user.get("role") == "student":
+        visibility = job.get("visibility", "public")
+        if visibility not in ("public", "students"):
+            # Hide non-public jobs from students.
+            raise HTTPException(status_code=404, detail="Job not found")
+
+    return db_job_to_public(job)
+
+
+@router.post(
+    "/{job_id}/apply",
+    response_model=JobApplicationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def apply_to_job(
+    job_id: str,
+    payload: JobApplicationCreate,
+    current_student=Depends(get_current_student),
+):
+    """Allow a student to apply to a job."""
+    app_doc = await job_model.create_job_application(job_id, current_student, payload.dict())
+    if not app_doc:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return db_application_to_public(app_doc)
+
+
+@router.get(
+    "/{job_id}/applications",
+    response_model=list[JobApplicationResponse],
+)
+async def list_job_applications(job_id: str, recruiter=Depends(get_current_recruiter)):
+    """Return all applications for a given job for the owning recruiter."""
+    applications = await job_model.list_applications_for_job(job_id, recruiter)
+    if applications is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return [db_application_to_public(doc) for doc in applications]
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(job_id: str, recruiter=Depends(get_current_recruiter)):
+    job = await job_model.get_job(job_id)
+    if not job or str(job["recruiter_id"]) != str(recruiter["_id"]):
+        raise HTTPException(status_code=404, detail="Job not found")
+    await job_model.delete_job(job_id, str(recruiter["_id"]))
+    return {"status": "deleted"}
+
