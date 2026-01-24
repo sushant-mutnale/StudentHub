@@ -30,6 +30,8 @@ from ..schemas.interview_schema import (
 from ..utils.calendar import build_ics_event
 from ..utils.dependencies import get_current_user
 from ..utils.email_send import send_generic_email
+from ..utils.activity_logger import log_activity
+from ..utils.ai_scorer import update_student_ai_profile
 
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 logger = logging.getLogger(__name__)
@@ -251,6 +253,12 @@ async def create_interview(
         None,
     )
 
+    await log_activity(
+        str(current_user["_id"]), 
+        "INTERVIEW_PROPOSED", 
+        {"interview_id": str(doc["_id"]), "candidate_id": payload.candidate_id}
+    )
+
     return serialize_interview(doc)
 
 
@@ -357,6 +365,12 @@ async def accept_interview(
         email_task(background_tasks, candidate["email"], "Interview confirmed", html, attachments)
         email_task(background_tasks, recruiter["email"], "Interview confirmed", html, attachments)
 
+    await log_activity(
+        str(current_user["_id"]), 
+        "INTERVIEW_ACCEPTED", 
+        {"interview_id": interview_id}
+    )
+
     return serialize_interview(doc)
 
 
@@ -386,6 +400,11 @@ async def decline_interview(
         doc.get("thread_id") and str(doc["thread_id"]),
         str(current_user["_id"]),
         f"Interview declined. Reason: {reason or 'not provided.'}",
+    )
+    await log_activity(
+        str(current_user["_id"]), 
+        "INTERVIEW_DECLINED", 
+        {"interview_id": interview_id}
     )
     return serialize_interview(doc)
 
@@ -466,6 +485,11 @@ async def cancel_interview(
         str(current_user["_id"]),
         f"Interview cancelled. Reason: {reason or 'not provided.'}",
     )
+    await log_activity(
+        str(current_user["_id"]), 
+        "INTERVIEW_CANCELLED", 
+        {"interview_id": interview_id}
+    )
     return serialize_interview(doc)
 
 
@@ -498,6 +522,15 @@ async def submit_feedback(
         "interview_feedback",
         {"interview_id": interview_id},
     )
+    await log_activity(
+        str(current_user["_id"]), 
+        "FEEDBACK_SUBMITTED", 
+        {"interview_id": interview_id, "rating": payload.rating}
+    )
+    
+    # Recalculate student AI profile
+    await update_student_ai_profile(str(doc["candidate_id"]))
+    
     return serialize_interview(doc)
 
 

@@ -1,0 +1,30 @@
+# Module 3 Additional Dependencies
+
+# PDF Parsing (Week 2)
+pdfplumber
+PyPDF2
+PyMuPDF
+
+# NLP & Text Processing (Week 2-3)
+spacy
+nltk
+python-docx
+
+# Resume Parsing (Week 2)
+# pyresparser  # Has complex dependencies, add later if needed
+
+# AI/LLM (Week 1+)
+google-generativeai
+langchain
+langchain-openai
+langchain-community
+
+# Async HTTP for Course Search
+aiohttp
+
+# Web Scraping for Resources (Week 1)
+requests
+beautifulsoup4
+
+# Testing
+pytest

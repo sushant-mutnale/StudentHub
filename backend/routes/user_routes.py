@@ -6,6 +6,7 @@ from ..models import user as user_model
 from ..schemas.post_schema import CommentSchema, PostResponse
 from ..schemas.user_schema import UserPublic, UserUpdate
 from ..utils.dependencies import get_current_user
+from ..utils.ai_scorer import update_student_ai_profile
 
 router = APIRouter()
 
@@ -30,6 +31,7 @@ def db_user_to_public(db_user: dict) -> UserPublic:
         avatar_url=db_user.get("avatar_url"),
         bio=db_user.get("bio"),
         skills=db_user.get("skills") or [],
+        ai_profile=db_user.get("ai_profile"),
         created_at=db_user.get("created_at"),
         updated_at=db_user.get("updated_at"),
     )
@@ -43,7 +45,15 @@ async def get_me(current_user=Depends(get_current_user)):
 @router.put("/me", response_model=UserPublic)
 async def update_me(payload: UserUpdate, current_user=Depends(get_current_user)):
     updates = {k: v for k, v in payload.dict(exclude_unset=True).items()}
-    updated = await user_model.update_user(str(current_user["_id"]), updates)
+    user_id = str(current_user["_id"])
+    updated = await user_model.update_user(user_id, updates)
+    
+    # Recalculate AI profile if student
+    if current_user.get("role") == "student":
+        await update_student_ai_profile(user_id)
+        # Fetch again to get updated scores
+        updated = await user_model.get_user_by_id(user_id)
+        
     return db_user_to_public(updated)
 
 

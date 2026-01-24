@@ -10,6 +10,7 @@ from ..schemas.post_schema import (
     PostUpdate,
 )
 from ..utils.dependencies import get_current_student, get_current_user
+from ..utils.activity_logger import log_activity
 
 router = APIRouter()
 
@@ -60,6 +61,11 @@ async def list_posts():
 @router.post("/", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
 async def create_post(payload: PostCreate, current_student=Depends(get_current_student)):
     doc = await post_model.create_post(current_student, payload.dict())
+    await log_activity(
+        str(current_student["_id"]), 
+        "POST_CREATED", 
+        {"post_id": str(doc["_id"]), "tags": doc.get("tags", [])}
+    )
     return serialize_post(doc)
 
 
@@ -92,6 +98,12 @@ async def like_post(post_id: str, current_user=Depends(get_current_user)):
     post = await post_model.toggle_like(post_id, str(current_user["_id"]))
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
+    
+    await log_activity(
+        str(current_user["_id"]), 
+        "POST_LIKED", 
+        {"post_id": post_id}
+    )
     return serialize_post(post)
 
 
@@ -104,5 +116,11 @@ async def comment_on_post(
     )
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
+    
+    await log_activity(
+        str(current_user["_id"]), 
+        "COMMENT_ADDED", 
+        {"post_id": post_id}
+    )
     return serialize_post(post)
 

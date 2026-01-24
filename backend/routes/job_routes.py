@@ -8,6 +8,7 @@ from ..schemas.job_schema import (
     JobResponse,
 )
 from ..utils.dependencies import get_current_recruiter, get_current_student, get_current_user
+from ..utils.activity_logger import log_activity
 
 router = APIRouter()
 
@@ -43,6 +44,11 @@ def db_application_to_public(doc: dict) -> JobApplicationResponse:
 @router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(payload: JobCreate, recruiter=Depends(get_current_recruiter)):
     doc = await job_model.create_job(recruiter, payload.dict())
+    await log_activity(
+        str(recruiter["_id"]), 
+        "JOB_CREATED", 
+        {"job_id": str(doc["_id"]), "title": doc.get("title")}
+    )
     return db_job_to_public(doc)
 
 
@@ -111,7 +117,30 @@ async def apply_to_job(
     app_doc = await job_model.create_job_application(job_id, current_student, payload.dict())
     if not app_doc:
         raise HTTPException(status_code=404, detail="Job not found")
+    
+    await log_activity(
+        str(current_student["_id"]), 
+        "JOB_APPLIED", 
+        {"job_id": job_id}
+    )
     return db_application_to_public(app_doc)
+
+
+@router.put("/{job_id}", response_model=JobResponse)
+async def update_job(
+    job_id: str, 
+    payload: JobCreate, 
+    recruiter=Depends(get_current_recruiter)
+):
+    """Update a job listing (requires ownership)."""
+    job = await job_model.get_job(job_id)
+    if not job or str(job["recruiter_id"]) != str(recruiter["_id"]):
+        raise HTTPException(status_code=404, detail="Job not found or not authorized")
+        
+    updated_job = await job_model.update_job(job_id, str(recruiter["_id"]), payload.dict())
+    if not updated_job:
+        raise HTTPException(status_code=404, detail="Update failed")
+    return db_job_to_public(updated_job)
 
 
 @router.get(

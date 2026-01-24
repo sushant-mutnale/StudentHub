@@ -6,12 +6,30 @@ from pydantic import BaseModel, EmailStr, Field
 from .base import MongoModel
 
 
+class SkillSchema(BaseModel):
+    name: str
+    level: int = 0  # 0-100
+    proficiency: str = "Beginner"  # Beginner, Intermediate, Advanced
+    confidence: int = 0  # 0-100
+    evidence: List[str] = Field(default_factory=list)  # assessment IDs, project links
+    last_updated: datetime = Field(default_factory=datetime.utcnow)
+
+class AIProfileSchema(BaseModel):
+    overall_score: float = 0.0
+    skill_score: float = 0.0
+    learning_score: float = 0.0
+    interview_score: float = 0.0
+    activity_score: float = 0.0
+    profile_completeness: float = 0.0
+    last_computed_at: datetime = Field(default_factory=datetime.utcnow)
+
 class UserBase(MongoModel):
     username: str
     email: EmailStr
     avatar_url: Optional[str] = None
     bio: Optional[str] = None
-    skills: List[str] = Field(default_factory=list)
+    skills: List[SkillSchema] = Field(default_factory=list)
+    ai_profile: Optional[AIProfileSchema] = None
 
 
 class StudentCreate(UserBase):
@@ -56,7 +74,8 @@ class UserPublic(BaseModel):
     company_description: Optional[str] = None
     avatar_url: Optional[str] = None
     bio: Optional[str] = None
-    skills: List[str] = Field(default_factory=list)
+    skills: List[SkillSchema] = Field(default_factory=list)
+    ai_profile: Optional[AIProfileSchema] = None
     created_at: datetime
     updated_at: datetime
 
@@ -64,10 +83,26 @@ class UserPublic(BaseModel):
         from_attributes = True
 
 
+class MatchExplanation(BaseModel):
+    matched_skills: List[str]
+    missing_skills: List[str]
+    skill_match_score: float
+    proficiency_score: float
+    activity_score: float
+    completeness_score: float
+    total_score: float
+
+
+class MatchResult(UserPublic):
+    match_score: float
+    explanation: MatchExplanation
+
+
 class UserUpdate(MongoModel):
     avatar_url: Optional[str] = None
     bio: Optional[str] = None
-    skills: Optional[List[str]] = None
+    skills: Optional[List[SkillSchema]] = None
+    ai_profile: Optional[AIProfileSchema] = None
     full_name: Optional[str] = None
     college: Optional[str] = None
     branch: Optional[str] = None

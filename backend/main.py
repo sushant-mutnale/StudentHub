@@ -15,6 +15,9 @@ from .routes import (
     post_routes,
     thread_routes,
     user_routes,
+    notification_routes,
+    learning_routes,
+    course_routes,
 )
 from .utils.auth import hash_password
 
@@ -50,6 +53,9 @@ app.include_router(match_routes.router, prefix="/jobs", tags=["matches"])
 app.include_router(thread_routes.router, tags=["threads"])
 app.include_router(interview_routes.router)
 app.include_router(offer_routes.router)
+app.include_router(notification_routes.router)
+app.include_router(learning_routes.router)
+app.include_router(course_routes.router)
 
 
 async def seed_default_users():

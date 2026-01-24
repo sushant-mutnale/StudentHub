@@ -16,6 +16,8 @@ from ..schemas.offer_schema import (
     OfferUpdateRequest,
 )
 from ..utils.dependencies import get_current_user
+from ..utils.activity_logger import log_activity
+from ..utils.ai_scorer import update_student_ai_profile
 
 router = APIRouter(prefix="/offers", tags=["offers"])
 
@@ -104,6 +106,12 @@ async def create_offer(payload: OfferCreateRequest, current_user=Depends(get_cur
         )
 
     await notify(str(candidate["_id"]), "offer_sent", {"offer_id": str(doc["_id"])})
+    
+    await log_activity(
+        str(current_user["_id"]), 
+        "OFFER_SENT", 
+        {"offer_id": str(doc["_id"]), "candidate_id": str(candidate["_id"])}
+    )
     return serialize_offer(doc)
 
 
@@ -161,6 +169,16 @@ async def accept_offer(offer_id: str, current_user=Depends(get_current_user)):
     await notify(str(doc["recruiter_id"]), "offer_accepted", {"offer_id": offer_id})
     if doc.get("thread_id"):
         await append_text_message(doc["thread_id"], str(current_user["_id"]), "Offer accepted.")
+    
+    await log_activity(
+        str(current_user["_id"]), 
+        "OFFER_ACCEPTED", 
+        {"offer_id": offer_id}
+    )
+    
+    # Recalculate student AI profile
+    await update_student_ai_profile(str(doc["candidate_id"]))
+    
     return serialize_offer(doc)
 
 
@@ -175,6 +193,16 @@ async def reject_offer(offer_id: str, current_user=Depends(get_current_user)):
     await notify(str(doc["recruiter_id"]), "offer_rejected", {"offer_id": offer_id})
     if doc.get("thread_id"):
         await append_text_message(doc["thread_id"], str(current_user["_id"]), "Offer rejected.")
+    
+    await log_activity(
+        str(current_user["_id"]), 
+        "OFFER_REJECTED", 
+        {"offer_id": offer_id}
+    )
+    
+    # Recalculate student AI profile
+    await update_student_ai_profile(str(doc["candidate_id"]))
+    
     return serialize_offer(doc)
 
 
