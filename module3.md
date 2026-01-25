@@ -1,130 +1,190 @@
-Where it fits in StudentHub
-Your current system already has the real recruitment flow: matching → messaging → interview scheduling → offer.
-​
+MODULE 3,  WEEK 2: STEP-BY-STEP 
+: Resume Parsing Setup
+Step 1: Understand PDF Resume Structure
+What you need to know:
 
-The AI simulator is the practice version of recruitment, which belongs to the “continuous improvement” loop (skill gaps → practice → evaluation → updated profile).
-​
+Resumes are PDFs with structured sections: Name, Contact, Skills, Experience, Education, Projects
 
-So: Module 3 = Learning & Feedback + AI Interview Preparation (MVP first, then advanced).
-​
+You need to extract text from PDF → parse structured data
 
-What exists & what’s missing (validated quickly)
-Pramp is peer-to-peer mock interviewing (human-dependent, not scalable for everyone 24/7).
-​
+Skills appear as bullet points or comma-separated lists
 
-Interviewing.io focuses on realistic mocks with experienced interviewers and is not designed as a free college-scale simulator.
+Education/Experience have dates, companies, descriptions
 
-Your gap/opportunity is exactly what you wrote: “company + role + resume + adaptive flow + reusable knowledge”.
+What to do:
 
-How to implement this inside Module 3 (practical plan)
-A) Split Module 3 into 3 parts
-Skill Gap + Learning Path (already discussed)
+Download 5 sample resumes (ask your friends or use online templates)
 
-AI Interview Simulator (Recruitment Practice Engine) ← new submodule
+Open them in a PDF viewer and manually note:
 
-Feedback + Memory Loop (stores everything and updates AI Career Profile)
+Where is the name? (usually top)
 
-This keeps your architecture clean and still “5 modules” overall.
+Where are skills? (usually middle, bullet points)
 
-Module 3B: AI Interview Simulator (MVP → Advanced)
-MVP (build this first, 2–3 weeks)
-Goal: one complete simulated interview flow, even if company research is basic.
+Where is experience? (companies, job titles, dates)
 
-Inputs (student provides)
+Where are projects? (if they exist)
 
-Resume text (initially paste text, later PDF upload)
+This gives you the pattern you're looking for
 
-Target role (e.g., SDE Intern / Backend Intern)
+Why this matters:
+Every resume layout is different. You need to know the PATTERNS before coding.
 
-Job description text (need to implement this also in MVP)
+Step 2: Choose PDF Parsing Library
+Your options:
 
-Company name (need to implement this also in MVP)
+pdfplumber - Best for extracting structured text + tables. Easy to use.
 
-Rounds (MVP)
+PyPDF2 - Good for basic PDF handling
 
-Round 1: DSA coding round (timer + hidden/public tests)
+PyMuPDF (fitz) - Fast, handles complex PDFs
 
-Round 2: Resume-based technical Q&A (projects, skills, decisions)
+What to do:
 
-Round 3: Behavioral STAR (generic at first)
+Pick pdfplumber (it's the easiest for resume extraction)
 
-Evaluation (MVP)
+Install it: pip install pdfplumber
 
-Coding: correctness by testcases + time limit
+Create a test script that:
 
-Q&A + Behavioral: rubric scoring (clarity, depth, structure), plus LLM feedback (Gemini free-tier is enough)
+Opens a sample resume PDF
 
-Storage (MVP)
+Extracts all text
 
-Save every attempt so it becomes reusable and improves future sessions:
+Prints the extracted text
 
-interview_attempts
+Run it and see what you get
 
-question_bank
+Why this matters:
+You need to see the raw PDF output before you parse it. Text extraction is the foundation.
 
-student_answer_history (or inside attempts)
+Step 3: Plan Resume Parsing Logic
+What information to extract:
 
-Update student ai_profile fields in Module 1
+Name (usually top line)
 
-Advanced (after MVP works)
-This is where your “Company Research Agent + Orchestrator Agent” comes in.
+Email (pattern: xxx@xxx.xxx)
 
-Company Interview Knowledge DB:
+Phone (pattern: xxx-xxx-xxxx or +91-xxxx)
 
-Build a reusable company_interview_knowledge collection (company, role, rounds, topics, behavioral themes).
+Skills (bullet points with technical keywords)
 
-Orchestrator:
+Education (Degree, University, Year)
 
-Rule-guided difficulty adjustment (increase/decrease based on last answer + time + correctness).
+Experience (Company, Job Title, Dates, Description)
 
-Adaptive follow-ups:
+Projects (Project Name, Technologies, Description)
 
-Ask deeper questions on weak points, or probe inconsistencies across answers.
+What to do:
 
-The exact components to build (engineering view)
-1) Collections (MongoDB)
-company_interview_knowledge
+Write down the extraction logic in plain English (no code):
 
-{company, role, rounds, patterns, sources[], updated_at}
+"Split PDF text by sections (Skills, Experience, Education)"
 
-question_bank
+"For Skills section, find lines with comma or bullet, split them"
 
-{type: "DSA|RESUME_TECH|BEHAVIORAL", tags[], difficulty, prompt, ideal_answer_outline, tests(need to implement this also)}
+"For Experience, look for date patterns (YYYY-YYYY)"
 
-interview_sessions
+Draw a simple flowchart:
 
-{student_id, company, role, jd_id(need to implement this also), status, current_round, created_at}
+text
+PDF → Extract Text → Split into Sections → Find each field → Store as JSON
+Why this matters:
+Before coding, understand the LOGIC. This prevents bugs later.
 
-interview_attempts
+Step 4: Create Resume Parser Service (MongoDB + API)
+What you're building:
 
-{session_id, round, question_id, student_answer, score, feedback, time_taken, created_at}
+A service that takes a PDF file path
 
-2) Core APIs (FastAPI)
-POST /interview/session/start (create session)
+Returns structured JSON with: name, skills, experience, education, projects
 
-GET /interview/session/{id}/next-question (orchestrator decides)
+What to do:
 
-POST /interview/session/{id}/submit-answer
+Create a new file: backend/services/resume_parser.py
 
-GET /interview/session/{id}/report (scores + improvement plan)
+Inside this file, create a class ResumeParsingService with methods:
 
-POST /interview/knowledge/company/sync (admin-only: build/update company knowledge)
+parse_resume_pdf() - Main method
 
-3) UI (React)
-Interview “lobby” (choose company/role, upload resume/JD)
+extract_skills_section() - Find and parse skills
 
-Round screens:
+extract_experience_section() - Find and parse experience
 
-Coding editor + run/submit
+extract_education_section() - Find and parse education
 
-Chat-style Q&A (technical + behavioral)
+normalize_skills() - Clean up skill names (lowercase, trim spaces)
 
-Report screen (scores + next steps + reusable attempt history)
+Don't use external resume parsing libraries yet — do it manually first so you understand what's happening
 
-Important: keep it FREE + safe
-Start with student-provided JD + resume (no scraping needed in MVP).
+Why this matters:
+You learn the parsing logic before relying on libraries.
 
-Add company research later using curated sources only, and store “sources” in DB so you can show “where the pattern came from” (reduces hallucinations).
+Step 5: Create Resume Upload API Endpoint
+What you're building:
 
-Use open-source + free-tier LLM calls only (Gemini free-tier or open-source local later).
+An endpoint where students can upload resume PDF
 
+Backend receives it, parses it, stores it in MongoDB
+
+What to do:
+
+Create a new route file: backend/routes/interview.py
+
+Add an endpoint: POST /api/interview/upload-resume
+
+This endpoint should:
+
+Receive uploaded PDF file
+
+Save it temporarily to disk
+
+Call ResumeParsingService.parse_resume_pdf()
+
+Store parsed data in MongoDB collection resume_uploads
+
+Return the parsed data as JSON response
+
+Delete the temporary file
+
+MongoDB collection structure:
+
+text
+resume_uploads {
+  student_id: "ObjectId",
+  file_name: "resume.pdf",
+  parsed_data: {
+    name: "John Doe",
+    email: "john@example.com",
+    skills: ["Python", "React", "MongoDB"],
+    experience: [...],
+    education: [...],
+    projects: [...]
+  },
+  uploaded_at: "2026-01-24T..."
+}
+Why this matters:
+Now students can upload resumes → backend parses → stored in DB. Foundation ready.
+
+Step 6: Test Resume Parsing (Manual Testing)
+What to do:
+
+Use Postman or curl to test the API:
+
+text
+POST /api/interview/upload-resume
+File: your_resume.pdf
+Check the response — did it extract:
+
+✅ Your name?
+
+✅ Your email?
+
+✅ Your skills?
+
+✅ Your experience?
+
+If any field is missing or wrong, debug the parser
+
+Why this matters:
+Catch errors early. Fix before moving forward.
