@@ -1,220 +1,192 @@
-WEEK 5: Interview Session Management
-Step 1: Design Interview Session Flow
+WEEK 6: Question Generation & Answer Evaluation
+Step 1: Design Question Types
 What you're building:
 
-A session that tracks: which round, which question, student's answers, scores
+Different question types: DSA (coding), Behavioral (STAR format), Design (architecture), Technical (resume-based)
 
-Flow diagram (text version):
+What to do:
+
+For each question type, define:
+
+DSA Question:
+
+Title: "Two Sum"
+
+Description: Problem statement
+
+Constraints: Input/output limits
+
+Examples: Input/output samples
+
+Test cases: Hidden tests for auto-evaluation
+
+Ideal answer: Solution approach + time complexity
+
+Behavioral Question:
+
+Theme: What company value? (leadership, ownership, etc.)
+
+Question: "Tell me about a time when..."
+
+Expected format: STAR (Situation, Task, Action, Result)
+
+Evaluation criteria: Does it follow STAR? Is it detailed?
+
+Design Question:
+
+Topic: "Design a URL shortener"
+
+Requirements: Scalability, components needed
+
+Expected approach: Explain architecture, discuss tradeoffs
+
+Technical Question:
+
+Based on student's resume projects
+
+Example: "I see you built a recommendation system. How did you handle cold start problem?"
+
+Design MongoDB collection: interview_questions
+
+For each question type, what fields do you need to store?
+
+Why this matters:
+You understand what information each question needs. Makes generation easier.
+
+Step 2: Create Question Generation Strategy
+What you're building:
+
+Logic for where to find/create questions
+
+What to do:
+
+For DSA questions, think about workflow:
+
+First, check question bank (MongoDB) for questions matching: company + difficulty + topic
+
+If found, use it
+
+If not found, either:
+
+a) Return a generic question, or
+
+b) Generate using LLM (Gemini API free-tier)
+
+For Behavioral questions:
+
+Get company behavioral themes from knowledge base
+
+Generate question using LLM prompt
+
+Example prompt: "Generate a leadership principle question for Amazon"
+
+For Design questions:
+
+Use pre-defined list of common designs
+
+Rotate them (so not same question every time)
+
+For Technical questions:
+
+Parse student's resume
+
+Pick one project
+
+Generate follow-up questions about it
+
+Write this as a decision tree:
 
 text
-1. Student fills: Company, Role, Resume, JD
-2. System creates SESSION
-3. System gets first QUESTION
-4. Student answers
-5. System evaluates answer
-6. System decides: next question OR next round OR complete
-7. Go to step 3 until done
-8. Generate REPORT
-What to do:
-
-Draw this flow on paper/whiteboard
-
-Identify decision points:
-
-How many questions per round?
-
-When to move to next round?
-
-When to end interview?
-
-Write down the logic (in English, not code):
-
-"If student completes 2 questions in a round, move to next round"
-
-"If student completes all rounds, generate report"
-
+IF question_type == "DSA":
+    IF question exists in DB → use it
+    ELSE → generate with LLM
+ELSE IF question_type == "behavioral":
+    GET company themes → generate with LLM
+ELSE IF question_type == "design":
+    PICK from pre-defined list
+ELSE IF question_type == "technical":
+    GET student's projects → generate with LLM
 Why this matters:
-Clear flow prevents bugs. You know exactly what should happen at each step.
+You know where questions come from—no magic, just clear workflow.
 
-Step 2: Create Interview Session Data Model
+Step 3: Design Answer Evaluation Strategy
 What you're building:
 
-MongoDB collection: interview_sessions
-
-Stores all data for one interview from start to end
+How to evaluate each question type
 
 What to do:
 
-Design the document structure:
+For DSA answers:
 
-session_id
+Run code against test cases → correctness score
 
-student_id
+Analyze code for quality (naming, comments, structure) → code quality score
 
-company_name
+Estimate time/space complexity → efficiency score
 
-role
+Calculate final score as weighted average
 
-job_description (full text)
+For Behavioral answers:
 
-resume_parsed (extracted skills, experience)
+Check if answer has Situation, Task, Action, Result → STAR score
 
-status (not_started, in_progress, completed)
+Count words/details → depth score
 
-current_round (which round are we on?)
+Check for company-specific keywords → alignment score
 
-rounds array (each round has: questions answered, score)
+For Design answers:
 
-overall_score
+Check if mentions key components (frontend, backend, database, cache) → architecture score
 
-created_at, updated_at
+Check if discusses scalability → scalability score
 
-Example:
+Check if discusses tradeoffs → thinking score
+
+For Technical answers:
+
+Check if explains concepts clearly → clarity score
+
+Check if uses technical terminology correctly → accuracy score
+
+Check if goes deep (multiple levels) → depth score
+
+Scoring formula (example):
 
 text
-{
-  "_id": ObjectId,
-  "student_id": ObjectId,
-  "company": "Amazon",
-  "role": "SDE",
-  "status": "in_progress",
-  "current_round": 0,
-  "rounds": [
-    {
-      "round_num": 0,
-      "type": "dsa",
-      "name": "Coding Round",
-      "questions_answered": 1,
-      "score": 75
-    }
-  ],
-  "overall_score": 0,
-  "created_at": "2026-01-24T..."
-}
-Why this matters:
-This is your source of truth for what's happening in the interview.
+For DSA:
+  overall_score = (correctness * 0.4) + (code_quality * 0.3) + (efficiency * 0.2) + (speed * 0.1)
 
-Step 3: Create Interview Orchestrator Logic
+For Behavioral:
+  overall_score = (STAR_score * 0.6) + (depth_score * 0.4)
+Why this matters:
+Clear evaluation criteria = fair scoring = student trust.
+
+Step 4: Create Evaluation Feedback
 What you're building:
 
-The "brain" that decides what happens next
+Constructive feedback for each answer (not just a score)
 
 What to do:
 
-Write down the logic for each decision:
+For each evaluation, generate feedback like:
 
-Decision 1: Which question to ask?
+DSA: "Your solution is correct and efficient! Consider adding edge case handling for empty arrays."
 
-Look at current round type (DSA, behavioral, design)
+Behavioral: "Great STAR format! Next time, add more specific metrics/outcomes."
 
-Look at company knowledge base
+Design: "Good architecture thinking. How would you handle 1 million concurrent users?"
 
-Look at student resume (for personalization)
+Feedback should be:
 
-Pick a question that fits
+Specific (mention what they did right + wrong)
 
-Decision 2: Adapt difficulty?
+Actionable (suggest improvement)
 
-If previous answer scored >80% → increase difficulty
+Encouraging (reinforce positives)
 
-If <50% → decrease difficulty
+Use LLM (Gemini) to generate feedback:
 
-Else → keep same
-
-Decision 3: Move to next round?
-
-Count questions answered in current round
-
-If ≥ 2 → move to next round
-
-Else → ask another question in same round
-
-Decision 4: End interview?
-
-If current_round ≥ total_rounds → end
-
-Generate report
-
-Write this as pseudocode (English, not Python):
-
-text
-FUNCTION get_next_question(session):
-    IF current_round >= total_rounds:
-        RETURN "interview_completed"
-    
-    current_round_data = session.rounds[session.current_round]
-    
-    previous_score = get_previous_score(session)
-    difficulty = adapt_difficulty(previous_score)
-    
-    question = find_question(
-        type: current_round_data.type,
-        company: session.company,
-        difficulty: difficulty
-    )
-    
-    RETURN question
-
-FUNCTION decide_next_action(session, evaluation_score):
-    questions_in_round = count_questions_in_current_round(session)
-    
-    IF questions_in_round >= 2:
-        RETURN "move_to_next_round"
-    ELSE:
-        RETURN "continue_in_same_round"
-Why this matters:
-Clear logic = clear API design = correct implementation.
-
-Step 4: Create Interview Session APIs
-What you're building:
-
-API endpoints to manage interview lifecycle
-
-What to do:
-
-Design these endpoints:
-
-POST /api/interview/start
-
-Input: company, role, resume_id, jd_text
-
-Output: session_id, first_question
-
-Action: Create session, get first question
-
-GET /api/interview/next-question?session_id={id}
-
-Input: session_id
-
-Output: next_question details
-
-Action: Get next question based on orchestrator logic
-
-POST /api/interview/submit-answer
-
-Input: session_id, question_id, student_answer, time_taken
-
-Output: evaluation, next_action
-
-Action: Evaluate answer, decide next step
-
-GET /api/interview/report/{session_id}
-
-Input: session_id
-
-Output: full report with scores, strengths, weaknesses
-
-Action: Generate report after interview complete
-
-For each endpoint, write the logic in English:
-
-What inputs do you need?
-
-What do you check/validate?
-
-What database operations?
-
-What output?
+Prompt: "Generate constructive feedback for this code: [code]"
 
 Why this matters:
-Clear API contracts make implementation straightforward.
+Feedback helps students learn. Scores alone are meaningless.

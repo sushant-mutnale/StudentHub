@@ -22,6 +22,7 @@ from .routes import (
     jd_routes,
     company_routes,
     session_routes,
+    question_routes,
 )
 from .utils.auth import hash_password
 
@@ -64,6 +65,7 @@ app.include_router(resume_routes.router)
 app.include_router(jd_routes.router)
 app.include_router(company_routes.router)
 app.include_router(session_routes.router)
+app.include_router(question_routes.router)
 
 
 async def seed_default_users():
