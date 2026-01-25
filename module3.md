@@ -1,179 +1,220 @@
-WEEK 3: Job Description Parsing
-Step 1: Understand Job Description Structure
-What you need to know:
-
-Job descriptions have sections: Title, Company, Requirements, Responsibilities, Qualifications
-
-Required skills are listed under "Requirements", "Must have", "Essential"
-
-Nice-to-have skills under "Preferred", "Nice to have", "Bonus"
-
-Experience level mentioned (entry-level, junior, mid, senior)
-
-Salary range sometimes included
-
-What to do:
-
-Collect 5 sample job descriptions (from LinkedIn, job boards)
-
-For each one, manually identify:
-
-Where is the job title?
-
-Where are required skills?
-
-Where are nice-to-have skills?
-
-What's the experience level?
-
-Where are responsibilities listed?
-
-Look for patterns (keywords, formatting)
-
-Why this matters:
-JD parsing is different from resume parsing. You need the patterns.
-
-Step 2: Create JD Parser Service
+WEEK 5: Interview Session Management
+Step 1: Design Interview Session Flow
 What you're building:
 
-A service that takes job description text (plain text input)
+A session that tracks: which round, which question, student's answers, scores
 
-Returns structured JSON with: job_title, required_skills, nice_to_have_skills, experience_level, company, salary_range, responsibilities, qualifications
+Flow diagram (text version):
 
+text
+1. Student fills: Company, Role, Resume, JD
+2. System creates SESSION
+3. System gets first QUESTION
+4. Student answers
+5. System evaluates answer
+6. System decides: next question OR next round OR complete
+7. Go to step 3 until done
+8. Generate REPORT
 What to do:
 
-Create file: backend/services/jd_parser.py
+Draw this flow on paper/whiteboard
 
-Create class: JobDescriptionParser with methods:
+Identify decision points:
 
-parse_jd() - Main method
+How many questions per round?
 
-extract_required_skills() - Parse required skills section
+When to move to next round?
 
-extract_nice_to_have_skills() - Parse preferred skills
+When to end interview?
 
-extract_experience_level() - Determine seniority
+Write down the logic (in English, not code):
 
-extract_job_title() - Find title
+"If student completes 2 questions in a round, move to next round"
 
-extract_company() - Find company name
-
-extract_responsibilities() - Parse duties section
-
-extract_qualifications() - Parse qualifications section
-
-Parsing strategy:
-
-Split JD text into sections (look for headers: "Requirements", "Responsibilities", etc.)
-
-For each section, extract relevant information using:
-
-Pattern matching (regex for dates, emails)
-
-Keyword matching (if text contains "Python", extract it as skill)
-
-Text normalization (lowercase, trim spaces)
+"If student completes all rounds, generate report"
 
 Why this matters:
-JD parsing is how you understand what a job needs. This becomes input to matching + question generation.
+Clear flow prevents bugs. You know exactly what should happen at each step.
 
-Step 3: Create Skill Normalization
+Step 2: Create Interview Session Data Model
 What you're building:
 
-A dictionary/mapping that normalizes skill names
+MongoDB collection: interview_sessions
 
-Example: "ReactJS" → "React", "node.js" → "nodejs"
+Stores all data for one interview from start to end
 
 What to do:
 
-Create file: backend/services/skill_normalizer.py
+Design the document structure:
 
-Build a mapping dictionary of common variations:
+session_id
+
+student_id
+
+company_name
+
+role
+
+job_description (full text)
+
+resume_parsed (extracted skills, experience)
+
+status (not_started, in_progress, completed)
+
+current_round (which round are we on?)
+
+rounds array (each round has: questions answered, score)
+
+overall_score
+
+created_at, updated_at
+
+Example:
 
 text
 {
-  "reactjs": "react",
-  "react.js": "react",
-  "node": "nodejs",
-  "node.js": "nodejs",
-  "python3": "python",
-  "py": "python",
-  "sql": "databases",
-  "mongo": "mongodb",
-  "etc...
+  "_id": ObjectId,
+  "student_id": ObjectId,
+  "company": "Amazon",
+  "role": "SDE",
+  "status": "in_progress",
+  "current_round": 0,
+  "rounds": [
+    {
+      "round_num": 0,
+      "type": "dsa",
+      "name": "Coding Round",
+      "questions_answered": 1,
+      "score": 75
+    }
+  ],
+  "overall_score": 0,
+  "created_at": "2026-01-24T..."
 }
-Create a function: normalize_skill(skill_name) that:
-
-Converts to lowercase
-
-Removes spaces, dots, hyphens
-
-Looks up in the mapping dictionary
-
-Returns normalized name
-
 Why this matters:
-When matching student skills to job requirements, "React" ≠ "ReactJS" unless you normalize them.
+This is your source of truth for what's happening in the interview.
 
-Step 4: Create JD Parsing API Endpoint
+Step 3: Create Interview Orchestrator Logic
 What you're building:
 
-An endpoint where students paste job description text
-
-Backend parses it, returns structured JSON
+The "brain" that decides what happens next
 
 What to do:
 
-In backend/routes/interview.py, add endpoint: POST /api/interview/parse-job-description
+Write down the logic for each decision:
 
-This endpoint should:
+Decision 1: Which question to ask?
 
-Receive JD text as string in request body
+Look at current round type (DSA, behavioral, design)
 
-Call JobDescriptionParser.parse_jd(jd_text)
+Look at company knowledge base
 
-Return parsed data as JSON
+Look at student resume (for personalization)
 
-Request format:
+Pick a question that fits
 
-json
-{
-  "jd_text": "Job Description text here..."
-}
-Response format:
+Decision 2: Adapt difficulty?
 
-json
-{
-  "job_title": "Backend Engineer",
-  "company": "Amazon",
-  "required_skills": ["Python", "AWS", "System Design"],
-  "nice_to_have_skills": ["Kubernetes", "Go"],
-  "experience_level": "mid",
-  "responsibilities": [...],
-  "qualifications": [...],
-  "salary_range": {"min": 100000, "max": 150000}
-}
+If previous answer scored >80% → increase difficulty
+
+If <50% → decrease difficulty
+
+Else → keep same
+
+Decision 3: Move to next round?
+
+Count questions answered in current round
+
+If ≥ 2 → move to next round
+
+Else → ask another question in same round
+
+Decision 4: End interview?
+
+If current_round ≥ total_rounds → end
+
+Generate report
+
+Write this as pseudocode (English, not Python):
+
+text
+FUNCTION get_next_question(session):
+    IF current_round >= total_rounds:
+        RETURN "interview_completed"
+    
+    current_round_data = session.rounds[session.current_round]
+    
+    previous_score = get_previous_score(session)
+    difficulty = adapt_difficulty(previous_score)
+    
+    question = find_question(
+        type: current_round_data.type,
+        company: session.company,
+        difficulty: difficulty
+    )
+    
+    RETURN question
+
+FUNCTION decide_next_action(session, evaluation_score):
+    questions_in_round = count_questions_in_current_round(session)
+    
+    IF questions_in_round >= 2:
+        RETURN "move_to_next_round"
+    ELSE:
+        RETURN "continue_in_same_round"
 Why this matters:
-Now students can paste JD → backend parses → structured data for matching + questions.
+Clear logic = clear API design = correct implementation.
 
-Step 5: Test JD Parsing
+Step 4: Create Interview Session APIs
+What you're building:
+
+API endpoints to manage interview lifecycle
+
 What to do:
 
-Collect one job description (copy from LinkedIn)
+Design these endpoints:
 
-Use API to parse it
+POST /api/interview/start
 
-Check if it correctly extracted:
+Input: company, role, resume_id, jd_text
 
-✅ Job title?
+Output: session_id, first_question
 
-✅ Required skills?
+Action: Create session, get first question
 
-✅ Company name?
+GET /api/interview/next-question?session_id={id}
 
-✅ Experience level?
+Input: session_id
 
-Debug any failures
+Output: next_question details
+
+Action: Get next question based on orchestrator logic
+
+POST /api/interview/submit-answer
+
+Input: session_id, question_id, student_answer, time_taken
+
+Output: evaluation, next_action
+
+Action: Evaluate answer, decide next step
+
+GET /api/interview/report/{session_id}
+
+Input: session_id
+
+Output: full report with scores, strengths, weaknesses
+
+Action: Generate report after interview complete
+
+For each endpoint, write the logic in English:
+
+What inputs do you need?
+
+What do you check/validate?
+
+What database operations?
+
+What output?
 
 Why this matters:
-Same reason as resume testing—catch errors early.
+Clear API contracts make implementation straightforward.
