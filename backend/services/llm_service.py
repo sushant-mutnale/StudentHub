@@ -23,8 +23,9 @@ class LLMConfig:
     Environment variables:
     - OPENROUTER_API_KEY: For OpenRouter
     - OPENAI_API_KEY: For OpenAI
+    - GEMINI_API_KEY: For Gemini (Google)
     - GROQ_API_KEY: For Groq
-    - LLM_PROVIDER: Default provider (openrouter, openai, groq, ollama)
+    - LLM_PROVIDER: Default provider (openrouter, gemini, openai, groq, ollama)
     - LLM_MODEL: Default model name
     """
     
@@ -34,6 +35,11 @@ class LLMConfig:
             "api_base": "https://openrouter.ai/api/v1",
             "env_key": "OPENROUTER_API_KEY",
             "default_model": "deepseek/deepseek-r1-0528:free"
+        },
+        "gemini": {
+            "api_base": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "env_key": "GEMINI_API_KEY",
+            "default_model": "gemini-2.0-flash"
         },
         "openai": {
             "api_base": "https://api.openai.com/v1",
@@ -51,6 +57,9 @@ class LLMConfig:
             "default_model": "llama3.2"
         }
     }
+    
+    # Fallback chain: try these providers in order if primary fails
+    FALLBACK_CHAIN = ["openrouter", "gemini", "groq", "ollama"]
     
     @classmethod
     def get_default_provider(cls) -> str:
@@ -74,6 +83,17 @@ class LLMConfig:
         if custom_model:
             return custom_model
         return cls.PROVIDERS.get(provider, {}).get("default_model", "gpt-3.5-turbo")
+    
+    @classmethod
+    def get_available_providers(cls) -> list:
+        """Get list of providers that have API keys configured."""
+        available = []
+        for provider in cls.FALLBACK_CHAIN:
+            if provider == "ollama":
+                available.append(provider)  # Always available locally
+            elif cls.get_api_key(provider):
+                available.append(provider)
+        return available
 
 
 class LLMService:
@@ -120,35 +140,63 @@ class LLMService:
     async def generate(
         self, 
         prompt: str, 
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        use_fallback: bool = True
     ) -> str:
         """
         Generate a response from the LLM.
+        Automatically falls back to other providers if primary fails.
         
         Args:
             prompt: User prompt/question
             system_prompt: Optional system prompt for context
+            use_fallback: If True, try fallback providers on failure
             
         Returns:
             Generated text response
         """
-        llm = self._get_llm()
-        
         messages = []
         if system_prompt:
             messages.append(SystemMessage(content=system_prompt))
         messages.append(HumanMessage(content=prompt))
         
+        # Try primary provider first
         try:
+            llm = self._get_llm()
             response = await llm.ainvoke(messages)
             return response.content
-        except Exception as e:
-            # Fallback to non-async if async fails
-            try:
-                response = llm.invoke(messages)
-                return response.content
-            except Exception as inner_e:
-                return f"Error generating response: {str(inner_e)}"
+        except Exception as primary_error:
+            if not use_fallback:
+                return f"Error: {str(primary_error)}"
+            
+            # Try fallback providers
+            for provider in LLMConfig.FALLBACK_CHAIN:
+                if provider == self.provider:
+                    continue  # Skip - already tried
+                
+                api_key = LLMConfig.get_api_key(provider)
+                if not api_key and provider != "ollama":
+                    continue  # No API key for this provider
+                
+                try:
+                    api_base = LLMConfig.get_api_base(provider)
+                    model = LLMConfig.get_default_model(provider)
+                    
+                    fallback_llm = ChatOpenAI(
+                        model=model,
+                        openai_api_key=api_key,
+                        openai_api_base=api_base,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens
+                    )
+                    
+                    response = await fallback_llm.ainvoke(messages)
+                    return response.content
+                except Exception:
+                    continue  # Try next fallback
+            
+            # All providers failed
+            return f"Error: All providers failed. Primary error: {str(primary_error)}"
     
     def generate_sync(
         self, 

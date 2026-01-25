@@ -24,6 +24,7 @@ from .routes import (
     session_routes,
     question_routes,
     flow_routes,
+    planner_routes,
 )
 from .utils.auth import hash_password
 
