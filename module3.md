@@ -1,192 +1,150 @@
-WEEK 6: Question Generation & Answer Evaluation
-Step 1: Design Question Types
+WEEK 7-8: Integration + Testing
+Step 1: Connect Resume → JD → Company Knowledge → Interview Start
 What you're building:
 
-Different question types: DSA (coding), Behavioral (STAR format), Design (architecture), Technical (resume-based)
+Full flow from student input to first interview question
 
 What to do:
 
-For each question type, define:
-
-DSA Question:
-
-Title: "Two Sum"
-
-Description: Problem statement
-
-Constraints: Input/output limits
-
-Examples: Input/output samples
-
-Test cases: Hidden tests for auto-evaluation
-
-Ideal answer: Solution approach + time complexity
-
-Behavioral Question:
-
-Theme: What company value? (leadership, ownership, etc.)
-
-Question: "Tell me about a time when..."
-
-Expected format: STAR (Situation, Task, Action, Result)
-
-Evaluation criteria: Does it follow STAR? Is it detailed?
-
-Design Question:
-
-Topic: "Design a URL shortener"
-
-Requirements: Scalability, components needed
-
-Expected approach: Explain architecture, discuss tradeoffs
-
-Technical Question:
-
-Based on student's resume projects
-
-Example: "I see you built a recommendation system. How did you handle cold start problem?"
-
-Design MongoDB collection: interview_questions
-
-For each question type, what fields do you need to store?
-
-Why this matters:
-You understand what information each question needs. Makes generation easier.
-
-Step 2: Create Question Generation Strategy
-What you're building:
-
-Logic for where to find/create questions
-
-What to do:
-
-For DSA questions, think about workflow:
-
-First, check question bank (MongoDB) for questions matching: company + difficulty + topic
-
-If found, use it
-
-If not found, either:
-
-a) Return a generic question, or
-
-b) Generate using LLM (Gemini API free-tier)
-
-For Behavioral questions:
-
-Get company behavioral themes from knowledge base
-
-Generate question using LLM prompt
-
-Example prompt: "Generate a leadership principle question for Amazon"
-
-For Design questions:
-
-Use pre-defined list of common designs
-
-Rotate them (so not same question every time)
-
-For Technical questions:
-
-Parse student's resume
-
-Pick one project
-
-Generate follow-up questions about it
-
-Write this as a decision tree:
+Trace the flow:
 
 text
-IF question_type == "DSA":
-    IF question exists in DB → use it
-    ELSE → generate with LLM
-ELSE IF question_type == "behavioral":
-    GET company themes → generate with LLM
-ELSE IF question_type == "design":
-    PICK from pre-defined list
-ELSE IF question_type == "technical":
-    GET student's projects → generate with LLM
-Why this matters:
-You know where questions come from—no magic, just clear workflow.
+Student uploads resume → API parses resume → stored in DB
+Student pastes JD → API parses JD → stored in session
+Student selects company/role → API fetches company knowledge
+API calls Orchestrator → Orchestrator decides first question
+API returns first question to frontend
+Test each step manually:
 
-Step 3: Design Answer Evaluation Strategy
+Upload resume → check MongoDB for parsed data
+
+Parse JD → check response contains skills, role, company
+
+Fetch company knowledge → check response has rounds, themes
+
+Get first question → check question matches company/difficulty
+
+Why this matters:
+You verify the pipeline works end-to-end.
+
+Step 2: Test Interview Loop
 What you're building:
 
-How to evaluate each question type
+Full interview session: answer question → get evaluation → get next question
 
 What to do:
 
-For DSA answers:
+Manually test:
 
-Run code against test cases → correctness score
+Start interview for "Amazon SDE" role
 
-Analyze code for quality (naming, comments, structure) → code quality score
+Receive first DSA question
 
-Estimate time/space complexity → efficiency score
+Submit your answer
 
-Calculate final score as weighted average
+Check if evaluation is correct (check correctness score)
 
-For Behavioral answers:
+Check if next question is appropriate difficulty
 
-Check if answer has Situation, Task, Action, Result → STAR score
+Complete 2-3 questions
 
-Count words/details → depth score
+Check if system moves to next round
 
-Check for company-specific keywords → alignment score
+Debug issues:
 
-For Design answers:
+If evaluation wrong: check evaluation logic
 
-Check if mentions key components (frontend, backend, database, cache) → architecture score
+If question irrelevant: check company knowledge
 
-Check if discusses scalability → scalability score
+If difficulty not adapting: check orchestrator logic
 
-Check if discusses tradeoffs → thinking score
-
-For Technical answers:
-
-Check if explains concepts clearly → clarity score
-
-Check if uses technical terminology correctly → accuracy score
-
-Check if goes deep (multiple levels) → depth score
-
-Scoring formula (example):
-
-text
-For DSA:
-  overall_score = (correctness * 0.4) + (code_quality * 0.3) + (efficiency * 0.2) + (speed * 0.1)
-
-For Behavioral:
-  overall_score = (STAR_score * 0.6) + (depth_score * 0.4)
 Why this matters:
-Clear evaluation criteria = fair scoring = student trust.
+Interview is the core feature. Must work flawlessly.
 
-Step 4: Create Evaluation Feedback
+Step 3: Test Report Generation
 What you're building:
 
-Constructive feedback for each answer (not just a score)
+Report shows scores by round, strengths, weaknesses, recommendations
 
 What to do:
 
-For each evaluation, generate feedback like:
+Complete one full mock interview
 
-DSA: "Your solution is correct and efficient! Consider adding edge case handling for empty arrays."
+Call report endpoint
 
-Behavioral: "Great STAR format! Next time, add more specific metrics/outcomes."
+Check if report shows:
 
-Design: "Good architecture thinking. How would you handle 1 million concurrent users?"
+✅ Overall score (average of all rounds)
 
-Feedback should be:
+✅ Round-by-round breakdown
 
-Specific (mention what they did right + wrong)
+✅ Top 3 strengths
 
-Actionable (suggest improvement)
+✅ Top 3 weaknesses
 
-Encouraging (reinforce positives)
-
-Use LLM (Gemini) to generate feedback:
-
-Prompt: "Generate constructive feedback for this code: [code]"
+✅ Learning recommendations
 
 Why this matters:
-Feedback helps students learn. Scores alone are meaningless.
+Report is how students understand performance. Must be accurate + actionable.
+
+Step 4: Integration with Module 1 (Update AI Profile)
+What you're building:
+
+After interview, student's AI profile updates
+
+What to do:
+
+After interview completes:
+
+Get interview score from report
+
+Update student's ai_profile.interview_score in MongoDB
+
+Update ai_profile.overall_score (weighted average of all scores)
+
+Log activity: {type: "INTERVIEW_COMPLETED", company: "Amazon", score: 85}
+
+Verify in MongoDB:
+
+Find student document
+
+Check if interview_score updated
+
+Check if activity logged
+
+Why this matters:
+Module 3 feeds back into Module 1. AI profile becomes more accurate over time.
+
+Step 5: Integration with Module 2 (Better Matching)
+What you're building:
+
+Updated student profile → recruiters see better matches
+
+What to do:
+
+When recruiter views "matching students" for a job:
+
+System now uses updated ai_profile.interview_score
+
+Student who practiced interviews scores higher
+
+Matching becomes more meaningful
+
+Test:
+
+Have recruiter view matching students before + after interview
+
+Verify ranking improved
+
+Why this matters:
+Interview practice → better profile → better matching → more placements.
+
+DELIVERABLES BY WEEK
+Week	What's Done	Student Can Do
+Week 2	Resume parsing	Upload resume, see parsed data
+Week 3	JD parsing	Paste JD, see parsed job details
+Week 4	Company knowledge	See interview patterns for companies
+Week 5	Session management	Start interview, navigate rounds
+Week 6	Q&A evaluation	Complete questions, see scores + feedback
+Week 7	Full flow	Complete mock interview end-to-end
+Week 8	Integration	See updated profile, better job matching
