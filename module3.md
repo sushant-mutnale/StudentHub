@@ -1,190 +1,179 @@
-MODULE 3,  WEEK 2: STEP-BY-STEP 
-: Resume Parsing Setup
-Step 1: Understand PDF Resume Structure
+WEEK 3: Job Description Parsing
+Step 1: Understand Job Description Structure
 What you need to know:
 
-Resumes are PDFs with structured sections: Name, Contact, Skills, Experience, Education, Projects
+Job descriptions have sections: Title, Company, Requirements, Responsibilities, Qualifications
 
-You need to extract text from PDF → parse structured data
+Required skills are listed under "Requirements", "Must have", "Essential"
 
-Skills appear as bullet points or comma-separated lists
+Nice-to-have skills under "Preferred", "Nice to have", "Bonus"
 
-Education/Experience have dates, companies, descriptions
+Experience level mentioned (entry-level, junior, mid, senior)
+
+Salary range sometimes included
 
 What to do:
 
-Download 5 sample resumes (ask your friends or use online templates)
+Collect 5 sample job descriptions (from LinkedIn, job boards)
 
-Open them in a PDF viewer and manually note:
+For each one, manually identify:
 
-Where is the name? (usually top)
+Where is the job title?
 
-Where are skills? (usually middle, bullet points)
+Where are required skills?
 
-Where is experience? (companies, job titles, dates)
+Where are nice-to-have skills?
 
-Where are projects? (if they exist)
+What's the experience level?
 
-This gives you the pattern you're looking for
+Where are responsibilities listed?
+
+Look for patterns (keywords, formatting)
 
 Why this matters:
-Every resume layout is different. You need to know the PATTERNS before coding.
+JD parsing is different from resume parsing. You need the patterns.
 
-Step 2: Choose PDF Parsing Library
-Your options:
+Step 2: Create JD Parser Service
+What you're building:
 
-pdfplumber - Best for extracting structured text + tables. Easy to use.
+A service that takes job description text (plain text input)
 
-PyPDF2 - Good for basic PDF handling
-
-PyMuPDF (fitz) - Fast, handles complex PDFs
+Returns structured JSON with: job_title, required_skills, nice_to_have_skills, experience_level, company, salary_range, responsibilities, qualifications
 
 What to do:
 
-Pick pdfplumber (it's the easiest for resume extraction)
+Create file: backend/services/jd_parser.py
 
-Install it: pip install pdfplumber
+Create class: JobDescriptionParser with methods:
 
-Create a test script that:
+parse_jd() - Main method
 
-Opens a sample resume PDF
+extract_required_skills() - Parse required skills section
 
-Extracts all text
+extract_nice_to_have_skills() - Parse preferred skills
 
-Prints the extracted text
+extract_experience_level() - Determine seniority
 
-Run it and see what you get
+extract_job_title() - Find title
+
+extract_company() - Find company name
+
+extract_responsibilities() - Parse duties section
+
+extract_qualifications() - Parse qualifications section
+
+Parsing strategy:
+
+Split JD text into sections (look for headers: "Requirements", "Responsibilities", etc.)
+
+For each section, extract relevant information using:
+
+Pattern matching (regex for dates, emails)
+
+Keyword matching (if text contains "Python", extract it as skill)
+
+Text normalization (lowercase, trim spaces)
 
 Why this matters:
-You need to see the raw PDF output before you parse it. Text extraction is the foundation.
+JD parsing is how you understand what a job needs. This becomes input to matching + question generation.
 
-Step 3: Plan Resume Parsing Logic
-What information to extract:
+Step 3: Create Skill Normalization
+What you're building:
 
-Name (usually top line)
+A dictionary/mapping that normalizes skill names
 
-Email (pattern: xxx@xxx.xxx)
-
-Phone (pattern: xxx-xxx-xxxx or +91-xxxx)
-
-Skills (bullet points with technical keywords)
-
-Education (Degree, University, Year)
-
-Experience (Company, Job Title, Dates, Description)
-
-Projects (Project Name, Technologies, Description)
+Example: "ReactJS" → "React", "node.js" → "nodejs"
 
 What to do:
 
-Write down the extraction logic in plain English (no code):
+Create file: backend/services/skill_normalizer.py
 
-"Split PDF text by sections (Skills, Experience, Education)"
-
-"For Skills section, find lines with comma or bullet, split them"
-
-"For Experience, look for date patterns (YYYY-YYYY)"
-
-Draw a simple flowchart:
+Build a mapping dictionary of common variations:
 
 text
-PDF → Extract Text → Split into Sections → Find each field → Store as JSON
-Why this matters:
-Before coding, understand the LOGIC. This prevents bugs later.
+{
+  "reactjs": "react",
+  "react.js": "react",
+  "node": "nodejs",
+  "node.js": "nodejs",
+  "python3": "python",
+  "py": "python",
+  "sql": "databases",
+  "mongo": "mongodb",
+  "etc...
+}
+Create a function: normalize_skill(skill_name) that:
 
-Step 4: Create Resume Parser Service (MongoDB + API)
+Converts to lowercase
+
+Removes spaces, dots, hyphens
+
+Looks up in the mapping dictionary
+
+Returns normalized name
+
+Why this matters:
+When matching student skills to job requirements, "React" ≠ "ReactJS" unless you normalize them.
+
+Step 4: Create JD Parsing API Endpoint
 What you're building:
 
-A service that takes a PDF file path
+An endpoint where students paste job description text
 
-Returns structured JSON with: name, skills, experience, education, projects
+Backend parses it, returns structured JSON
 
 What to do:
 
-Create a new file: backend/services/resume_parser.py
-
-Inside this file, create a class ResumeParsingService with methods:
-
-parse_resume_pdf() - Main method
-
-extract_skills_section() - Find and parse skills
-
-extract_experience_section() - Find and parse experience
-
-extract_education_section() - Find and parse education
-
-normalize_skills() - Clean up skill names (lowercase, trim spaces)
-
-Don't use external resume parsing libraries yet — do it manually first so you understand what's happening
-
-Why this matters:
-You learn the parsing logic before relying on libraries.
-
-Step 5: Create Resume Upload API Endpoint
-What you're building:
-
-An endpoint where students can upload resume PDF
-
-Backend receives it, parses it, stores it in MongoDB
-
-What to do:
-
-Create a new route file: backend/routes/interview.py
-
-Add an endpoint: POST /api/interview/upload-resume
+In backend/routes/interview.py, add endpoint: POST /api/interview/parse-job-description
 
 This endpoint should:
 
-Receive uploaded PDF file
+Receive JD text as string in request body
 
-Save it temporarily to disk
+Call JobDescriptionParser.parse_jd(jd_text)
 
-Call ResumeParsingService.parse_resume_pdf()
+Return parsed data as JSON
 
-Store parsed data in MongoDB collection resume_uploads
+Request format:
 
-Return the parsed data as JSON response
+json
+{
+  "jd_text": "Job Description text here..."
+}
+Response format:
 
-Delete the temporary file
-
-MongoDB collection structure:
-
-text
-resume_uploads {
-  student_id: "ObjectId",
-  file_name: "resume.pdf",
-  parsed_data: {
-    name: "John Doe",
-    email: "john@example.com",
-    skills: ["Python", "React", "MongoDB"],
-    experience: [...],
-    education: [...],
-    projects: [...]
-  },
-  uploaded_at: "2026-01-24T..."
+json
+{
+  "job_title": "Backend Engineer",
+  "company": "Amazon",
+  "required_skills": ["Python", "AWS", "System Design"],
+  "nice_to_have_skills": ["Kubernetes", "Go"],
+  "experience_level": "mid",
+  "responsibilities": [...],
+  "qualifications": [...],
+  "salary_range": {"min": 100000, "max": 150000}
 }
 Why this matters:
-Now students can upload resumes → backend parses → stored in DB. Foundation ready.
+Now students can paste JD → backend parses → structured data for matching + questions.
 
-Step 6: Test Resume Parsing (Manual Testing)
+Step 5: Test JD Parsing
 What to do:
 
-Use Postman or curl to test the API:
+Collect one job description (copy from LinkedIn)
 
-text
-POST /api/interview/upload-resume
-File: your_resume.pdf
-Check the response — did it extract:
+Use API to parse it
 
-✅ Your name?
+Check if it correctly extracted:
 
-✅ Your email?
+✅ Job title?
 
-✅ Your skills?
+✅ Required skills?
 
-✅ Your experience?
+✅ Company name?
 
-If any field is missing or wrong, debug the parser
+✅ Experience level?
+
+Debug any failures
 
 Why this matters:
-Catch errors early. Fix before moving forward.
+Same reason as resume testing—catch errors early.
