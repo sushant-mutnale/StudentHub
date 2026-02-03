@@ -15,6 +15,14 @@ import Conversation from './components/messages/Conversation';
 import InterviewsPage from './components/interviews/InterviewsPage';
 import InterviewDetail from './components/interviews/InterviewDetail';
 import JobDetail from './components/JobDetail';
+// Module 1-4 Components
+import ResumeUpload from './components/ResumeUpload';
+import SkillGapAnalysis from './components/SkillGapAnalysis';
+import LearningPath from './components/LearningPath';
+import MockInterview from './components/MockInterview';
+import CompanyResearch from './components/CompanyResearch';
+import Opportunities from './components/Opportunities';
+import SmartNotifications from './components/SmartNotifications';
 import './App.css';
 
 // Protected Route Component
@@ -22,11 +30,11 @@ const ProtectedRoute = ({ children, allowedType }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div style={{ 
-      display: 'flex', 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      minHeight: '100vh' 
+    return <div style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      minHeight: '100vh'
     }}>Loading...</div>;
   }
 
@@ -48,12 +56,12 @@ function App() {
         <div className="app">
           <Routes>
             <Route path="/" element={<Home />} />
-            
+
             <Route path="/login/:userType" element={<Login />} />
-            
+
             <Route path="/signup/student" element={<SignupStudent />} />
             <Route path="/signup/recruiter" element={<SignupRecruiter />} />
-            
+
             <Route
               path="/dashboard/student"
               element={
@@ -62,7 +70,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            
+
             <Route
               path="/dashboard/recruiter"
               element={
@@ -71,7 +79,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            
+
             <Route
               path="/profile/student"
               element={
@@ -82,16 +90,84 @@ function App() {
             />
 
             <Route path="/profile/:userId" element={<PublicProfile />} />
-            
+
+            {/* Module 1: Resume & Learning */}
+            <Route
+              path="/resume"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <ResumeUpload />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/skill-gaps"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <SkillGapAnalysis />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/learning"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <LearningPath />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Module 2: Mock Interview */}
+            <Route
+              path="/mock-interview"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <MockInterview />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Module 3: Research */}
+            <Route
+              path="/research"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <CompanyResearch />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Module 4: Opportunities & Notifications */}
+            <Route
+              path="/opportunities"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <Opportunities />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/smart-notifications"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <SmartNotifications />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Legacy Notifications */}
             <Route
               path="/notifications"
               element={
                 <ProtectedRoute allowedType="student">
-                  <Notifications />
+                  <SmartNotifications />
                 </ProtectedRoute>
               }
             />
-            
+
             <Route
               path="/assessment"
               element={
@@ -100,6 +176,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/messages"
               element={
@@ -141,7 +218,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            
+
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
@@ -151,4 +228,3 @@ function App() {
 }
 
 export default App;
-

@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FiHome, FiUser, FiClipboard, FiBell, FiLogOut, FiMessageSquare, FiCalendar } from 'react-icons/fi';
+import { FiHome, FiUser, FiFileText, FiTrendingUp, FiBook, FiMic, FiSearch, FiTarget, FiBell, FiLogOut, FiMessageSquare, FiCalendar, FiClipboard } from 'react-icons/fi';
 import Avatar from './Avatar';
 import '../App.css';
 
@@ -15,14 +15,20 @@ const SidebarLeft = () => {
   };
 
   const isActive = (path) => {
-    return location.pathname.includes(path);
+    return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
   const navItems = [
-    { icon: FiHome, label: 'Account', path: '/dashboard/student' },
+    { icon: FiHome, label: 'Dashboard', path: '/dashboard/student' },
     { icon: FiUser, label: 'Profile', path: '/profile/student' },
+    { icon: FiFileText, label: 'Resume', path: '/resume' },
+    { icon: FiTrendingUp, label: 'Skill Gaps', path: '/skill-gaps' },
+    { icon: FiBook, label: 'Learning', path: '/learning' },
+    { icon: FiMic, label: 'Mock Interview', path: '/mock-interview' },
+    { icon: FiSearch, label: 'Research', path: '/research' },
+    { icon: FiTarget, label: 'Opportunities', path: '/opportunities' },
     { icon: FiClipboard, label: 'Assessment', path: '/assessment' },
-    { icon: FiBell, label: 'Notifications', path: '/notifications' },
+    { icon: FiBell, label: 'Notifications', path: '/smart-notifications' },
     { icon: FiMessageSquare, label: 'Messages', path: '/messages' },
     { icon: FiCalendar, label: 'Interviews', path: '/interviews' },
   ];
@@ -48,11 +54,10 @@ const SidebarLeft = () => {
       <nav className="sidebar-nav">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const pathToCheck = item.path.replace('#assessment', '');
           return (
             <div
               key={item.path}
-              className={`nav-item ${isActive(pathToCheck) ? 'active' : ''}`}
+              className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
               onClick={() => navigate(item.path)}
             >
               <Icon />
@@ -70,4 +75,3 @@ const SidebarLeft = () => {
 };
 
 export default SidebarLeft;
-
