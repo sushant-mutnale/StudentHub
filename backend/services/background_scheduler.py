@@ -282,6 +282,21 @@ async def update_trending_topics():
         logger.error(f"Trending topics update failed: {e}")
 
 
+async def ingest_opportunities():
+    """
+    Ingest external opportunities (jobs, hackathons, content).
+    Module 4 data ingestion.
+    """
+    try:
+        from .opportunity_ingestion import opportunity_ingestion
+        
+        result = await opportunity_ingestion.ingest_all(use_mock=True)
+        logger.info(f"Opportunities ingested: {result}")
+        
+    except Exception as e:
+        logger.error(f"Opportunity ingestion failed: {e}")
+
+
 def register_default_jobs():
     """Register default background jobs."""
     scheduler = background_scheduler
@@ -311,4 +326,13 @@ def register_default_jobs():
         hours=12
     )
     
+    # Ingest jobs daily at 6 AM UTC
+    scheduler.add_cron_job(
+        job_id="ingest_opportunities",
+        func=ingest_opportunities,
+        hour=6,
+        minute=0
+    )
+    
     logger.info("Default background jobs registered")
+
