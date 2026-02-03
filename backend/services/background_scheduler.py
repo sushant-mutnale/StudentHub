@@ -297,6 +297,21 @@ async def ingest_opportunities():
         logger.error(f"Opportunity ingestion failed: {e}")
 
 
+async def check_notifications():
+    """
+    Run notification trigger checks.
+    Module 4 Week 3: Smart notifications.
+    """
+    try:
+        from .notification_service import notification_service
+        
+        result = await notification_service.run_all_checks()
+        logger.info(f"Notification checks completed: {result}")
+        
+    except Exception as e:
+        logger.error(f"Notification checks failed: {e}")
+
+
 def register_default_jobs():
     """Register default background jobs."""
     scheduler = background_scheduler
@@ -326,7 +341,7 @@ def register_default_jobs():
         hours=12
     )
     
-    # Ingest jobs daily at 6 AM UTC
+    # Ingest opportunities daily at 6 AM UTC
     scheduler.add_cron_job(
         job_id="ingest_opportunities",
         func=ingest_opportunities,
@@ -334,5 +349,27 @@ def register_default_jobs():
         minute=0
     )
     
+    # Check opportunity match notifications every 6 hours
+    scheduler.add_interval_job(
+        job_id="check_opportunity_notifications",
+        func=check_notifications,
+        hours=6
+    )
+    
+    # Check deadline reminders twice daily (8 AM and 6 PM)
+    scheduler.add_cron_job(
+        job_id="check_deadline_notifications_morning",
+        func=check_notifications,
+        hour=8,
+        minute=0
+    )
+    scheduler.add_cron_job(
+        job_id="check_deadline_notifications_evening",
+        func=check_notifications,
+        hour=18,
+        minute=0
+    )
+    
     logger.info("Default background jobs registered")
+
 
