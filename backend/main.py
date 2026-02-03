@@ -25,6 +25,7 @@ from .routes import (
     question_routes,
     flow_routes,
     planner_routes,
+    sandbox_routes,
 )
 from .utils.auth import hash_password
 
@@ -69,6 +70,8 @@ app.include_router(company_routes.router)
 app.include_router(session_routes.router)
 app.include_router(question_routes.router)
 app.include_router(flow_routes.router)
+app.include_router(planner_routes.router)
+app.include_router(sandbox_routes.router)
 
 
 async def seed_default_users():

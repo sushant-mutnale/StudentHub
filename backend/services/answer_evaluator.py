@@ -140,9 +140,13 @@ class AnswerEvaluator:
         self,
         question: Dict[str, Any],
         answer: str,
-        code: Optional[str]
+        code: Optional[str],
+        language: str = "python"
     ) -> float:
-        """Evaluate correctness of DSA answer."""
+        """
+        Evaluate correctness of DSA answer.
+        Uses sandbox execution when test cases are available.
+        """
         score = 50  # Base score
         
         ideal_approach = question.get("ideal_approach", "").lower()
@@ -170,7 +174,14 @@ class AnswerEvaluator:
             if re.search(r'for\s|while\s|if\s', code):
                 score += 5
         
-        # Use LLM for better evaluation if available
+        # TRY SANDBOX EXECUTION (NEW - Most accurate!)
+        sandbox_score = await self._sandbox_evaluate_code(question, code, language)
+        if sandbox_score is not None:
+            # Sandbox result is highly reliable - give it 60% weight
+            score = (score * 0.4) + (sandbox_score * 0.6)
+            return min(100, score)
+        
+        # Fallback to LLM evaluation if sandbox not available
         llm = self._get_llm_service()
         if llm and code:
             try:
@@ -181,6 +192,88 @@ class AnswerEvaluator:
                 pass
         
         return min(100, score)
+    
+    async def _sandbox_evaluate_code(
+        self, 
+        question: Dict[str, Any], 
+        code: Optional[str],
+        language: str = "python"
+    ) -> Optional[float]:
+        """
+        Execute code in sandbox against test cases.
+        Returns score 0-100 based on test pass rate, or None if sandbox unavailable.
+        """
+        if not code or len(code) < 30:
+            return None
+        
+        # Get test cases from question
+        test_cases = question.get("test_cases", [])
+        
+        # If no test cases, try the problem's built-in ones
+        if not test_cases:
+            problem_id = question.get("id", "")
+            if problem_id:
+                test_cases = self._get_builtin_test_cases(problem_id)
+        
+        if not test_cases:
+            return None  # No test cases available
+        
+        try:
+            from .code_sandbox import code_sandbox
+            
+            result = await code_sandbox.run_test_cases(
+                code=code,
+                test_cases=test_cases,
+                language=language
+            )
+            
+            # Calculate score based on test results
+            if result["total"] > 0:
+                base_score = result["score"]  # Already 0-100
+                
+                # Bonus for all tests passing
+                if result["all_passed"]:
+                    base_score = min(100, base_score + 5)
+                
+                return base_score
+            
+            return None
+            
+        except Exception as e:
+            # Sandbox not available or failed
+            return None
+    
+    def _get_builtin_test_cases(self, problem_id: str) -> List[Dict[str, str]]:
+        """Get built-in test cases for known problems."""
+        # These mirror the test cases in code_sandbox.py
+        test_case_db = {
+            "two_sum": [
+                {"input": "[2,7,11,15]\n9", "expected": "[0, 1]"},
+                {"input": "[3,2,4]\n6", "expected": "[1, 2]"},
+                {"input": "[3,3]\n6", "expected": "[0, 1]"}
+            ],
+            "valid_parentheses": [
+                {"input": "()", "expected": "True"},
+                {"input": "()[]{}", "expected": "True"},
+                {"input": "(]", "expected": "False"}
+            ],
+            "reverse_string": [
+                {"input": "hello", "expected": "olleh"},
+                {"input": "world", "expected": "dlrow"}
+            ],
+            "fizzbuzz": [
+                {"input": "3", "expected": "Fizz"},
+                {"input": "5", "expected": "Buzz"},
+                {"input": "15", "expected": "FizzBuzz"},
+                {"input": "7", "expected": "7"}
+            ],
+            "palindrome": [
+                {"input": "racecar", "expected": "True"},
+                {"input": "hello", "expected": "False"},
+                {"input": "A man a plan a canal Panama", "expected": "True"}
+            ]
+        }
+        return test_case_db.get(problem_id, [])
     
     async def _ai_evaluate_correctness(self, question: Dict, code: str) -> float:
         """Use AI to evaluate code correctness."""
