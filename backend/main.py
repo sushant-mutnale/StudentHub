@@ -29,6 +29,7 @@ from .routes import (
     research_routes,
     agent_routes,
     opportunity_routes,
+    recommendation_routes,
 )
 from .utils.auth import hash_password
 
@@ -78,6 +79,7 @@ app.include_router(sandbox_routes.router)
 app.include_router(research_routes.router)
 app.include_router(agent_routes.router)
 app.include_router(opportunity_routes.router)
+app.include_router(recommendation_routes.router)
 
 
 async def seed_default_users():
