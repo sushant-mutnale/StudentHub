@@ -10,6 +10,8 @@ import logging
 
 from ..config import settings
 from ..models import user as user_model
+from ..models import application as application_model
+from ..models import pipeline as pipeline_model
 from ..models.interview import (
     interviews_collection,
     default_history_entry,
@@ -258,6 +260,31 @@ async def create_interview(
         "INTERVIEW_PROPOSED", 
         {"interview_id": str(doc["_id"]), "candidate_id": payload.candidate_id}
     )
+
+    # Auto-stage transition: Move application to interview stage (Module 5)
+    if job_id:
+        app = await application_model.get_application_by_job_student(
+            str(job_id), payload.candidate_id
+        )
+        if app:
+            # Link interview to application
+            await application_model.add_interview_to_application(
+                str(app["_id"]), str(doc["_id"])
+            )
+            
+            # Get pipeline and find next interview stage
+            pipeline = await pipeline_model.get_pipeline_by_id(str(app["pipeline_template_id"]))
+            if pipeline:
+                interview_stage = pipeline_model.get_stage_by_type(pipeline, "interview")
+                if interview_stage and app["current_stage_id"] != interview_stage["id"]:
+                    await application_model.move_application_stage(
+                        application_id=str(app["_id"]),
+                        new_stage_id=interview_stage["id"],
+                        new_stage_name=interview_stage["name"],
+                        changed_by=str(current_user["_id"]),
+                        reason="Interview scheduled",
+                        student_visible_stage=interview_stage.get("student_visible_name", "Interview Scheduled")
+                    )
 
     return serialize_interview(doc)
 

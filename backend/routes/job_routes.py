@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..models import job as job_model
+from ..models import application as application_model
+from ..models import pipeline as pipeline_model
 from ..schemas.job_schema import (
     JobApplicationCreate,
     JobApplicationResponse,
@@ -114,9 +116,42 @@ async def apply_to_job(
     current_student=Depends(get_current_student),
 ):
     """Allow a student to apply to a job."""
+    # Get job to extract company info
+    job = await job_model.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
     app_doc = await job_model.create_job_application(job_id, current_student, payload.dict())
     if not app_doc:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Application failed")
+    
+    # Create ATS application record (Module 5)
+    recruiter_id = str(job["recruiter_id"])
+    pipeline = await pipeline_model.get_active_pipeline(recruiter_id)
+    
+    if not pipeline:
+        # Create default pipeline for this company
+        company_name = job.get("company_name", "Company")
+        pipeline = await pipeline_model.create_default_pipeline_for_company(
+            recruiter_id, company_name
+        )
+    
+    # Get the "Applied" stage
+    applied_stage = pipeline_model.get_stage_by_type(pipeline, "applied")
+    if applied_stage:
+        try:
+            await application_model.create_application(
+                job_id=job_id,
+                student_id=str(current_student["_id"]),
+                company_id=recruiter_id,
+                pipeline_template_id=str(pipeline["_id"]),
+                pipeline_version=pipeline["version"],
+                initial_stage_id=applied_stage["id"],
+                initial_stage_name=applied_stage["name"]
+            )
+        except Exception:
+            # Application record might already exist (duplicate apply)
+            pass
     
     await log_activity(
         str(current_student["_id"]), 

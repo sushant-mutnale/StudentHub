@@ -31,6 +31,11 @@ from .routes import (
     opportunity_routes,
     recommendation_routes,
     smart_notification_routes,
+    pipeline_routes,
+    application_routes,
+    scorecard_routes,
+    verification_routes,
+    admin_routes,
 )
 from .utils.auth import hash_password
 
@@ -82,6 +87,11 @@ app.include_router(agent_routes.router)
 app.include_router(opportunity_routes.router)
 app.include_router(recommendation_routes.router)
 app.include_router(smart_notification_routes.router)
+app.include_router(pipeline_routes.router)
+app.include_router(application_routes.router)
+app.include_router(scorecard_routes.router)
+app.include_router(verification_routes.router)
+app.include_router(admin_routes.router)
 
 
 async def seed_default_users():

@@ -6,6 +6,8 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..models import user as user_model
+from ..models import application as application_model
+from ..models import pipeline as pipeline_model
 from ..models.notification import create_notification
 from ..models.offer import offers_collection, default_history_entry
 from ..models.thread import append_text_message
@@ -112,6 +114,32 @@ async def create_offer(payload: OfferCreateRequest, current_user=Depends(get_cur
         "OFFER_SENT", 
         {"offer_id": str(doc["_id"]), "candidate_id": str(candidate["_id"])}
     )
+    
+    # Auto-stage transition: Move application to offer stage (Module 5)
+    if job_id:
+        app = await application_model.get_application_by_job_student(
+            str(job_id), payload.candidate_id
+        )
+        if app:
+            # Link offer to application
+            await application_model.set_offer_on_application(
+                str(app["_id"]), str(doc["_id"])
+            )
+            
+            # Get pipeline and find offer stage
+            pipeline = await pipeline_model.get_pipeline_by_id(str(app["pipeline_template_id"]))
+            if pipeline:
+                offer_stage = pipeline_model.get_stage_by_type(pipeline, "offer")
+                if offer_stage and app["current_stage_id"] != offer_stage["id"]:
+                    await application_model.move_application_stage(
+                        application_id=str(app["_id"]),
+                        new_stage_id=offer_stage["id"],
+                        new_stage_name=offer_stage["name"],
+                        changed_by=str(current_user["_id"]),
+                        reason="Offer extended",
+                        student_visible_stage=offer_stage.get("student_visible_name", "Offer Received")
+                    )
+    
     return serialize_offer(doc)
 
 
@@ -179,6 +207,28 @@ async def accept_offer(offer_id: str, current_user=Depends(get_current_user)):
     # Recalculate student AI profile
     await update_student_ai_profile(str(doc["candidate_id"]))
     
+    # Auto-stage transition: Move to Hired (Module 5)
+    if doc.get("job_id"):
+        app = await application_model.get_application_by_job_student(
+            str(doc["job_id"]), str(doc["candidate_id"])
+        )
+        if app:
+            pipeline = await pipeline_model.get_pipeline_by_id(str(app["pipeline_template_id"]))
+            if pipeline:
+                hired_stage = pipeline_model.get_stage_by_type(pipeline, "hired")
+                if hired_stage:
+                    await application_model.move_application_stage(
+                        application_id=str(app["_id"]),
+                        new_stage_id=hired_stage["id"],
+                        new_stage_name=hired_stage["name"],
+                        changed_by=str(current_user["_id"]),
+                        reason="Offer accepted",
+                        student_visible_stage="Hired"
+                    )
+                    await application_model.update_application_status(
+                        str(app["_id"]), "hired", str(current_user["_id"])
+                    )
+    
     return serialize_offer(doc)
 
 
@@ -202,6 +252,28 @@ async def reject_offer(offer_id: str, current_user=Depends(get_current_user)):
     
     # Recalculate student AI profile
     await update_student_ai_profile(str(doc["candidate_id"]))
+    
+    # Auto-stage transition: Move to Rejected/Offer Declined (Module 5)
+    if doc.get("job_id"):
+        app = await application_model.get_application_by_job_student(
+            str(doc["job_id"]), str(doc["candidate_id"])
+        )
+        if app:
+            pipeline = await pipeline_model.get_pipeline_by_id(str(app["pipeline_template_id"]))
+            if pipeline:
+                rejected_stage = pipeline_model.get_stage_by_type(pipeline, "rejected")
+                if rejected_stage:
+                    await application_model.move_application_stage(
+                        application_id=str(app["_id"]),
+                        new_stage_id=rejected_stage["id"],
+                        new_stage_name="Offer Declined",
+                        changed_by=str(current_user["_id"]),
+                        reason="Offer rejected by candidate",
+                        student_visible_stage="Not Selected"
+                    )
+                    await application_model.update_application_status(
+                        str(app["_id"]), "rejected", str(current_user["_id"])
+                    )
     
     return serialize_offer(doc)
 
