@@ -30,6 +30,9 @@ env/
 .env
 .env.local
 .env.*.local
+.env.production
+backend/.env
+backend/.env.production
 
 # IDE
 .vscode/
