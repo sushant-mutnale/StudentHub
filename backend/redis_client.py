@@ -28,6 +28,7 @@ class RedisClient:
                 cls._instance = redis.Redis(
                     host=settings.redis_host,
                     port=settings.redis_port,
+                    username=settings.redis_username,
                     password=settings.redis_password,
                     db=settings.redis_db,
                     ssl=settings.redis_ssl,

@@ -14,9 +14,10 @@ class Settings(BaseSettings):
     # Redis
     redis_host: str = "redis-10898.c232.us-east-1-2.ec2.cloud.redislabs.com"
     redis_port: int = 10898
+    redis_username: str = "default"
     redis_password: Optional[str] = "WsixNP6MHjEJJ0p27Kzrs2CCBj1roH2G"
     redis_db: int = 0
-    redis_ssl: bool = False  # Set to True if needed for this specific cloud provider, often False for basic free tier unless specified
+    redis_ssl: bool = False
     
     # Authentication
     jwt_secret: str = "change-me"
