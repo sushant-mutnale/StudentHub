@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import OTPInput from './OTPInput';
 import '../App.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE = 'https://studenthub-i7pa.onrender.com';
 
 const ForgotPassword = () => {
                const navigate = useNavigate();
