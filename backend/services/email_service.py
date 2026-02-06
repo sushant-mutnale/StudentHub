@@ -48,7 +48,6 @@ class EmailService:
             return True  # Return True in dev mode so flow continues
         
         try:
-        try:
             # Prepare message
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
