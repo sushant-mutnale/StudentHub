@@ -81,6 +81,8 @@ class Settings(BaseSettings):
             "https://studenthub-frontend.vercel.app",
             "https://studenthub-five-self.vercel.app",
             "https://studenthub-five-self.vercel.app/",
+            "https://student-hub-five-self.vercel.app",
+            "https://student-hub-five-self.vercel.app/",
         ]
         # Add custom frontend origin from env if set
         if self.frontend_origin and self.frontend_origin not in origins:
