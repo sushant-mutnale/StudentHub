@@ -48,6 +48,8 @@ class EmailService:
             return True  # Return True in dev mode so flow continues
         
         try:
+        try:
+            # Prepare message
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = self.email_from
@@ -58,11 +60,18 @@ class EmailService:
                 msg.attach(MIMEText(text_content, "plain"))
             msg.attach(MIMEText(html_content, "html"))
             
-            # Send via SMTP
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.sender_email, self.sender_password)
-                server.sendmail(self.email_from, to_email, msg.as_string())
+            # Define synchronous sending function
+            def _send_sync():
+                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                    # Timeout after 10s to prevent hanging
+                    server.timeout = 10
+                    server.starttls()
+                    server.login(self.sender_email, self.sender_password)
+                    server.sendmail(self.email_from, to_email, msg.as_string())
+
+            # Run in threadpool to avoid blocking async event loop
+            from fastapi.concurrency import run_in_threadpool
+            await run_in_threadpool(_send_sync)
             
             logger.info(f"Email sent successfully to {to_email}")
             return True
