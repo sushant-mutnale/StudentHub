@@ -163,3 +163,12 @@ async def seed_default_users():
         ]
     )
 
+
+# Vercel Serverless Handler
+# This allows FastAPI to work with Vercel's serverless Python functions
+try:
+    from mangum import Mangum
+    handler = Mangum(app, lifespan="off")
+except ImportError:
+    # Mangum not installed (local dev), ignore
+    handler = None
