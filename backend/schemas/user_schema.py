@@ -40,6 +40,7 @@ class StudentCreate(UserBase):
     branch: str
     year: str
     role: str = "student"
+    otp: Optional[str] = None  # Required for verification
 
 
 class RecruiterCreate(UserBase):
@@ -49,6 +50,7 @@ class RecruiterCreate(UserBase):
     website: Optional[str] = None
     company_description: Optional[str] = None
     role: str = "recruiter"
+    otp: Optional[str] = None  # Required for verification
 
 
 class UserLogin(MongoModel):

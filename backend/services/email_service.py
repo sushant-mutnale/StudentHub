@@ -90,6 +90,9 @@ class EmailService:
         
         subject = subject_map.get(purpose, "Your OTP Code - StudentHub")
         
+        # [DEBUG] Log OTP for manual verification
+        logger.info(f"Generated OTP for {to_email}: {otp_code}")
+        
         html_content = f"""
         <!DOCTYPE html>
         <html>

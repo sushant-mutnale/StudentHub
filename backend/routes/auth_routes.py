@@ -37,12 +37,23 @@ def db_user_to_public(db_user: dict) -> UserPublic:
 
 @router.post("/signup/student", response_model=UserPublic)
 async def signup_student(payload: StudentCreate):
+    # 1. Check if user exists
     if await user_model.get_user_by_username(payload.username):
         raise HTTPException(status_code=400, detail="Username already exists")
     if await user_model.get_user_by_email(payload.email):
         raise HTTPException(status_code=400, detail="Email already exists")
 
-    student_data = payload.dict()
+    # 2. Verify OTP (Mandatory)
+    if not payload.otp:
+        raise HTTPException(status_code=400, detail="OTP is required for signup. Please send OTP first.")
+    
+    # Verify the provided OTP
+    is_valid, message = await otp_service.verify_otp(payload.email, payload.otp, "signup")
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=message or "Invalid OTP")
+
+    # 3. Create User
+    student_data = payload.dict(exclude={"otp"}) # Exclude OTP from DB
     student_data["password_hash"] = hash_password(student_data.pop("password"))
     created = await user_model.create_user(student_data)
     return db_user_to_public(created)
@@ -50,12 +61,23 @@ async def signup_student(payload: StudentCreate):
 
 @router.post("/signup/recruiter", response_model=UserPublic)
 async def signup_recruiter(payload: RecruiterCreate):
+    # 1. Check if user exists
     if await user_model.get_user_by_username(payload.username):
         raise HTTPException(status_code=400, detail="Username already exists")
     if await user_model.get_user_by_email(payload.email):
         raise HTTPException(status_code=400, detail="Email already exists")
 
-    recruiter_data = payload.dict()
+    # 2. Verify OTP (Mandatory)
+    if not payload.otp:
+        raise HTTPException(status_code=400, detail="OTP is required for signup. Please send OTP first.")
+    
+    # Verify the provided OTP
+    is_valid, message = await otp_service.verify_otp(payload.email, payload.otp, "signup")
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=message or "Invalid OTP")
+
+    # 3. Create User
+    recruiter_data = payload.dict(exclude={"otp"}) # Exclude OTP from DB
     recruiter_data["password_hash"] = hash_password(recruiter_data.pop("password"))
     created = await user_model.create_user(recruiter_data)
     return db_user_to_public(created)
