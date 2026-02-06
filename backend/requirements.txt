@@ -28,11 +28,11 @@ feedparser==6.0.10
 # ===== PDF & Document Parsing =====
 pdfplumber==0.10.0
 PyPDF2==3.0.0
-PyMuPDF==1.23.0
+# PyMuPDF removed - requires C++ compilation, fails on Render
 python-docx==1.1.0
 
 # ===== NLP & Text Processing =====
-spacy==3.7.0
+# spacy removed - too heavy for Render free tier
 nltk==3.8.0
 
 # ===== AI/LLM Services =====
