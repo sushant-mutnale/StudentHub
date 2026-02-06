@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Get base URL from environment or default to localhost
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const getAuthHeader = () => {
                const token = localStorage.getItem('token');
