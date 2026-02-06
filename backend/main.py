@@ -54,7 +54,8 @@ if settings.app_env != "testing":
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.frontend_origins,
+    # allow_origins=settings.frontend_origins,  # Strictly limited origins
+    allow_origin_regex="https?://.*",  # Allow ALL origins (http/https) to support Vercel/Render/Localhost
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
