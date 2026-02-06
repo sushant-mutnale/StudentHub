@@ -75,10 +75,12 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5174",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
-            # Vercel production (add your actual Vercel URLs)
+            # Vercel production
             "https://studenthub.vercel.app",
             "https://student-hub.vercel.app",
             "https://studenthub-frontend.vercel.app",
+            "https://studenthub-five-self.vercel.app",
+            "https://studenthub-five-self.vercel.app/",
         ]
         # Add custom frontend origin from env if set
         if self.frontend_origin and self.frontend_origin not in origins:
