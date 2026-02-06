@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..models import notification as notification_model
 from ..schemas.notification_schema import NotificationResponse
 from ..utils.dependencies import get_current_user
+from ..services.cache_service import cache, CacheTTL
 from bson import ObjectId
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -21,11 +22,24 @@ def db_to_notification_response(doc: dict) -> NotificationResponse:
 
 @router.get("/", response_model=List[NotificationResponse])
 async def list_notifications(current_user=Depends(get_current_user)):
+    user_id = str(current_user["_id"])
+    cache_key = f"notifications:{user_id}"
+    
+    # Try cache
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+        
     cursor = notification_model.notifications_collection().find(
         {"user_id": current_user["_id"]}
     ).sort("created_at", -1).limit(50)
     docs = await cursor.to_list(length=None)
-    return [db_to_notification_response(doc) for doc in docs]
+    response = [db_to_notification_response(doc) for doc in docs]
+    
+    # Set cache (short TTL)
+    await cache.set(cache_key, [r.dict() for r in response], ttl_seconds=CacheTTL.SHORT)
+    
+    return response
 
 @router.put("/{notification_id}/read")
 async def mark_as_read(notification_id: str, current_user=Depends(get_current_user)):
@@ -36,6 +50,10 @@ async def mark_as_read(notification_id: str, current_user=Depends(get_current_us
         raise HTTPException(status_code=403, detail="Not authorized")
     
     await notification_model.mark_notification_as_read(notification_id)
+    
+    # Invalidate cache
+    await cache.delete(f"notifications:{str(current_user['_id'])}")
+    
     return {"status": "success"}
 
 @router.put("/read-all")
@@ -45,4 +63,18 @@ async def mark_all_as_read(current_user=Depends(get_current_user)):
         {"user_id": current_user["_id"], "is_read": False},
         {"$set": {"is_read": True, "read_at": datetime.utcnow()}}
     )
+    
+    # Invalidate cache
+    await cache.delete(f"notifications:{str(current_user['_id'])}")
+    
     return {"status": "success"}
+
+
+@router.get("/unread-count")
+async def get_unread_count(current_user=Depends(get_current_user)):
+    """Get count of unread notifications."""
+    count = await notification_model.notifications_collection().count_documents({
+        "user_id": current_user["_id"],
+        "is_read": False
+    })
+    return {"count": count}

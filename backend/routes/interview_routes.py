@@ -18,6 +18,8 @@ from ..models.interview import (
 )
 from ..models.notification import create_notification
 from ..models.thread import append_text_message, get_thread_by_id
+from ..models.outbox import outbox
+from ..events.event_bus import EventTypes
 from ..schemas.interview_schema import (
     InterviewAcceptRequest,
     InterviewCancelRequest,
@@ -359,6 +361,25 @@ async def accept_interview(
     recruiter = await user_model.get_user_by_id(str(doc["recruiter_id"]))
     candidate = await user_model.get_user_by_id(str(doc["candidate_id"]))
 
+    # [TRANSACTIONAL OUTBOX] Publish interview scheduled event
+    location_display = doc.get("location", {}).get("url") or doc.get("location", {}).get("address", "Online")
+    await outbox.add_event(
+        event_type=EventTypes.INTERVIEW_SCHEDULED,
+        payload={
+            "interview_id": interview_id,
+            "candidate_id": str(doc["candidate_id"]),
+            "student_id": str(doc["candidate_id"]),
+            "recruiter_id": str(doc["recruiter_id"]),
+            "student_name": candidate.get("full_name") or candidate.get("username"),
+            "recruiter_email": recruiter["email"],
+            "candidate_email": candidate["email"],
+            "date": str(slot["start"]),
+            "time": slot["start"].strftime("%H:%M"),
+            "location": location_display
+        },
+        actor_id=str(current_user["_id"])
+    )
+
     await notify_users(
         [str(doc["recruiter_id"])],
         "interview_scheduled",
@@ -371,7 +392,6 @@ async def accept_interview(
     )
 
     if recruiter and candidate:
-        location_display = doc.get("location", {}).get("url") or doc.get("location", {}).get("address", "Online")
         ics_content = build_ics_event(
             f"interview-{interview_id}",
             "StudentHub Interview",

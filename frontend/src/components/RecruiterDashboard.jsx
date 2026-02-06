@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiMapPin, FiTrash2, FiUsers, FiLogOut, FiPlus, FiMessageSquare, FiCalendar } from 'react-icons/fi';
+import { FiMapPin, FiTrash2, FiUsers, FiLogOut, FiPlus, FiMessageSquare, FiCalendar, FiTrello, FiShield } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import { jobService } from '../services/jobService';
 import InterviewModal from './interviews/InterviewModal';
@@ -139,6 +139,14 @@ const RecruiterDashboard = () => {
           <div className="nav-item active">
             <FiUsers />
             <span>Matches</span>
+          </div>
+          <div className="nav-item" onClick={() => navigate('/pipeline')}>
+            <FiTrello />
+            <span>Pipeline</span>
+          </div>
+          <div className="nav-item" onClick={() => navigate('/verify')}>
+            <FiShield />
+            <span>Verification</span>
           </div>
           <div className="nav-item" onClick={() => navigate('/messages')}>
             <FiMessageSquare />

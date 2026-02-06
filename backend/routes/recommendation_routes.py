@@ -11,6 +11,7 @@ from bson import ObjectId
 
 from ..services.recommendation_engine import recommendation_engine
 from ..utils.dependencies import get_current_user
+from ..services.cache_service import cache_response, CacheKeys, CacheTTL
 
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
@@ -35,6 +36,7 @@ class JobFilters(BaseModel):
 # ============ Job Recommendations ============
 
 @router.get("/jobs")
+@cache_response(prefix=CacheKeys.RECOMMENDATIONS, ttl_seconds=CacheTTL.MEDIUM)
 async def get_job_recommendations(
     limit: int = Query(20, ge=1, le=50, description="Number of recommendations"),
     location: Optional[str] = Query(None, description="Filter by location"),
@@ -75,6 +77,7 @@ async def get_job_recommendations(
 
 
 @router.get("/hackathons")
+@cache_response(prefix=CacheKeys.RECOMMENDATIONS, ttl_seconds=CacheTTL.MEDIUM)
 async def get_hackathon_recommendations(
     limit: int = Query(10, ge=1, le=30, description="Number of recommendations"),
     theme: Optional[str] = Query(None, description="Filter by theme: AI, Web3, etc."),
@@ -110,6 +113,7 @@ async def get_hackathon_recommendations(
 
 
 @router.get("/content")
+@cache_response(prefix=CacheKeys.RECOMMENDATIONS, ttl_seconds=CacheTTL.MEDIUM)
 async def get_content_recommendations(
     limit: int = Query(15, ge=1, le=50, description="Number of recommendations"),
     topic: Optional[str] = Query(None, description="Filter by topic: AI, Skills, etc."),

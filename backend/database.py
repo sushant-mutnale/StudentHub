@@ -23,6 +23,7 @@ async def close_mongo_connection():
 def get_database():
     if not db.client:
         raise RuntimeError("Database not initialized. Call connect_to_mongo() first.")
+    # print(f"DEBUG_DB: Accessing DB {settings.mongodb_db}")
     return db.client[settings.mongodb_db]
 
 

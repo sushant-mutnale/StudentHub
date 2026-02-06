@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..services.ai_planner_agent import ai_planner
-from ..services.gap_analysis_service import gap_analyzer
+from ..services.gap_analyzer import skill_gap_analyzer as gap_analyzer
 from ..utils.dependencies import get_current_user
 
 

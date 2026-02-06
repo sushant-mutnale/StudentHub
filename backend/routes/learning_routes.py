@@ -99,6 +99,51 @@ async def analyze_gap(
     )
 
 
+@router.get("/gap-recommendations")
+async def get_gap_recommendations(
+    target_role: str = "",
+    current_user=Depends(get_current_user)
+):
+    """
+    Get skill gap recommendations based on target role.
+    Returns suggested skills to learn for the given role.
+    """
+    user_skills = [s.get("name", "") for s in current_user.get("skills", [])]
+    
+    # Role-based skill requirements (simplified)
+    role_skills = {
+        "frontend developer": ["React", "JavaScript", "TypeScript", "CSS", "HTML", "Redux", "Next.js"],
+        "backend developer": ["Python", "Node.js", "FastAPI", "Django", "PostgreSQL", "MongoDB", "Docker"],
+        "fullstack developer": ["React", "Node.js", "Python", "MongoDB", "REST APIs", "Docker", "Git"],
+        "data scientist": ["Python", "Machine Learning", "TensorFlow", "Pandas", "NumPy", "SQL", "Statistics"],
+        "ui designer": ["Figma", "UI/UX Design", "Prototyping", "Adobe XD", "CSS", "Design Systems"],
+        "devops engineer": ["Docker", "Kubernetes", "AWS", "CI/CD", "Linux", "Terraform", "Jenkins"],
+        "mobile developer": ["React Native", "Flutter", "iOS", "Android", "Swift", "Kotlin"],
+    }
+    
+    target_lower = target_role.lower().strip()
+    required_skills = role_skills.get(target_lower, [])
+    
+    # Find gaps
+    user_skills_lower = [s.lower() for s in user_skills]
+    gaps = [skill for skill in required_skills if skill.lower() not in user_skills_lower]
+    matched = [skill for skill in required_skills if skill.lower() in user_skills_lower]
+    
+    return {
+        "status": "success",
+        "target_role": target_role,
+        "required_skills": required_skills,
+        "your_skills": user_skills,
+        "matched_skills": matched,
+        "skill_gaps": gaps,
+        "match_percentage": round(len(matched) / len(required_skills) * 100, 1) if required_skills else 0,
+        "recommendations": [
+            {"skill": gap, "priority": "high" if i < 3 else "medium", "reason": f"Essential for {target_role}"}
+            for i, gap in enumerate(gaps[:5])
+        ]
+    }
+
+
 # ============ Learning Path Endpoints ============
 
 @router.post("/generate-path", response_model=GeneratePathResponse)
@@ -174,6 +219,7 @@ async def generate_learning_paths(
 
 
 @router.get("/my-paths", response_model=MyPathsResponse)
+@router.get("/paths/my", response_model=MyPathsResponse)  # Alias for frontend compatibility
 async def get_my_learning_paths(current_user=Depends(get_current_user)):
     """
     Get all active learning paths for the current user.

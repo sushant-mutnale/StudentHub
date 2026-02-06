@@ -153,18 +153,28 @@ async def create_job_application(job_id: str, student: dict, data: dict):
     return await job_applications_collection().find_one({"_id": result.inserted_id})
 
 
-async def list_applications_for_job(job_id: str, recruiter: dict):
+async def list_applications_for_job(
+    job_id: str, 
+    recruiter: dict,
+    limit: int = 50,
+    skip: int = 0
+):
     """List applications for a job, only if the recruiter owns that job."""
     job = await get_job(job_id)
     if not job or str(job.get("recruiter_id")) != str(recruiter["_id"]):
         return None
 
+    safe_limit = max(1, min(limit, 100))
+    safe_skip = max(0, skip)
+
     cursor = (
         job_applications_collection()
         .find({"job_id": ObjectId(job_id)})
         .sort("created_at", -1)
+        .skip(safe_skip)
+        .limit(safe_limit)
     )
-    return await cursor.to_list(length=None)
+    return await cursor.to_list(length=safe_limit)
 
 
 async def ensure_job_indexes():

@@ -32,7 +32,7 @@ from ..schemas.session_schema import (
 from ..utils.dependencies import get_current_user
 
 
-router = APIRouter(prefix="/session", tags=["interview-sessions"])
+router = APIRouter(prefix="/sessions", tags=["interview-sessions"])
 
 
 def sessions_collection():

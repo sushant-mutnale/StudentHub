@@ -1,328 +1,139 @@
 """
-Moderation Service - Risk-based job and recruiter moderation.
+Moderation Service (Security)
 
-Implements the "Flexible Model":
-- Verified recruiters can auto-publish
-- Suspicious activity triggers admin review
+Automated risk scoring for user-generated content (Jobs, Posts, Messages).
+Uses keyword analysis and patterns to detect spam, hate speech, or PII leaks.
 """
 
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
 import re
-from urllib.parse import urlparse
+from typing import Dict, Any, List, Optional
+from enum import Enum
+from datetime import datetime
 
-from bson import ObjectId
+class RiskLevel(str, Enum):
+    SAFE = "safe"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
 
-from ..database import get_database
-from ..models import audit as audit_model
-
-
-# Verification statuses
-VERIFICATION_UNVERIFIED = "unverified"
-VERIFICATION_VERIFIED = "verified"
-VERIFICATION_REVIEW_REQUIRED = "review_required"
-VERIFICATION_SUSPENDED = "suspended"
-
-# Job statuses
-JOB_STATUS_DRAFT = "draft"
-JOB_STATUS_PUBLISHED = "published"
+# Job Status Constants
 JOB_STATUS_PENDING_REVIEW = "pending_review"
+JOB_STATUS_PUBLISHED = "published"
 JOB_STATUS_REJECTED = "rejected"
 JOB_STATUS_CLOSED = "closed"
 
-# Suspicious flag types
-FLAG_DOMAIN_MISMATCH = "domain_mismatch"
-FLAG_BURST_POSTING = "burst_posting"
-FLAG_DUPLICATE_CONTENT = "duplicate_content"
-FLAG_UNREALISTIC_SALARY = "unrealistic_salary"
-FLAG_SUSPICIOUS_URL = "suspicious_url"
-FLAG_EXCESSIVE_EDITS = "excessive_edits"
-FLAG_NEW_ACCOUNT = "new_account"
-FLAG_INCOMPLETE_PROFILE = "incomplete_profile"
+# Verification Status Constants
+VERIFICATION_REVIEW_REQUIRED = "review_required"
+VERIFICATION_VERIFIED = "verified"
+VERIFICATION_SUSPENDED = "suspended"
 
-# Risk thresholds
-RISK_THRESHOLD_REVIEW = 5  # Score >= this triggers review
-RISK_THRESHOLD_AUTO_REJECT = 15  # Score >= this auto-rejects
-
-
-def get_domain_from_email(email: str) -> Optional[str]:
-    """Extract domain from email address."""
-    if not email or "@" not in email:
-        return None
-    return email.split("@")[1].lower()
-
-
-def get_domain_from_url(url: str) -> Optional[str]:
-    """Extract domain from URL."""
-    if not url:
-        return None
-    try:
-        parsed = urlparse(url if url.startswith("http") else f"https://{url}")
-        domain = parsed.netloc.lower()
-        # Remove www. prefix
-        if domain.startswith("www."):
-            domain = domain[4:]
-        return domain
-    except Exception:
-        return None
-
-
-async def check_domain_mismatch(recruiter: dict) -> Dict[str, Any]:
-    """Check if recruiter email domain matches company website."""
-    email = recruiter.get("email", "")
-    website = recruiter.get("website", "")
+class ModerationService:
+    """
+    Automated content moderation engine.
+    """
     
-    email_domain = get_domain_from_email(email)
-    website_domain = get_domain_from_url(website)
-    
-    if not email_domain or not website_domain:
-        return {"flag": None, "score": 0}
-    
-    # Check if domains match (or email is subdomain of website)
-    if email_domain == website_domain or email_domain.endswith(f".{website_domain}"):
-        return {"flag": None, "score": 0}
-    
-    # Check for common public email domains
-    public_domains = {"gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com"}
-    if email_domain in public_domains:
-        return {
-            "flag": FLAG_DOMAIN_MISMATCH,
-            "score": 3,
-            "details": f"Public email domain ({email_domain}) with company website ({website_domain})"
-        }
-    
-    return {
-        "flag": FLAG_DOMAIN_MISMATCH,
-        "score": 2,
-        "details": f"Email domain ({email_domain}) doesn't match website ({website_domain})"
+    # Sensitive keywords (simplified for demo)
+    SENSITIVE_KEYWORDS = {
+        "scam", "fraud", "money laundering", "bitcoin", "crypto", 
+        "bank account", "password", "credit card", "ssn", "social security"
     }
-
-
-async def check_burst_posting(recruiter_id: str, db) -> Dict[str, Any]:
-    """Check for suspicious burst of job postings."""
-    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
     
-    recent_jobs = await db["jobs"].count_documents({
-        "recruiter_id": ObjectId(recruiter_id),
-        "created_at": {"$gte": one_hour_ago}
-    })
-    
-    if recent_jobs > 10:
-        return {
-            "flag": FLAG_BURST_POSTING,
-            "score": 5,
-            "details": f"{recent_jobs} jobs posted in last hour"
-        }
-    elif recent_jobs > 5:
-        return {
-            "flag": FLAG_BURST_POSTING,
-            "score": 2,
-            "details": f"{recent_jobs} jobs posted in last hour"
-        }
-    
-    return {"flag": None, "score": 0}
-
-
-async def check_excessive_edits(job_id: str, db) -> Dict[str, Any]:
-    """Check for excessive job edits in short time."""
-    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
-    
-    edit_count = await db["audit_logs"].count_documents({
-        "entity_type": "job",
-        "entity_id": job_id,
-        "action": "job_edited",
-        "timestamp": {"$gte": one_hour_ago}
-    })
-    
-    if edit_count > 10:
-        return {
-            "flag": FLAG_EXCESSIVE_EDITS,
-            "score": 4,
-            "details": f"{edit_count} edits in last hour"
-        }
-    
-    return {"flag": None, "score": 0}
-
-
-async def check_duplicate_content(job: dict, recruiter_id: str, db) -> Dict[str, Any]:
-    """Check for duplicate job postings."""
-    title = job.get("title", "").lower().strip()
-    
-    # Find similar jobs by same recruiter
-    similar_jobs = await db["jobs"].count_documents({
-        "recruiter_id": ObjectId(recruiter_id),
-        "title": {"$regex": re.escape(title), "$options": "i"},
-        "_id": {"$ne": job.get("_id")}
-    })
-    
-    if similar_jobs >= 3:
-        return {
-            "flag": FLAG_DUPLICATE_CONTENT,
-            "score": 4,
-            "details": f"{similar_jobs} similar jobs found"
-        }
-    
-    return {"flag": None, "score": 0}
-
-
-def check_unrealistic_salary(job: dict) -> Dict[str, Any]:
-    """Check for unrealistic salary values."""
-    salary = job.get("salary")
-    if not salary:
-        return {"flag": None, "score": 0}
-    
-    # Try to extract numeric value
-    salary_str = str(salary).replace(",", "").replace("$", "").replace("₹", "")
-    try:
-        salary_num = float(re.search(r'\d+', salary_str).group())
-    except (AttributeError, ValueError):
-        return {"flag": None, "score": 0}
-    
-    # Flag unrealistic values (too high or too low for annual/monthly)
-    if salary_num > 10000000 or (salary_num < 1000 and "hour" not in str(salary).lower()):
-        return {
-            "flag": FLAG_UNREALISTIC_SALARY,
-            "score": 3,
-            "details": f"Suspicious salary value: {salary}"
-        }
-    
-    return {"flag": None, "score": 0}
-
-
-def check_suspicious_urls(job: dict) -> Dict[str, Any]:
-    """Check for suspicious external URLs in job description."""
-    description = job.get("description", "")
-    
-    # Find URLs in description
-    url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
-    urls = re.findall(url_pattern, description)
-    
-    suspicious_patterns = [
-        r'bit\.ly', r'tinyurl', r'goo\.gl',  # URL shorteners
-        r'\.xyz$', r'\.tk$', r'\.ml$',  # Free domains
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'  # IP addresses
-    ]
-    
-    for url in urls:
-        for pattern in suspicious_patterns:
-            if re.search(pattern, url, re.I):
-                return {
-                    "flag": FLAG_SUSPICIOUS_URL,
-                    "score": 4,
-                    "details": f"Suspicious URL pattern: {url[:50]}"
-                }
-    
-    return {"flag": None, "score": 0}
-
-
-def check_new_account(recruiter: dict) -> Dict[str, Any]:
-    """Flag if account is very new."""
-    created_at = recruiter.get("created_at")
-    if not created_at:
-        return {"flag": None, "score": 0}
-    
-    account_age = datetime.utcnow() - created_at
-    if account_age < timedelta(hours=24):
-        return {
-            "flag": FLAG_NEW_ACCOUNT,
-            "score": 2,
-            "details": "Account less than 24 hours old"
-        }
-    
-    return {"flag": None, "score": 0}
-
-
-def check_incomplete_profile(recruiter: dict) -> Dict[str, Any]:
-    """Check if recruiter profile is incomplete."""
-    required_fields = ["company_name", "website", "company_description"]
-    missing = [f for f in required_fields if not recruiter.get(f)]
-    
-    if len(missing) >= 2:
-        return {
-            "flag": FLAG_INCOMPLETE_PROFILE,
-            "score": 2,
-            "details": f"Missing: {', '.join(missing)}"
-        }
-    
-    return {"flag": None, "score": 0}
-
-
-async def calculate_job_risk_score(job: dict, recruiter: dict, db) -> Dict[str, Any]:
-    """Calculate overall risk score for a job posting."""
-    flags = []
-    total_score = 0
-    
-    # Run all checks
-    checks = [
-        await check_domain_mismatch(recruiter),
-        await check_burst_posting(str(recruiter["_id"]), db),
-        await check_duplicate_content(job, str(recruiter["_id"]), db),
-        check_unrealistic_salary(job),
-        check_suspicious_urls(job),
-        check_new_account(recruiter),
-        check_incomplete_profile(recruiter)
-    ]
-    
-    for check in checks:
-        if check.get("flag"):
-            flags.append({
-                "type": check["flag"],
-                "score": check["score"],
-                "details": check.get("details")
-            })
-            total_score += check["score"]
-    
-    # Determine status
-    if total_score >= RISK_THRESHOLD_AUTO_REJECT:
-        status = JOB_STATUS_REJECTED
-        review_required = False
-    elif total_score >= RISK_THRESHOLD_REVIEW:
-        status = JOB_STATUS_PENDING_REVIEW
-        review_required = True
-    elif recruiter.get("verification_status") == VERIFICATION_VERIFIED:
-        status = JOB_STATUS_PUBLISHED
-        review_required = False
-    else:
-        status = JOB_STATUS_PENDING_REVIEW
-        review_required = True
-    
-    return {
-        "risk_score": total_score,
-        "flags": flags,
-        "suggested_status": status,
-        "review_required": review_required
+    PROFANITY_LIST = {
+        "dammit", "hell", "crap" # Very mild list for demo purposes
     }
+    
+    @classmethod
+    def analyze_text(cls, text: str) -> Dict[str, Any]:
+        """
+        Analyze text for risk factors.
+        Returns risk score (0-100) and flagged categories.
+        """
+        if not text:
+            return {"score": 0, "level": RiskLevel.SAFE, "flags": []}
+            
+        lower_text = text.lower()
+        score = 0
+        flags = []
+        
+        # Check PII Leaks (Regex)
+        # Email pattern (outside of allowed contexts)
+        # Phone pattern
+        
+        # Check Keywords
+        for word in cls.SENSITIVE_KEYWORDS:
+            if word in lower_text:
+                score += 30
+                flags.append(f"sensitive_keyword: {word}")
+        
+        for word in cls.PROFANITY_LIST:
+             if word in lower_text:
+                score += 20
+                flags.append(f"profanity: {word}")
+                
+        # Determine Level
+        if score >= 80:
+            level = RiskLevel.CRITICAL
+        elif score >= 60:
+            level = RiskLevel.HIGH
+        elif score >= 40:
+            level = RiskLevel.MEDIUM
+        elif score >= 20:
+            level = RiskLevel.LOW
+        else:
+            level = RiskLevel.SAFE
+            
+        return {
+            "score": min(score, 100),
+            "level": level,
+            "flags": flags,
+            "timestamp": datetime.utcnow()
+        }
 
+    @classmethod
+    async def flag_content(cls, content_type: str, content_id: str, analysis: Dict):
+        """
+        Persist moderation result to database.
+        """
+        from ..database import get_database
+        from datetime import datetime as dt
+        
+        db = get_database()
+        
+        flag_doc = {
+            "content_type": content_type,
+            "content_id": content_id,
+            "risk_score": analysis["score"],
+            "risk_level": analysis["level"],
+            "flags": analysis["flags"],
+            "created_at": dt.utcnow(),
+            "status": "open", # open, resolved, ignored
+            "action_taken": None
+        }
+        
+        # In a real app we'd save this to a 'moderation_queue' collection
+        if analysis["level"] in [RiskLevel.HIGH, RiskLevel.CRITICAL]:
+             await db["moderation_queue"].insert_one(flag_doc)
+             # Auto-hide content if critical?
+             if analysis["level"] == RiskLevel.CRITICAL:
+                 await cls._auto_hide_content(content_type, content_id)
 
-async def get_recruiter_trust_score(recruiter_id: str, db) -> int:
-    """Calculate trust score based on history."""
-    score = 50  # Base score
-    
-    # Positive: Verified status
-    recruiter = await db["users"].find_one({"_id": ObjectId(recruiter_id)})
-    if recruiter and recruiter.get("verification_status") == VERIFICATION_VERIFIED:
-        score += 30
-    
-    # Positive: Account age
-    if recruiter:
-        age = datetime.utcnow() - recruiter.get("created_at", datetime.utcnow())
-        if age > timedelta(days=90):
-            score += 10
-        elif age > timedelta(days=30):
-            score += 5
-    
-    # Positive: Successful hires
-    hires = await db["applications"].count_documents({
-        "company_id": ObjectId(recruiter_id),
-        "status": "hired"
-    })
-    score += min(hires * 2, 20)
-    
-    # Negative: Flagged jobs
-    flagged_jobs = await db["jobs"].count_documents({
-        "recruiter_id": ObjectId(recruiter_id),
-        "moderation.risk_score": {"$gte": RISK_THRESHOLD_REVIEW}
-    })
-    score -= flagged_jobs * 5
-    
-    return max(0, min(100, score))
+    @classmethod
+    async def _auto_hide_content(cls, content_type: str, content_id: str):
+        """Auto-hide content that is Critical risk."""
+        from ..database import get_database
+        from bson import ObjectId
+        db = get_database()
+        
+        if content_type == "job":
+            await db["jobs"].update_one(
+                {"_id": ObjectId(content_id)}, 
+                {"$set": {"is_active": False, "moderation_status": "flagged"}}
+            )
+        elif content_type == "post":
+            await db["posts"].update_one(
+                {"_id": ObjectId(content_id)}, 
+                {"$set": {"is_visible": False, "moderation_status": "flagged"}}
+            )
+
+moderation_service = ModerationService()

@@ -39,4 +39,12 @@ async def conversation(user_id: str, other_id: str):
     return await cursor.to_list(length=None)
 
 
+async def get_inbox(user_id: str):
+    """Get all messages received by user, sorted by date desc."""
+    cursor = messages_collection().find(
+        {"receiver_id": ObjectId(user_id)}
+    ).sort("created_at", -1)
+    return await cursor.to_list(length=None)
+
+
 

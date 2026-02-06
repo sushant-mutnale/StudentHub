@@ -98,11 +98,41 @@ async def get_job(job_id: str, current_user=Depends(get_current_user)):
     # non-public jobs directly by ID.
     if current_user.get("role") == "student":
         visibility = job.get("visibility", "public")
-        if visibility not in ("public", "students"):
-            # Hide non-public jobs from students.
-            raise HTTPException(status_code=404, detail="Job not found")
-
+        if visibility != "public":
+             raise HTTPException(status_code=403, detail="Access denied to non-public job")
+             
     return db_job_to_public(job)
+
+
+@router.get("/{job_id}/pipeline")
+async def get_job_pipeline(job_id: str, recruiter=Depends(get_current_recruiter)):
+    """Get pipeline view for a job's applications."""
+    try:
+        from bson import ObjectId
+        # Verify job belongs to recruiter
+        job = await job_model.jobs_collection().find_one({
+            "_id": ObjectId(job_id),
+            "recruiter_id": recruiter["_id"]
+        })
+        
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found or access denied")
+        
+        # Get applications for this job
+        applications = await application_model.list_applications_for_job(job_id)
+        
+        return {
+            "job_id": job_id,
+            "job_title": job.get("title"),
+            "applications": [db_application_to_public(app) for app in applications],
+            "total": len(applications)
+        }
+    except Exception as e:
+         # Handle invalid ID format
+         if "ObjectId" in str(e):
+             raise HTTPException(status_code=404, detail="Invalid job ID")
+         raise e
+
 
 
 @router.post(
@@ -182,9 +212,19 @@ async def update_job(
     "/{job_id}/applications",
     response_model=list[JobApplicationResponse],
 )
-async def list_job_applications(job_id: str, recruiter=Depends(get_current_recruiter)):
+async def list_job_applications(
+    job_id: str, 
+    limit: int = Query(default=50, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
+    recruiter=Depends(get_current_recruiter)
+):
     """Return all applications for a given job for the owning recruiter."""
-    applications = await job_model.list_applications_for_job(job_id, recruiter)
+    applications = await job_model.list_applications_for_job(
+        job_id, 
+        recruiter,
+        limit=limit,
+        skip=skip
+    )
     if applications is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return [db_application_to_public(doc) for doc in applications]

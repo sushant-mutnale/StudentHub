@@ -113,6 +113,14 @@ const Login = () => {
         </div>
 
         <div
+          className="form-link forgot-link"
+          onClick={() => navigate('/forgot-password')}
+          style={{ marginTop: '0.5rem' }}
+        >
+          Forgot Password?
+        </div>
+
+        <div
           className="form-link"
           onClick={() => navigate('/')}
           style={{ marginTop: '0.5rem' }}

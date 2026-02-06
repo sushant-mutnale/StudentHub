@@ -614,6 +614,11 @@ class ScoringEngine:
 
 # ============ Recommendation Engine ============
 
+def recommendations_offline_collection():
+    """Get the recommendations_offline collection."""
+    return get_database()["recommendations_offline"]
+
+
 class RecommendationEngine:
     """
     Main recommendation engine that orchestrates scoring,
@@ -641,15 +646,60 @@ class RecommendationEngine:
         
         return user
     
+    async def compute_and_store_recommendations(self, student_id: str) -> bool:
+        """
+        Compute recommendations offline (batch mode) and store them.
+        """
+        try:
+            # Re-use existing logic
+            result = await self.recommend_jobs(student_id, limit=50, use_offline=False)
+            if "recommendations" in result:
+                doc = {
+                    "student_id": student_id,
+                    "type": "jobs",
+                    "recommendations": result["recommendations"],
+                    "updated_at": datetime.utcnow()
+                }
+                await recommendations_offline_collection().replace_one(
+                    {"student_id": student_id, "type": "jobs"},
+                    doc,
+                    upsert=True
+                )
+                return True
+            return False
+        except Exception as e:
+            print(f"Offline computation failed: {e}")
+            return False
+
     async def recommend_jobs(
         self,
         student_id: str,
         limit: int = 20,
-        filters: Dict = None
+        filters: Dict = None,
+        use_offline: bool = True
     ) -> Dict[str, Any]:
         """
         Get personalized job recommendations for a student.
+        Tries offline store first for speed, falls back to live compute.
         """
+        # 1. Try Offline Store
+        if use_offline and not filters: # Filters require live re-ranking mostly
+            cached = await recommendations_offline_collection().find_one(
+                {"student_id": student_id, "type": "jobs"}
+            )
+            if cached:
+                # Check freshness (e.g., 24 hours)
+                if (datetime.utcnow() - cached["updated_at"]).total_seconds() < 86400:
+                    return {
+                        "status": "success",
+                        "source": "offline",
+                        "student_id": student_id,
+                        "recommendations": cached["recommendations"][:limit],
+                        "total_available": len(cached["recommendations"]),
+                        "filters_applied": {}
+                    }
+
+        # 2. Live Compute (Online)
         student = await self.get_student_profile(student_id)
         if not student:
             return {"error": "Student not found", "recommendations": []}
@@ -692,6 +742,7 @@ class RecommendationEngine:
         
         return {
             "status": "success",
+            "source": "live",
             "student_id": student_id,
             "recommendations": scored_jobs[:limit],
             "total_available": len(scored_jobs),

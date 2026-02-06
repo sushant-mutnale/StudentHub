@@ -68,6 +68,53 @@ async def require_admin(current_user=Depends(get_current_user)):
     return current_user
 
 
+# ============ DASHBOARD STATS ============
+
+@router.get("/stats")
+async def get_admin_stats(admin=Depends(require_admin)):
+    """Get admin dashboard statistics."""
+    users_count = await users_collection().count_documents({})
+    jobs_count = await jobs_collection().count_documents({})
+    recruiters_count = await users_collection().count_documents({"role": "recruiter"})
+    students_count = await users_collection().count_documents({"role": "student"})
+    pending_jobs = await jobs_collection().count_documents({"status": "pending_review"})
+    
+    return {
+        "users": users_count,
+        "jobs": jobs_count,
+        "recruiters": recruiters_count,
+        "students": students_count,
+        "pending_jobs": pending_jobs
+    }
+
+
+@router.get("/moderation")
+async def get_moderation_queue_alias(
+    limit: int = Query(50, ge=1, le=200),
+    admin=Depends(require_admin)
+):
+    """Get moderation queue - alias for review queue."""
+    items = []
+    
+    # Get flagged jobs
+    job_cursor = jobs_collection().find({
+        "status": {"$in": ["pending_review", "flagged"]}
+    }).sort("created_at", -1).limit(limit)
+    
+    async for job in job_cursor:
+        moderation = job.get("moderation", {})
+        items.append({
+            "id": str(job["_id"]),
+            "type": "job",
+            "title": job.get("title", "Untitled"),
+            "risk_score": moderation.get("risk_score", 0),
+            "created_at": job.get("created_at"),
+            "status": job.get("status", "unknown")
+        })
+    
+    return items
+
+
 # ============ REVIEW QUEUE ============
 
 @router.get("/review-queue")
@@ -217,15 +264,28 @@ async def verify_recruiter(
         }
     )
     
-    await audit_model.log_audit(
-        action=audit_model.ACTION_RECRUITER_VERIFIED,
-        entity_type="recruiter",
+
+    
+    # Audit Log
+    from ..services.audit_service import audit_service, AuditAction
+    await audit_service.log_event(
+        action=AuditAction.VERIFY,
+        entity_type="user",
         entity_id=recruiter_id,
         actor_id=str(admin["_id"]),
-        actor_type=audit_model.ACTOR_ADMIN
+        changes={"verification_status": moderation_service.VERIFICATION_VERIFIED}
     )
-    
+
     return {"message": "Recruiter verified"}
+
+
+@router.put("/recruiters/{recruiter_id}/verify")
+async def verify_recruiter_put(
+    recruiter_id: str,
+    admin=Depends(require_admin)
+):
+    """PUT alias for verify_recruiter (backwards compatibility)."""
+    return await verify_recruiter(recruiter_id=recruiter_id, admin=admin)
 
 
 @router.post("/recruiters/{recruiter_id}/suspend")

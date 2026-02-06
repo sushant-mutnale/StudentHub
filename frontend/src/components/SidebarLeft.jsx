@@ -27,6 +27,7 @@ const SidebarLeft = () => {
     { icon: FiMic, label: 'Mock Interview', path: '/mock-interview' },
     { icon: FiSearch, label: 'Research', path: '/research' },
     { icon: FiTarget, label: 'Opportunities', path: '/opportunities' },
+    { icon: FiClipboard, label: 'My Applications', path: '/applications' }, // New Module 5 Link
     { icon: FiClipboard, label: 'Assessment', path: '/assessment' },
     { icon: FiBell, label: 'Notifications', path: '/smart-notifications' },
     { icon: FiMessageSquare, label: 'Messages', path: '/messages' },

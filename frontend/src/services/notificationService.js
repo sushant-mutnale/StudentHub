@@ -1,4 +1,4 @@
-import API from '../api/client';
+import { api as API } from '../api/client';
 
 export const notificationService = {
                getNotifications: async () => {

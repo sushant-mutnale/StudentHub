@@ -33,6 +33,8 @@ from ..schemas.application_schema import (
     ApplicationTimelineResponse,
 )
 from ..utils.dependencies import get_current_user, get_current_recruiter, get_current_student
+from ..models.outbox import outbox
+from ..events.event_bus import EventTypes
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -92,6 +94,33 @@ def serialize_student_application(app: dict, job: dict) -> StudentApplicationRes
         last_updated=app["updated_at"],
         interview_count=len(app.get("interview_ids", [])),
         has_offer=app.get("offer_id") is not None
+    )
+
+
+# ============ STUDENT ENDPOINTS (Static routes first) ============
+
+@router.get("/my", response_model=StudentApplicationsListResponse)
+async def list_my_applications(
+    status: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    student=Depends(get_current_student)
+):
+    """List all applications for the current student."""
+    apps = await application_model.list_applications_for_student(
+        student_id=str(student["_id"]),
+        status=status,
+        limit=limit
+    )
+    
+    results = []
+    for app in apps:
+        job = await job_model.get_job(str(app["job_id"]))
+        if job:
+            results.append(serialize_student_application(app, job))
+    
+    return StudentApplicationsListResponse(
+        applications=results,
+        total=len(results)
     )
 
 
@@ -218,6 +247,23 @@ async def move_application_stage(
             application_id, new_status, str(recruiter["_id"])
         )
         updated = await application_model.get_application(application_id)
+        
+    # [TRANSACTIONAL OUTBOX] Publish stage changed event
+    await outbox.add_event(
+        event_type=EventTypes.APPLICATION_STAGE_CHANGED,
+        payload={
+            "application_id": application_id,
+            "job_id": str(app["job_id"]),
+            "student_id": str(app["student_id"]),
+            "company_id": str(app["company_id"]),
+            "old_stage_id": app["current_stage_id"],
+            "new_stage": new_stage["name"],
+            "new_stage_id": payload.new_stage_id,
+            "changed_by": str(recruiter["_id"]),
+            "reason": payload.reason
+        },
+        actor_id=str(recruiter["_id"])
+    )
     
     job = await job_model.get_job(str(app["job_id"]))
     student = await user_model.get_user_by_id(str(app["student_id"]))
@@ -297,31 +343,7 @@ async def remove_application_tag(
     return {"status": "removed", "tag": tag}
 
 
-# ============ STUDENT ENDPOINTS ============
-
-@router.get("/my", response_model=StudentApplicationsListResponse)
-async def list_my_applications(
-    status: Optional[str] = Query(None),
-    limit: int = Query(50, ge=1, le=100),
-    student=Depends(get_current_student)
-):
-    """List all applications for the current student."""
-    apps = await application_model.list_applications_for_student(
-        student_id=str(student["_id"]),
-        status=status,
-        limit=limit
-    )
-    
-    results = []
-    for app in apps:
-        job = await job_model.get_job(str(app["job_id"]))
-        if job:
-            results.append(serialize_student_application(app, job))
-    
-    return StudentApplicationsListResponse(
-        applications=results,
-        total=len(results)
-    )
+# ============ STUDENT ENDPOINTS (Continued) ============
 
 
 @router.get("/{application_id}/timeline", response_model=ApplicationTimelineResponse)

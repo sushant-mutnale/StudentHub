@@ -135,3 +135,12 @@ async def list_students_by_skill_matches(skills: list[str]):
     return [migrate_user_skills(s) for s in students]
 
 
+async def update_user_password(user_id: str, new_password_hash: str):
+    """Update user's password hash."""
+    await users_collection().update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {
+            "password_hash": new_password_hash,
+            "updated_at": datetime.utcnow()
+        }}
+    )

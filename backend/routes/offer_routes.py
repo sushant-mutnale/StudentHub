@@ -11,6 +11,8 @@ from ..models import pipeline as pipeline_model
 from ..models.notification import create_notification
 from ..models.offer import offers_collection, default_history_entry
 from ..models.thread import append_text_message
+from ..models.outbox import outbox
+from ..events.event_bus import EventTypes
 from ..schemas.offer_schema import (
     OfferCreateRequest,
     OfferListResponse,
@@ -99,6 +101,21 @@ async def create_offer(payload: OfferCreateRequest, current_user=Depends(get_cur
     }
     result = await offers_collection().insert_one(doc)
     doc["_id"] = result.inserted_id
+
+    # [TRANSACTIONAL OUTBOX] Publish offer extended event
+    await outbox.add_event(
+        event_type=EventTypes.OFFER_EXTENDED,
+        payload={
+            "offer_id": str(doc["_id"]),
+            "candidate_id": str(candidate["_id"]),
+            "student_id": str(candidate["_id"]),  # Alias for notification handler
+            "recruiter_id": str(current_user["_id"]),
+            "job_id": str(job_id) if job_id else None,
+            "company_name": current_user.get("company_name") or current_user.get("username"),
+            "package": payload.package
+        },
+        actor_id=str(current_user["_id"])
+    )
 
     if payload.thread_id:
         await append_text_message(

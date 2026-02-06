@@ -20,7 +20,7 @@ def db_message_to_public(db_message: dict) -> MessageResponse:
     )
 
 
-@router.post("/", response_model=MessageResponse)
+@router.post("/", response_model=MessageResponse, status_code=201)
 async def send_message(
     payload: MessageCreate, current_user=Depends(get_current_user)
 ):
@@ -39,6 +39,12 @@ async def conversation(other_user_id: str, current_user=Depends(get_current_user
     if not other:
         raise HTTPException(status_code=404, detail="User not found")
     messages = await message_model.conversation(str(current_user["_id"]), other_user_id)
+    return [db_message_to_public(msg) for msg in messages]
+
+
+@router.get("/inbox", response_model=list[MessageResponse])
+async def get_inbox(current_user=Depends(get_current_user)):
+    messages = await message_model.get_inbox(str(current_user["_id"]))
     return [db_message_to_public(msg) for msg in messages]
 
 

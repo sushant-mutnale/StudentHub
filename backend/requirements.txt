@@ -1,12 +1,79 @@
-fastapi
-uvicorn[standard]
-motor
-python-dotenv
-pydantic[email]
-pydantic-settings
-passlib>=1.7.4
-python-jose[cryptography]
-pytest
-httpx
+# StudentHub Backend - Complete Requirements
+# All dependencies consolidated and pinned for production
 
+# ===== Core Framework =====
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.6.0
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
 
+# ===== Database =====
+motor==3.3.0
+pymongo==4.6.0
+
+# ===== Authentication =====
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.1.2
+
+# ===== Email =====
+email-validator==2.1.0
+sendgrid==6.11.0
+python-multipart==0.0.6
+
+# ===== Parsing & Feeds =====
+feedparser==6.0.10
+
+# ===== PDF & Document Parsing =====
+pdfplumber==0.10.0
+PyPDF2==3.0.0
+PyMuPDF==1.23.0
+python-docx==1.1.0
+
+# ===== NLP & Text Processing =====
+spacy==3.7.0
+nltk==3.8.0
+
+# ===== AI/LLM Services =====
+google-generativeai==0.3.0
+langchain==0.1.0
+langchain-openai==0.0.5
+langchain-community==0.0.10
+langchain-google-genai==0.0.5
+openai==1.10.0
+
+# ===== Async HTTP =====
+aiohttp==3.9.0
+httpx==0.26.0
+
+# ===== Web Scraping =====
+requests==2.31.0
+beautifulsoup4==4.12.0
+
+# ===== Caching (Redis) =====
+redis==5.0.0
+aioredis==2.0.0
+
+# ===== Rate Limiting =====
+slowapi==0.1.9
+limits==3.7.0
+
+# ===== WebSockets =====
+websockets==12.0
+
+# ===== Background Tasks =====
+apscheduler==3.10.0
+
+# ===== Testing =====
+pytest==7.4.0
+pytest-asyncio==0.23.0
+pytest-cov==4.1.0
+
+# ===== Code Quality =====
+black==23.12.0
+flake8==7.0.0
+isort==5.13.0
+
+# ===== Production Server =====
+gunicorn==21.2.0

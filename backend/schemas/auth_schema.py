@@ -31,3 +31,21 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=8)
 
 
+# OTP Schemas
+class SendOTPRequest(BaseModel):
+    email: EmailStr
+    purpose: str = "verification"  # verification, signup, password_reset
+
+class VerifyOTPRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=6, max_length=6)
+    purpose: str = "verification"
+
+class ResetPasswordWithOTPRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8)
+
+class OTPResponse(BaseModel):
+    success: bool
+    message: str

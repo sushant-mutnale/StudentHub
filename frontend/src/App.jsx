@@ -4,6 +4,7 @@ import Home from './components/Home';
 import Login from './components/Login';
 import SignupStudent from './components/SignupStudent';
 import SignupRecruiter from './components/SignupRecruiter';
+import ForgotPassword from './components/ForgotPassword';
 import StudentDashboard from './components/StudentDashboard';
 import RecruiterDashboard from './components/RecruiterDashboard';
 import Profile from './components/Profile';
@@ -23,6 +24,11 @@ import MockInterview from './components/MockInterview';
 import CompanyResearch from './components/CompanyResearch';
 import Opportunities from './components/Opportunities';
 import SmartNotifications from './components/SmartNotifications';
+// Module 5 Components
+import ApplicationPipeline from './components/ApplicationPipeline';
+import ApplicationTracker from './components/ApplicationTracker';
+import AdminDashboard from './components/AdminDashboard';
+import VerificationStatus from './components/VerificationStatus';
 import './App.css';
 
 // Protected Route Component
@@ -58,6 +64,7 @@ function App() {
             <Route path="/" element={<Home />} />
 
             <Route path="/login/:userType" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
 
             <Route path="/signup/student" element={<SignupStudent />} />
             <Route path="/signup/recruiter" element={<SignupRecruiter />} />
@@ -215,6 +222,43 @@ function App() {
               element={
                 <ProtectedRoute>
                   <JobDetail />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Module 5: ATS & Tracking */}
+            <Route
+              path="/pipeline"
+              element={
+                <ProtectedRoute allowedType="recruiter">
+                  <ApplicationPipeline />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/applications"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <ApplicationTracker />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin/dashboard"
+              element={
+                <ProtectedRoute>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/verify"
+              element={
+                <ProtectedRoute allowedType="recruiter">
+                  <VerificationStatus />
                 </ProtectedRoute>
               }
             />

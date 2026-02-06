@@ -34,12 +34,12 @@ class LLMConfig:
         "openrouter": {
             "api_base": "https://openrouter.ai/api/v1",
             "env_key": "OPENROUTER_API_KEY",
-            "default_model": "deepseek/deepseek-r1-0528:free"
+            "default_model": "tngtech/deepseek-r1t-chimera:free"
         },
         "gemini": {
             "api_base": "https://generativelanguage.googleapis.com/v1beta/openai/",
-            "env_key": "GEMINI_API_KEY",
-            "default_model": "gemini-2.0-flash"
+            "env_key": "GOOGLE_API_KEY",
+            "default_model": "gemini-2.5-flash"
         },
         "openai": {
             "api_base": "https://api.openai.com/v1",

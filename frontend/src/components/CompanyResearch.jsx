@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { researchService } from '../services/researchService';
 import SidebarLeft from './SidebarLeft';
-import { FiSearch, FiBuilding, FiUsers, FiCode, FiTrendingUp, FiExternalLink, FiBookOpen } from 'react-icons/fi';
+import { FiSearch, FiBriefcase, FiUsers, FiCode, FiTrendingUp, FiExternalLink, FiBookOpen } from 'react-icons/fi';
 import '../App.css';
 
 const CompanyResearch = () => {
@@ -45,7 +45,7 @@ const CompanyResearch = () => {
                };
 
                const tabs = [
-                              { id: 'overview', label: 'Overview', icon: FiBuilding },
+                              { id: 'overview', label: 'Overview', icon: FiBriefcase },
                               { id: 'culture', label: 'Culture', icon: FiUsers },
                               { id: 'interview', label: 'Interview Process', icon: FiBookOpen },
                               { id: 'tech', label: 'Tech Stack', icon: FiCode },

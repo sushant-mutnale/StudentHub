@@ -1,0 +1,17 @@
+# Render.com Deployment Configuration
+# This file tells Render how to run your Python backend
+
+# Build command - installs dependencies
+build:
+  - pip install -r requirements.txt
+  - python -m spacy download en_core_web_sm
+  - python -m nltk.downloader punkt stopwords wordnet
+
+# Start command - runs the server
+start: gunicorn backend.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+
+# Health check
+healthCheckPath: /health
+
+# Environment (set in Render dashboard, not here)
+# MONGODB_URI, JWT_SECRET, GOOGLE_API_KEY, etc.

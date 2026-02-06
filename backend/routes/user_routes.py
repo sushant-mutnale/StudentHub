@@ -57,6 +57,41 @@ async def update_me(payload: UserUpdate, current_user=Depends(get_current_user))
     return db_user_to_public(updated)
 
 
+    return db_user_to_public(updated)
+
+
+@router.get("/search", response_model=list[dict])
+async def search_users(
+    skill: str | None = None,
+    location: str | None = None,
+    current_user=Depends(get_current_user)
+):
+    """Search for users (candidates) by skill or location."""
+    query = {"role": "student"}
+    
+    if skill:
+        # Simple regex match for now
+        query["skills"] = {"$regex": skill, "$options": "i"}
+    if location:
+        query["location"] = {"$regex": location, "$options": "i"}
+    
+    cursor = user_model.users_collection().find(query).limit(50)
+    users = await cursor.to_list(length=None)
+    
+    # Return simplified list
+    return [
+        {
+            "id": str(u["_id"]),
+            "username": u.get("username"),
+            "full_name": u.get("full_name"),
+            "skills": u.get("skills", []),
+            "location": u.get("location"),
+            "avatar_url": u.get("avatar_url")
+        }
+        for u in users
+    ]
+
+
 @router.get("/{user_id}", response_model=UserPublic)
 async def get_public_profile(user_id: str):
     if not ObjectId.is_valid(user_id):

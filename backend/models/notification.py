@@ -27,6 +27,8 @@ async def create_notification(
         "read_at": None,
         "priority": priority,
         "category": category,
+        "delivery_status": "pending", # pending, sent, failed
+        "delivery_attempts": 0,
         "created_at": datetime.utcnow(),
     }
     await notifications_collection().insert_one(doc)

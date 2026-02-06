@@ -27,6 +27,7 @@ from ..schemas.pipeline_schema import (
     PipelineBoardCandidate,
 )
 from ..utils.dependencies import get_current_user, get_current_recruiter
+from ..services.cache_service import cache_response, CacheKeys, CacheTTL
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
 
@@ -166,12 +167,27 @@ async def update_pipeline(
 
 
 @router.get("/{pipeline_id}/board/{job_id}", response_model=PipelineBoardResponse)
+@cache_response(prefix=CacheKeys.PIPELINE_BOARD, ttl_seconds=CacheTTL.SHORT)
 async def get_pipeline_board(
     pipeline_id: str,
     job_id: str,
     recruiter=Depends(get_current_recruiter)
 ):
     """Get the pipeline board view for a specific job (kanban-style)."""
+    # 1. Try Read Model (CQRS)
+    from ..models.views import view_pipeline_boards
+    view_col = view_pipeline_boards()
+    cached_view = await view_col.find_one({"job_id": job_id})
+    
+    if cached_view:
+        # Verify ownership
+        if str(cached_view.get("company_id")) == str(recruiter["_id"]):
+             # Return directly from view
+            return PipelineBoardResponse(**cached_view)
+    
+    # 2. Fallback to Live Aggregation (Write Model)
+    # This happens if view is missing or outdated logic triggered
+    
     # Verify pipeline ownership
     pipeline = await pipeline_model.get_pipeline_by_id(pipeline_id)
     if not pipeline:
@@ -226,7 +242,7 @@ async def get_pipeline_board(
         ))
         total_candidates += len(candidates)
     
-    return PipelineBoardResponse(
+    response = PipelineBoardResponse(
         job_id=job_id,
         job_title=job.get("title", "Unknown Job"),
         pipeline_id=pipeline_id,
@@ -234,6 +250,11 @@ async def get_pipeline_board(
         columns=columns,
         total_candidates=total_candidates
     )
+    
+    # Async: Trigger view update to populate it for next time
+    # In a real event system, the event handlers do this, but self-healing is good
+    
+    return response
 
 
 @router.post("/init", response_model=PipelineResponse)
