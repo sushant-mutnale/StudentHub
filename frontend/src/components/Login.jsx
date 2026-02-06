@@ -31,7 +31,6 @@ const Login = () => {
       const result = await login(formData.username, formData.password, userType);
 
       if (result.success) {
-        // Check if user type matches
         if (result.user.role !== userType) {
           setError(
             `Please login as a ${result.user.role === 'student' ? 'Student' : 'Recruiter'}`
@@ -40,92 +39,154 @@ const Login = () => {
           return;
         }
 
-        // Redirect to appropriate dashboard
         if (result.user.role === 'student') {
           navigate('/dashboard/student');
         } else {
           navigate('/dashboard/recruiter');
         }
       } else {
-        setError(result.error || 'Login failed. Please check your credentials and try again.');
+        setError(result.error || 'Login failed. Please check your credentials.');
         setLoading(false);
       }
     } catch (error) {
-      console.error('Login submission error:', error);
-      setError(
-        error.message || 'An unexpected error occurred. Please try again.'
-      );
+      console.error('Login error:', error);
+      setError(error.message || 'An unexpected error occurred.');
       setLoading(false);
     }
   };
 
+  const isStudent = userType === 'student';
+
   return (
-    <div className="auth-container">
-      <div className="auth-box">
-        <h1 className="auth-title">
-          {userType === 'student' ? 'Student' : 'Recruiter'} Login
-        </h1>
-        <p className="auth-subtitle">Welcome back! Please login to continue.</p>
+    <div className="auth-container modern">
+      {/* Decorative Elements */}
+      <div className="auth-decoration">
+        <div className="floating-shape shape-1"></div>
+        <div className="floating-shape shape-2"></div>
+        <div className="floating-shape shape-3"></div>
+      </div>
 
-        {error && <div className="error-message">{error}</div>}
+      <div className="auth-box glass">
+        {/* Header */}
+        <div className="auth-header">
+          <div className="auth-icon">
+            {isStudent ? '🎓' : '💼'}
+          </div>
+          <h1 className="auth-title gradient-text">
+            {isStudent ? 'Student Login' : 'Recruiter Login'}
+          </h1>
+          <p className="auth-subtitle">
+            Welcome back! Enter your credentials to continue.
+          </p>
+        </div>
 
+        {/* Error Message */}
+        {error && (
+          <div className="error-message shake">
+            <span className="error-icon">⚠️</span>
+            {error}
+          </div>
+        )}
+
+        {/* Login Form */}
         <form className="auth-form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Username or Email</label>
-            <input
-              type="text"
-              name="username"
-              className="form-input"
-              value={formData.username}
-              onChange={handleChange}
-              required
-              placeholder="Enter your username or email"
-            />
+          {/* Step 1: Username */}
+          <div className="form-step">
+            <div className="step-indicator">
+              <span className="step-number">1</span>
+              <span className="step-label">Username</span>
+            </div>
+            <div className="form-group modern">
+              <input
+                type="text"
+                name="username"
+                className="form-input modern"
+                value={formData.username}
+                onChange={handleChange}
+                required
+                placeholder=" "
+                autoComplete="username"
+              />
+              <label className="form-label floating">Username or Email</label>
+              <div className="input-icon">👤</div>
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <input
-              type="password"
-              name="password"
-              className="form-input"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              placeholder="Enter your password"
-            />
+          {/* Step 2: Password */}
+          <div className="form-step">
+            <div className="step-indicator">
+              <span className="step-number">2</span>
+              <span className="step-label">Password</span>
+            </div>
+            <div className="form-group modern">
+              <input
+                type="password"
+                name="password"
+                className="form-input modern"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                placeholder=" "
+                autoComplete="current-password"
+              />
+              <label className="form-label floating">Password</label>
+              <div className="input-icon">🔒</div>
+            </div>
           </div>
 
+          {/* Submit Button */}
           <button
             type="submit"
-            className="form-button"
+            className="form-button gradient"
             disabled={loading}
           >
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? (
+              <>
+                <span className="spinner"></span>
+                <span>Signing in...</span>
+              </>
+            ) : (
+              <>
+                <span>Sign In</span>
+                <span className="btn-arrow">→</span>
+              </>
+            )}
           </button>
         </form>
 
-        <div
-          className="form-link"
-          onClick={() => navigate(`/signup/${userType}`)}
-        >
-          Don't have an account? Sign Up
-        </div>
+        {/* Footer Links */}
+        <div className="auth-footer">
+          <div
+            className="form-link primary-link"
+            onClick={() => navigate(`/signup/${userType}`)}
+          >
+            Don't have an account? <strong>Sign Up</strong>
+          </div>
 
-        <div
-          className="form-link forgot-link"
-          onClick={() => navigate('/forgot-password')}
-          style={{ marginTop: '0.5rem' }}
-        >
-          Forgot Password?
-        </div>
+          <div
+            className="form-link forgot-link"
+            onClick={() => navigate('/forgot-password')}
+          >
+            Forgot Password?
+          </div>
 
-        <div
-          className="form-link"
-          onClick={() => navigate('/')}
-          style={{ marginTop: '0.5rem' }}
-        >
-          ← Back to Home
+          <div className="auth-divider">
+            <span>or</span>
+          </div>
+
+          <div
+            className="form-link switch-link"
+            onClick={() => navigate(`/login/${isStudent ? 'recruiter' : 'student'}`)}
+          >
+            Login as {isStudent ? 'Recruiter' : 'Student'} instead
+          </div>
+
+          <div
+            className="form-link back-link"
+            onClick={() => navigate('/')}
+          >
+            ← Back to Home
+          </div>
         </div>
       </div>
     </div>
@@ -133,5 +194,3 @@ const Login = () => {
 };
 
 export default Login;
-
-
