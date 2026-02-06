@@ -68,21 +68,19 @@ class Settings(BaseSettings):
     def frontend_origins(self) -> List[str]:
         """Return list of allowed frontend origins for CORS."""
         origins = [
+            # Local development
             "http://localhost:5173",
             "http://127.0.0.1:5173",
             "http://localhost:5174",
             "http://127.0.0.1:5174",
-            "http://localhost:5175",
-            "http://127.0.0.1:5175",
-            "http://localhost:5176",
-            "http://127.0.0.1:5176",
-            "http://localhost:5177",
-            "http://127.0.0.1:5177",
-            "http://localhost:5178",
-            "http://127.0.0.1:5178",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            # Vercel production (add your actual Vercel URLs)
+            "https://studenthub.vercel.app",
+            "https://student-hub.vercel.app",
+            "https://studenthub-frontend.vercel.app",
         ]
+        # Add custom frontend origin from env if set
         if self.frontend_origin and self.frontend_origin not in origins:
             origins.append(self.frontend_origin)
         return origins
