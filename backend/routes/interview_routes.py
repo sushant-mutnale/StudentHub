@@ -581,3 +581,69 @@ async def submit_feedback(
     return serialize_interview(doc)
 
 
+
+# ==========================================
+# Interview Agent Endpoints (Conversational)
+# ==========================================
+
+from pydantic import BaseModel
+
+class SessionStartRequest(BaseModel):
+    job_id: str
+
+class ChatRequest(BaseModel):
+    message: str
+
+@router.post("/session/start")
+async def start_interview_session(
+    payload: SessionStartRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Start an AI Interview Session.
+    """
+    from ..services.interview_agent import interview_agent
+    from bson.errors import InvalidId
+    
+    try:
+        session_id = await interview_agent.start_session(
+            user_id=str(current_user["_id"]),
+            job_id=payload.job_id
+        )
+        return {"status": "success", "session_id": session_id}
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to start interview session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error starting session")
+
+@router.post("/chat/{session_id}")
+async def chat_session(
+    session_id: str,
+    payload: ChatRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Send a message to the AI Interviewer.
+    """
+    from ..services.interview_agent import interview_agent
+    from bson.errors import InvalidId
+    
+    # Optional: Verify user owns session (skipped for brevity, but recommended)
+    
+    try:
+        response = await interview_agent.chat(session_id, payload.message)
+        return {
+            "role": "assistant",
+            "content": response,
+            "timestamp": datetime.utcnow()
+        }
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid Session ID")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Interview chat error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to process message")

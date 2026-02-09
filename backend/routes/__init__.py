@@ -7,6 +7,7 @@ from . import (
     post_routes,
     thread_routes,
     user_routes,
+    analytics_routes,
 )
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "thread_routes",
     "interview_routes",
     "offer_routes",
+    "analytics_routes",
 ]
 
 

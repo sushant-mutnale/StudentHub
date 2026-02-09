@@ -178,34 +178,29 @@ async def handle_job_status_change(event: Event):
 def register_notification_handlers():
     """Register all notification event handlers."""
     
-    event_bus.register_handler(
+    event_bus.subscribe(
         EventTypes.APPLICATION_STAGE_CHANGED,
-        handle_application_stage_changed,
-        priority=10
+        handle_application_stage_changed
     )
     
-    event_bus.register_handler(
+    event_bus.subscribe(
         EventTypes.INTERVIEW_SCHEDULED,
-        handle_interview_scheduled,
-        priority=10
+        handle_interview_scheduled
     )
     
-    event_bus.register_handler(
+    event_bus.subscribe(
         EventTypes.OFFER_EXTENDED,
-        handle_offer_extended,
-        priority=10
+        handle_offer_extended
     )
     
-    event_bus.register_handler(
+    event_bus.subscribe(
         EventTypes.JOB_APPROVED,
-        handle_job_status_change,
-        priority=10
+        handle_job_status_change
     )
     
-    event_bus.register_handler(
+    event_bus.subscribe(
         EventTypes.JOB_SUSPENDED,
-        handle_job_status_change,
-        priority=10
+        handle_job_status_change
     )
     
     logger.info("Registered notification event handlers")

@@ -5,8 +5,11 @@ Features: Section detection, skill extraction, experience level detection, salar
 """
 
 import re
+import logging
 from typing import Dict, List, Any, Optional, Tuple
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 
 # Section header patterns for JD parsing
@@ -509,7 +512,7 @@ If current extraction is correct, respond "CORRECT" for that field."""
                 return enhanced
         
         except Exception as e:
-            print(f"AI enhancement failed: {e}")
+            logger.error(f"AI enhancement failed: {e}")
         
         return parsed_data
     

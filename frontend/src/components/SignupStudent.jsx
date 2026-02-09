@@ -209,6 +209,7 @@ const SignupStudent = () => {
       year: formData.year,
       bio: formData.bio,
       skills: skillsArray,
+      otp: otp, // Include OTP for verification
     };
 
     const result = await signupStudent(payload);

@@ -7,9 +7,12 @@ Features: Multi-library fallback, AI enhancement option, confidence scoring.
 import os
 import re
 import hashlib
+import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 
 # Section header patterns for detection
@@ -108,8 +111,11 @@ class ResumeParser:
                         text_parts.append(page_text)
             
             return "\n".join(text_parts)
+        except ImportError:
+            logger.warning("[pdfplumber] Library not installed")
+            return ""
         except Exception as e:
-            print(f"[pdfplumber] Extraction failed: {e}")
+            logger.error(f"[pdfplumber] Extraction failed: {e}")
             return ""
     
     def extract_text_pymupdf(self, file_path: str) -> str:
@@ -124,8 +130,11 @@ class ResumeParser:
             doc.close()
             
             return "\n".join(text_parts)
+        except ImportError:
+            logger.warning("[PyMuPDF] Library not installed")
+            return ""
         except Exception as e:
-            print(f"[PyMuPDF] Extraction failed: {e}")
+            logger.error(f"[PyMuPDF] Extraction failed: {e}")
             return ""
     
     def extract_text(self, file_path: str) -> Tuple[str, str]:
@@ -553,7 +562,7 @@ Only provide corrections. If current extraction is correct, say "CORRECT" for th
                 return enhanced
         
         except Exception as e:
-            print(f"AI enhancement failed: {e}")
+            logger.error(f"AI enhancement failed: {e}")
         
         return parsed_data
     

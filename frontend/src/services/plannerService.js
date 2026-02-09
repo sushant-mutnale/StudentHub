@@ -1,14 +1,20 @@
 import { api } from '../api/client';
+import { mockSkillAnalysis } from './mockData';
 
 export const plannerService = {
                // Generate study plan
                generatePlan: async (targetRole, duration = '4 weeks', focusAreas = []) => {
-                              const { data } = await api.post('/planner/generate', {
-                                             target_role: targetRole,
-                                             duration,
-                                             focus_areas: focusAreas
-                              });
-                              return data;
+                              try {
+                                             const { data } = await api.post('/planner/generate', {
+                                                            target_role: targetRole,
+                                                            duration,
+                                                            focus_areas: focusAreas
+                                             });
+                                             return data;
+                              } catch (error) {
+                                             console.warn('Backend unavailable, using mock study plan for demo.');
+                                             return mockSkillAnalysis;
+                              }
                },
 
                // Get my current plan

@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { gapService } from '../services/gapService';
 import { learningService } from '../services/learningService';
 import SidebarLeft from './SidebarLeft';
-import { FiTrendingUp, FiTarget, FiArrowRight, FiBook, FiAlertTriangle, FiCheckCircle } from 'react-icons/fi';
+import { FiTrendingUp, FiTarget, FiArrowRight, FiBook, FiAlertTriangle, FiCheckCircle, FiCpu } from 'react-icons/fi';
 import '../App.css';
 
 const SkillGapAnalysis = () => {
@@ -75,13 +75,13 @@ const SkillGapAnalysis = () => {
                                              <SidebarLeft />
                                              <div className="dashboard-main">
                                                             <div className="dashboard-header">
-                                                                           <h1 className="dashboard-title">Skill Gap Analysis</h1>
+                                                                           <h1 className="dashboard-title animate-fade-in">Skill Gap Analysis</h1>
                                                             </div>
                                                             <div className="dashboard-content">
                                                                            {/* Target Role Input */}
-                                                                           <div className="card" style={{ marginBottom: '1.5rem' }}>
+                                                                           <div className="card glass-card animate-slide-up" style={{ marginBottom: '1.5rem' }}>
                                                                                           <h3 style={{ marginBottom: '1rem', color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                                                                         <FiTarget />
+                                                                                                         <FiTarget className="text-blue-500" />
                                                                                                          Target Role Analysis
                                                                                           </h3>
                                                                                           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -91,12 +91,12 @@ const SkillGapAnalysis = () => {
                                                                                                                         onChange={(e) => setTargetRole(e.target.value)}
                                                                                                                         placeholder="e.g., Backend Developer, Data Scientist, ML Engineer"
                                                                                                                         className="form-input"
-                                                                                                                        style={{ flex: 1, marginBottom: 0 }}
+                                                                                                                        style={{ flex: 1, marginBottom: 0, transition: 'all 0.3s' }}
                                                                                                          />
                                                                                                          <button
                                                                                                                         onClick={handleAnalyzeRole}
                                                                                                                         disabled={loading || !targetRole.trim()}
-                                                                                                                        className="form-button"
+                                                                                                                        className="form-button hover-scale"
                                                                                                                         style={{ margin: 0, whiteSpace: 'nowrap' }}
                                                                                                          >
                                                                                                                         {loading ? 'Analyzing...' : 'Analyze Gaps'}
@@ -106,7 +106,7 @@ const SkillGapAnalysis = () => {
 
                                                                            {/* Current Skills */}
                                                                            {user.skills && user.skills.length > 0 && (
-                                                                                          <div className="card" style={{ marginBottom: '1.5rem' }}>
+                                                                                          <div className="card animate-slide-up delay-100" style={{ marginBottom: '1.5rem' }}>
                                                                                                          <h3 style={{ marginBottom: '1rem', color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                                                                                         <FiCheckCircle style={{ color: '#10b981' }} />
                                                                                                                         Your Current Skills
@@ -115,6 +115,7 @@ const SkillGapAnalysis = () => {
                                                                                                                         {user.skills.map((skill, idx) => (
                                                                                                                                        <div
                                                                                                                                                       key={idx}
+                                                                                                                                                      className="hover-scale"
                                                                                                                                                       style={{
                                                                                                                                                                      padding: '0.5rem 1rem',
                                                                                                                                                                      background: '#f0fdf4',
@@ -122,7 +123,9 @@ const SkillGapAnalysis = () => {
                                                                                                                                                                      borderRadius: '9999px',
                                                                                                                                                                      display: 'flex',
                                                                                                                                                                      alignItems: 'center',
-                                                                                                                                                                     gap: '0.5rem'
+                                                                                                                                                                     gap: '0.5rem',
+                                                                                                                                                                     transition: 'all 0.2s',
+                                                                                                                                                                     cursor: 'default'
                                                                                                                                                       }}
                                                                                                                                        >
                                                                                                                                                       <span style={{ fontWeight: 500, color: '#166534' }}>
@@ -146,15 +149,18 @@ const SkillGapAnalysis = () => {
                                                                            )}
 
                                                                            {/* Gap Analysis Results */}
-                                                                           <div className="card">
+                                                                           <div className="card animate-slide-up delay-200">
                                                                                           <h3 style={{ marginBottom: '1rem', color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                                                                         <FiTrendingUp />
+                                                                                                         <FiTrendingUp style={{ color: '#3b82f6' }} />
                                                                                                          Skill Gaps {targetRole && `for ${targetRole}`}
                                                                                           </h3>
 
                                                                                           {loading ? (
                                                                                                          <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-                                                                                                                        Analyzing your skill gaps...
+                                                                                                                        <div style={{ display: 'inline-block', animation: 'pulse 2s infinite' }}>
+                                                                                                                                       <FiCpu size={48} style={{ color: '#94a3b8', marginBottom: '1rem' }} />
+                                                                                                                        </div>
+                                                                                                                        <p>Analyzing your skill gaps against market data...</p>
                                                                                                          </div>
                                                                                           ) : gaps.length === 0 ? (
                                                                                                          <div style={{ textAlign: 'center', padding: '3rem' }}>
@@ -172,6 +178,7 @@ const SkillGapAnalysis = () => {
                                                                                                                                        return (
                                                                                                                                                       <div
                                                                                                                                                                      key={idx}
+                                                                                                                                                                     className="interactive-card"
                                                                                                                                                                      style={{
                                                                                                                                                                                     padding: '1.25rem',
                                                                                                                                                                                     background: colors.bg,
@@ -179,7 +186,8 @@ const SkillGapAnalysis = () => {
                                                                                                                                                                                     borderRadius: '12px',
                                                                                                                                                                                     display: 'flex',
                                                                                                                                                                                     alignItems: 'center',
-                                                                                                                                                                                    justifyContent: 'space-between'
+                                                                                                                                                                                    justifyContent: 'space-between',
+                                                                                                                                                                                    animationDelay: `${idx * 100}ms`
                                                                                                                                                                      }}
                                                                                                                                                       >
                                                                                                                                                                      <div style={{ flex: 1 }}>
@@ -195,7 +203,8 @@ const SkillGapAnalysis = () => {
                                                                                                                                                                                                                                  background: colors.text,
                                                                                                                                                                                                                                  color: 'white',
                                                                                                                                                                                                                                  borderRadius: '9999px',
-                                                                                                                                                                                                                                 fontWeight: 600
+                                                                                                                                                                                                                                 fontWeight: 600,
+                                                                                                                                                                                                                                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                                                                                                                                                                                                                   }}
                                                                                                                                                                                                    >
                                                                                                                                                                                                                   {gap.priority || 'MEDIUM'} PRIORITY
@@ -219,13 +228,15 @@ const SkillGapAnalysis = () => {
                                                                                                                                                                      <button
                                                                                                                                                                                     onClick={() => handleGeneratePath(gap.skill || gap.name)}
                                                                                                                                                                                     disabled={generating === (gap.skill || gap.name)}
-                                                                                                                                                                                    className="form-button"
+                                                                                                                                                                                    className="form-button hover-scale"
                                                                                                                                                                                     style={{
                                                                                                                                                                                                    margin: 0,
                                                                                                                                                                                                    display: 'flex',
                                                                                                                                                                                                    alignItems: 'center',
                                                                                                                                                                                                    gap: '0.5rem',
-                                                                                                                                                                                                   whiteSpace: 'nowrap'
+                                                                                                                                                                                                   whiteSpace: 'nowrap',
+                                                                                                                                                                                                   background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                                                                                                                                                                                   boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)'
                                                                                                                                                                                     }}
                                                                                                                                                                      >
                                                                                                                                                                                     <FiBook />

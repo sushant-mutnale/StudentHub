@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../api/client';
+import OTPInput from './OTPInput';
 import '../App.css';
 
 const SignupRecruiter = () => {
@@ -15,22 +17,86 @@ const SignupRecruiter = () => {
     website: '',
     description: '',
   });
+
+  // OTP States
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
+    // Reset Verification if email changes
+    if (name === 'email') {
+      setOtpVerified(false);
+      setOtpSent(false);
+      setOtp('');
+    }
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: value,
     });
     setError('');
+  };
+
+  const handleSendOTP = async () => {
+    if (!formData.email || !formData.email.includes('@')) {
+      setError("Please enter a valid email first");
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await api.post('/auth/send-otp', {
+        email: formData.email,
+        purpose: 'signup'
+      });
+      if (data.success) {
+        setOtpSent(true);
+        setSuccess('OTP sent to your email!');
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to send OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async (otpValue) => {
+    setOtp(otpValue);
+    setLoading(true);
+    setError('');
+    try {
+      // Frontend verification (endpoint uses consume=False)
+      const { data } = await api.post('/auth/verify-otp', {
+        email: formData.email,
+        otp: otpValue,
+        purpose: 'signup'
+      });
+      if (data.success) {
+        setOtpVerified(true);
+        setSuccess('Email Verified!');
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Invalid OTP');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    if (!otpVerified) {
+      setError('Please verify your email first.');
+      return;
+    }
+
     setLoading(true);
 
     const payload = {
@@ -41,6 +107,7 @@ const SignupRecruiter = () => {
       contact_number: formData.contactNumber,
       website: formData.website,
       company_description: formData.description,
+      otp: otp // Include OTP for backend verification
     };
 
     const result = await signupRecruiter(payload);
@@ -102,8 +169,34 @@ const SignupRecruiter = () => {
               onChange={handleChange}
               required
               placeholder="Enter your email"
+              disabled={otpVerified}
             />
           </div>
+
+          {/* OTP Section */}
+          {!otpVerified && (
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              {!otpSent ? (
+                <button type="button" className="form-button" style={{ background: '#555' }} onClick={handleSendOTP} disabled={loading}>
+                  {loading ? 'Sending...' : 'Verify Email'}
+                </button>
+              ) : (
+                <div style={{ marginTop: '10px' }}>
+                  <label className="form-label">Enter OTP Sent to Email</label>
+                  <OTPInput onComplete={handleVerifyOTP} disabled={loading} />
+                  <button type="button" className="resend-link" onClick={handleSendOTP} disabled={loading} style={{ marginTop: '5px' }}>
+                    Resend Code
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {otpVerified && (
+            <div className="verified-badge" style={{ color: '#00c851', fontWeight: 'bold', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span>✓</span> Email Verified Successfully
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">Password *</label>
@@ -157,7 +250,7 @@ const SignupRecruiter = () => {
             />
           </div>
 
-          <button type="submit" className="form-button" disabled={loading}>
+          <button type="submit" className="form-button" disabled={loading || !otpVerified}>
             {loading ? 'Creating Account...' : 'Sign Up'}
           </button>
         </form>
@@ -179,4 +272,3 @@ const SignupRecruiter = () => {
 };
 
 export default SignupRecruiter;
-

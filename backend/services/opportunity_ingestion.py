@@ -7,6 +7,7 @@ Sources: Internshala (Apify), Devpost (hackathons), Google News RSS (content)
 import os
 import asyncio
 import hashlib
+import logging
 import feedparser
 import aiohttp
 from typing import List, Dict, Any, Optional
@@ -14,6 +15,8 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 import xml.etree.ElementTree as ET
 import re
+
+logger = logging.getLogger(__name__)
 
 from ..database import get_database
 
@@ -95,45 +98,61 @@ class JobsIngestionService:
     
     def __init__(self):
         self.apify_key = os.getenv("APIFY_API_KEY")
-        self.apify_actor_id = "apify/internshala-scraper"  # Example actor
+        self.apify_actor_id = "salman_bareesh/internshala-scrapper"  # User provided actor
+        # Initialize client if key is present
+        self.client = None
+        if self.apify_key:
+            from apify_client import ApifyClient
+            self.client = ApifyClient(self.apify_key)
     
     async def ingest_from_apify(self, filters: Dict = None) -> List[Dict]:
         """
         Call Apify actor to get Internshala listings.
-        Returns raw data from Apify.
+        Returns raw data from Apify using ApifyClient.
         """
-        if not self.apify_key:
+        if not self.client:
+            logger.warning("Apify Client not initialized. Missing API Key.")
             return []
         
-        url = f"https://api.apify.com/v2/acts/{self.apify_actor_id}/runs"
-        headers = {"Authorization": f"Bearer {self.apify_key}"}
+        # User requested specific input format in their snippet, but for this actor
+        # we typically just need startUrls or specific search queries.
+        # The user's snippet was for google-places, so we adapt for internshala.
+        # The actor "salman_bareesh/internshala-scrapper" usually takes startUrls.
         
-        payload = {
+        run_input = {
             "startUrls": [
                 {"url": "https://internshala.com/internships/"}
             ],
             "maxItems": 50
         }
         if filters:
-            payload.update(filters)
-        
+            run_input.update(filters)
+            
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload, headers=headers) as resp:
-                    if resp.status == 201:
-                        run_info = await resp.json()
-                        run_id = run_info.get("data", {}).get("id")
-                        
-                        # Wait for run to complete (simplified)
-                        await asyncio.sleep(30)
-                        
-                        # Get results
-                        results_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items"
-                        async with session.get(results_url, headers=headers) as results_resp:
-                            if results_resp.status == 200:
-                                return await results_resp.json()
+            # Run the actor and wait for it to finish
+            logger.info(f"Starting Apify Actor: {self.apify_actor_id}")
+            
+            # Run synchronously in a thread pool since ApifyClient is synchronous (or use async client if available? 
+            # actually ApifyClient is sync, ApifyClientAsync is async. Let's use run_in_executor for safety or just sync if fast sufficient.
+            # But wait, python's apify-client has an AsyncApifyClient? 
+            # The user snippet used `ApifyClient` (sync). We should use `ApifyClientAsync` if we are in async context, 
+            # OR wrap the sync client in a thread. 
+            # To match user snippet simplicity, we'll assume sync is fine if we wrap it or if it's quick, 
+            # but web scraping takes time. Let's use ApifyClientAsync for best practice in this async service.
+            
+            from apify_client import ApifyClientAsync
+            async_client = ApifyClientAsync(self.apify_key)
+            
+            run = await async_client.actor(self.apify_actor_id).call(run_input=run_input)
+            
+            logger.info(f"Apify run completed: {run.get('id')}")
+            
+            # Fetch results from the dataset
+            dataset_items = await async_client.dataset(run["defaultDatasetId"]).list_items()
+            return dataset_items.items
+            
         except Exception as e:
-            print(f"Apify ingestion error: {e}")
+            logger.error(f"Apify ingestion failed: {e}", exc_info=True)
         
         return []
     
@@ -271,6 +290,25 @@ class JobsIngestionService:
         # Log ingestion
         await self._log_ingestion("jobs", len(jobs), inserted, updated)
         
+        # [NEW] Fire RAG Vectorization Events for NEW jobs
+        # We only want to vectorize new or updated jobs to save resources
+        if inserted > 0 or updated > 0:
+            try:
+                from ..events.event_bus import event_bus, Events
+                logger.info(f"Publishing RAG events for {len(jobs)} scraped jobs...")
+                for job in jobs:
+                    # optimization: only publish if we think it's new/updated or just fire all (idempotent)
+                    # For now, fire all to ensure consistency
+                    await event_bus.publish(Events.JOB_POSTED, {
+                        "id": job["source_id"], # logic might need mapping to internal DB _id if we used upsert
+                        "title": job.get("title", ""),
+                        "description": job.get("description", "") or job.get("description_snippet", ""),
+                        "company_name": job.get("company", ""),
+                        "location": job.get("location", "")
+                    })
+            except Exception as e:
+                logger.error(f"Failed to publish RAG events for scraped jobs: {e}")
+
         return {
             "source": "internshala",
             "total_fetched": len(jobs),
@@ -350,8 +388,10 @@ class HackathonsIngestionService:
                     if resp.status == 200:
                         content = await resp.text()
                         hackathons = self._parse_devpost_rss(content)
+        except aiohttp.ClientError as e:
+            logger.error(f"Devpost network error: {e}")
         except Exception as e:
-            print(f"Devpost ingestion error: {e}")
+            logger.error(f"Devpost ingestion unexpected error: {e}")
         
         return hackathons
     
@@ -378,7 +418,7 @@ class HackathonsIngestionService:
                 }
                 hackathons.append(hackathon)
         except Exception as e:
-            print(f"RSS parsing error: {e}")
+            logger.error(f"RSS parsing error: {e}")
         
         return hackathons
     
@@ -577,8 +617,10 @@ class ContentIngestionService:
                     if resp.status == 200:
                         content = await resp.text()
                         articles = self._parse_news_rss(content, query, topic)
+        except aiohttp.ClientError as e:
+            logger.error(f"Google News network error: {e}")
         except Exception as e:
-            print(f"Google News ingestion error: {e}")
+            logger.error(f"Google News ingestion unexpected error: {e}")
         
         return articles
     
@@ -601,7 +643,7 @@ class ContentIngestionService:
                 }
                 articles.append(article)
         except Exception as e:
-            print(f"News RSS parsing error: {e}")
+            logger.error(f"News RSS parsing error: {e}")
         
         return articles
     

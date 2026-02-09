@@ -668,7 +668,7 @@ class RecommendationEngine:
                 return True
             return False
         except Exception as e:
-            print(f"Offline computation failed: {e}")
+            logger.error(f"Offline computation failed: {e}")
             return False
 
     async def recommend_jobs(

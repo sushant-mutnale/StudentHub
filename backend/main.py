@@ -38,10 +38,11 @@ from .routes import (
     admin_routes,
     hackathon_routes,
     message_routes,
+    analytics_routes,
 )
 from .utils.auth import hash_password
 from .events.handlers import register_all_handlers
-from .workers import worker_manager, OutboxWorker, OutboxCleanupWorker, RecommendationWorker, RetentionWorker
+from .workers import worker_manager, OutboxWorker, OutboxCleanupWorker, RecommendationWorker, RetentionWorker, IngestionWorker
 from .middleware import RateLimitMiddleware, CorrelationIdMiddleware, IdempotencyMiddleware
 
 app = FastAPI(title="Student Hub API")
@@ -82,6 +83,7 @@ async def startup_event():
         worker_manager.register(OutboxCleanupWorker(poll_interval=3600))
         worker_manager.register(RecommendationWorker(poll_interval=300))
         worker_manager.register(RetentionWorker(poll_interval=86400))
+        worker_manager.register(IngestionWorker(poll_interval=43200)) # 12 hours
         await worker_manager.start_all()
     
     if settings.app_env.lower() != "production":
@@ -125,6 +127,7 @@ app.include_router(application_routes.router)
 app.include_router(verification_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(hackathon_routes.router)
+app.include_router(analytics_routes.router)
 
 
 async def seed_default_users():

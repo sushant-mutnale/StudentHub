@@ -1,10 +1,13 @@
 from datetime import datetime
+import logging
 from typing import List, Optional
 from bson import ObjectId
 from ..database import get_database
 
 def hackathons_collection():
     return get_database()["hackathons"]
+
+logger = logging.getLogger(__name__)
 
 async def list_hackathons(limit=20, skip=0) -> List[dict]:
     """List hackathons with pagination."""
@@ -56,4 +59,4 @@ async def seed_default_hackathons():
             }
         ]
         await hackathons_collection().insert_many(defaults)
-        print("Seeded default hackathons.")
+        logger.info("Seeded default hackathons.")

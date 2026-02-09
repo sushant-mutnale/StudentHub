@@ -1,6 +1,11 @@
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FiHome, FiUser, FiFileText, FiTrendingUp, FiBook, FiMic, FiSearch, FiTarget, FiBell, FiLogOut, FiMessageSquare, FiCalendar, FiClipboard } from 'react-icons/fi';
+import {
+  FiHome, FiUser, FiFileText, FiTrendingUp, FiBook, FiMic, FiSearch,
+  FiTarget, FiBell, FiLogOut, FiMessageSquare, FiCalendar, FiClipboard,
+  FiChevronDown, FiChevronRight, FiBriefcase, FiLayers
+} from 'react-icons/fi';
 import Avatar from './Avatar';
 import '../App.css';
 
@@ -8,6 +13,18 @@ const SidebarLeft = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+
+  // State for expanded groups
+  const [expanded, setExpanded] = useState({
+    learning: true,
+    career: true,
+    assessment: false,
+    communication: false
+  });
+
+  const toggleGroup = (key) => {
+    setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const handleLogout = () => {
     logout();
@@ -18,21 +35,78 @@ const SidebarLeft = () => {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
-  const navItems = [
-    { icon: FiHome, label: 'Dashboard', path: '/dashboard/student' },
-    { icon: FiUser, label: 'Profile', path: '/profile/student' },
-    { icon: FiFileText, label: 'Resume', path: '/resume' },
-    { icon: FiTrendingUp, label: 'Skill Gaps', path: '/skill-gaps' },
-    { icon: FiBook, label: 'Learning', path: '/learning' },
-    { icon: FiMic, label: 'Mock Interview', path: '/mock-interview' },
-    { icon: FiSearch, label: 'Research', path: '/research' },
-    { icon: FiTarget, label: 'Opportunities', path: '/opportunities' },
-    { icon: FiClipboard, label: 'My Applications', path: '/applications' }, // New Module 5 Link
-    { icon: FiClipboard, label: 'Assessment', path: '/assessment' },
-    { icon: FiBell, label: 'Notifications', path: '/smart-notifications' },
-    { icon: FiMessageSquare, label: 'Messages', path: '/messages' },
-    { icon: FiCalendar, label: 'Interviews', path: '/interviews' },
+  // Only expand groups if a child is active (on mount)
+  useEffect(() => {
+    // Logic to auto-expand can be added here
+  }, [location.pathname]);
+
+  const navStructure = [
+    { type: 'link', label: 'Dashboard', icon: FiHome, path: '/dashboard/student' },
+    { type: 'link', label: 'Analytics', icon: FiTrendingUp, path: '/analytics' },
+    { type: 'link', label: 'Profile', icon: FiUser, path: '/profile/student' },
+
+    {
+      type: 'group',
+      label: 'Learning',
+      key: 'learning',
+      icon: FiBook,
+      children: [
+        { label: 'Courses', path: '/learning' },
+        { label: 'Skill Gaps', path: '/skill-gaps' },
+        { label: 'Research', path: '/research' }
+      ]
+    },
+
+    {
+      type: 'group',
+      label: 'Career',
+      key: 'career',
+      icon: FiBriefcase,
+      children: [
+        { label: 'Opportunities', path: '/opportunities' },
+        { label: 'My Applications', path: '/applications' },
+        { label: 'Resume', path: '/resume' },
+        { label: 'Mock Interview', path: '/mock-interview' },
+        { label: 'Interviews', path: '/interviews' }
+      ]
+    },
+
+    {
+      type: 'group',
+      label: 'Assessments',
+      key: 'assessment',
+      icon: FiLayers,
+      children: [
+        { label: 'All Assessments', path: '/assessment' }
+      ]
+    },
+
+    {
+      type: 'group',
+      label: 'Communication',
+      key: 'communication',
+      icon: FiMessageSquare,
+      children: [
+        { label: 'Messages', path: '/messages' },
+        { label: 'Notifications', path: '/smart-notifications' }
+      ]
+    }
   ];
+
+  const renderNavItem = (item, isNested = false) => {
+    const active = isActive(item.path);
+    return (
+      <div
+        key={item.path}
+        className={`nav-item ${active ? 'active' : ''}`}
+        style={{ paddingLeft: isNested ? '3rem' : '1rem' }}
+        onClick={() => navigate(item.path)}
+      >
+        {!isNested && item.icon && <item.icon />}
+        <span>{item.label}</span>
+      </div>
+    );
+  };
 
   return (
     <div className="sidebar-left">
@@ -53,20 +127,39 @@ const SidebarLeft = () => {
         </div>
       )}
       <nav className="sidebar-nav">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <div
-              key={item.path}
-              className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
-              onClick={() => navigate(item.path)}
-            >
-              <Icon />
-              <span>{item.label}</span>
-            </div>
-          );
+        {navStructure.map((item, index) => {
+          if (item.type === 'link') {
+            return renderNavItem(item);
+          }
+
+          if (item.type === 'group') {
+            const isExpanded = expanded[item.key];
+            const Icon = item.icon;
+            return (
+              <div key={item.key} className="nav-group">
+                <div
+                  className="nav-item group-header"
+                  onClick={() => toggleGroup(item.key)}
+                  style={{ justifyContent: 'space-between' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <Icon />
+                    <span>{item.label}</span>
+                  </div>
+                  {isExpanded ? <FiChevronDown /> : <FiChevronRight />}
+                </div>
+                {isExpanded && (
+                  <div className="nav-group-children">
+                    {item.children.map(child => renderNavItem(child, true))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return null;
         })}
-        <div className="nav-item logout" onClick={handleLogout}>
+
+        <div className="nav-item logout" onClick={handleLogout} style={{ marginTop: 'auto' }}>
           <FiLogOut />
           <span>Logout</span>
         </div>

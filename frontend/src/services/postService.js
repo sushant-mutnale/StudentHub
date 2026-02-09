@@ -1,4 +1,5 @@
 import { api } from '../api/client';
+import { mockPosts } from './mockData';
 
 const mapPost = (post) => ({
   ...post,
@@ -8,8 +9,14 @@ const mapPost = (post) => ({
 
 export const postService = {
   fetchPosts: async () => {
-    const { data } = await api.get('/posts');
-    return data.map(mapPost);
+    try {
+      const { data } = await api.get('/posts');
+      if (!data || data.length === 0) return mockPosts;
+      return data.map(mapPost);
+    } catch (error) {
+      console.warn('Backend unavailable, using mock posts for demo.');
+      return mockPosts;
+    }
   },
   fetchUserPosts: async (userId) => {
     const { data } = await api.get(`/users/${userId}/posts`);

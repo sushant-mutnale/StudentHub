@@ -86,6 +86,10 @@ async def signup_recruiter(payload: RecruiterCreate):
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest):
     user = await user_model.get_user_by_username(payload.username)
+    if not user:
+        # Try checking by email if username not found
+        user = await user_model.get_user_by_email(payload.username)
+
     if not user or user.get("role") != payload.role:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -176,7 +180,7 @@ async def verify_otp(payload: VerifyOTPRequest):
     Verify OTP code.
     """
     success, message = await otp_service.verify_otp(
-        payload.email, payload.otp, payload.purpose
+        payload.email, payload.otp, payload.purpose, consume=False
     )
     
     if not success:

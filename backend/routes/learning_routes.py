@@ -99,6 +99,43 @@ async def analyze_gap(
     )
 
 
+
+
+
+@router.post("/agent/gap-analysis")
+async def agent_gap_analysis(
+    payload: GapAnalysisRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Advanced AI Agent for Gap Analysis.
+    Uses RAG to find specific resources for missing skills.
+    """
+    from ..services.gap_analysis_agent import gap_analysis_agent
+    
+    student_skills = payload.student_skills
+    if not student_skills:
+        user_skills = current_user.get("skills", [])
+        student_skills = [
+            s.get("name") if isinstance(s, dict) else str(s)
+            for s in user_skills
+        ]
+        
+    # For now, we assume the frontend sends the job description text or we mock it
+    # We will use the 'job_required_skills' as text proxy if desc missing
+    jd_text = " ".join(payload.job_required_skills or []) + " " + " ".join(payload.job_nice_to_have_skills or [])
+    
+    analysis = await gap_analysis_agent.analyze(
+        student_skills=student_skills,
+        job_description=jd_text
+    )
+    
+    return {
+        "status": "success",
+        "agent_analysis": analysis
+    }
+
+
 @router.get("/gap-recommendations")
 async def get_gap_recommendations(
     target_role: str = "",
@@ -142,6 +179,41 @@ async def get_gap_recommendations(
             for i, gap in enumerate(gaps[:5])
         ]
     }
+
+@router.get("/my-gaps")
+async def get_my_gaps(current_user=Depends(get_current_user)):
+    """Get latest gap analysis for current user"""
+    student_id = str(current_user["_id"])
+    doc = await gap_analyses_collection().find_one(
+        {"student_id": ObjectId(student_id)},
+        sort=[("created_at", -1)]
+    )
+    if not doc:
+        return {"status": "success", "gaps": [], "message": "No gap analysis found"}
+    
+    doc["id"] = str(doc["_id"])
+    doc["student_id"] = str(doc["student_id"])
+    doc.pop("_id")
+    return doc
+
+
+@router.get("/gap-analysis/{job_id}")
+async def get_gap_analysis_for_job(job_id: str, current_user=Depends(get_current_user)):
+    """Get gap analysis for specific job"""
+    student_id = str(current_user["_id"])
+    doc = await gap_analyses_collection().find_one(
+        {"student_id": ObjectId(student_id), "job_id": job_id},
+        sort=[("created_at", -1)]
+    )
+    if not doc:
+        # Return empty or specific status
+        return {"status": "success", "gaps": [], "message": "No analysis found for this job"}
+    
+    doc["id"] = str(doc["_id"])
+    doc["student_id"] = str(doc["student_id"])
+    doc.pop("_id")
+    return doc
+
 
 
 # ============ Learning Path Endpoints ============
@@ -399,3 +471,38 @@ async def get_learning_path(path_id: str, current_user=Depends(get_current_user)
         created_at=path.get("created_at"),
         updated_at=path.get("updated_at")
     )
+
+
+@router.post("/ask", response_model=dict)
+async def ask_learning_coach(
+    request: dict,
+    current_user=Depends(get_current_user)
+):
+    """
+    Ask the AI Learning Coach a question about a specific topic/context.
+    Payload: {"context": "Week 1: Python Basics", "question": "What is a list comprehension?"}
+    """
+    context = request.get("context", "General Learning")
+    question = request.get("question", "")
+    
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+        
+    try:
+        # Lazy import to avoid circular dep if any
+        from ..services.llm_service import llm_service
+        
+        prompt = f"""
+        You are a helpful AI Tutor.
+        Context: {context}
+        Student Question: {question}
+        
+        Answer properly, concisely, and encouragingly.
+        """
+        
+        response = await llm_service.generate(prompt, "You are a friendly technical tutor.")
+        return {"answer": response}
+        
+    except Exception as e:
+        print(f"Chatbot Error: {e}")
+        return {"answer": "I'm having trouble connecting to the knowledge base right now. Please try again later."}

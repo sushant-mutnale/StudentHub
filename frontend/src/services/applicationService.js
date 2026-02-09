@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = 'https://studenthub-i7pa.onrender.com';
+import { mockApplications } from './mockData';
+
+const API_URL = 'http://127.0.0.1:8000';
 
 const getAuthHeader = () => {
                const token = localStorage.getItem('token');
@@ -23,14 +25,19 @@ export const applicationService = {
 
                // Get student's applications
                getStudentApplications: async () => {
-                              const response = await axios.get(`${API_URL}/applications/my`, getAuthHeader());
-                              return response.data;
+                              try {
+                                             const response = await axios.get(`${API_URL}/applications/my`, getAuthHeader());
+                                             return response.data;
+                              } catch (error) {
+                                             console.warn('Backend unavailable, using mock applications for demo.');
+                                             return mockApplications;
+                              }
                },
 
                // Move application stage
                moveStage: async (applicationId, stageId, note = "") => {
-                              const response = await axios.post(
-                                             `${API_URL}/applications/${applicationId}/move`,
+                              const response = await axios.put(
+                                             `${API_URL}/applications/${applicationId}/stage`,
                                              { new_stage_id: stageId, note },
                                              getAuthHeader()
                               );

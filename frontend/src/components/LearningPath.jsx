@@ -26,9 +26,11 @@ const LearningPath = () => {
                const loadPaths = async () => {
                               try {
                                              const data = await learningService.getMyPaths();
-                                             setPaths(data.paths || data || []);
-                                             if (data.paths?.length > 0 || data?.length > 0) {
-                                                            setActivePath((data.paths || data)[0]);
+                                             // Backend returns my_paths or learning_paths
+                                             const list = data.learning_paths || data.paths || (Array.isArray(data) ? data : []);
+                                             setPaths(list);
+                                             if (list.length > 0) {
+                                                            setActivePath(list[0]);
                                              }
                               } catch (err) {
                                              console.error('Failed to load paths:', err);
@@ -67,6 +69,41 @@ const LearningPath = () => {
                               if (!path?.stages) return 0;
                               const completed = path.stages.filter(s => s.completed).length;
                               return Math.round((completed / path.stages.length) * 100);
+               };
+
+               // Chatbot State
+               const [isChatOpen, setIsChatOpen] = useState(false);
+               const [chatHistory, setChatHistory] = useState([
+                              { role: 'assistant', content: 'Hi! I\'m your AI Mentor. Ask me anything about your learning path!' }
+               ]);
+               const [chatInput, setChatInput] = useState('');
+               const [asking, setAsking] = useState(false);
+
+               const handleAskAI = async () => {
+                              if (!chatInput.trim()) return;
+
+                              const userMsg = { role: 'user', content: chatInput };
+                              setChatHistory(prev => [...prev, userMsg]);
+                              setAsking(true);
+                              setChatInput('');
+
+                              try {
+                                             // Context: Active Path + Current Stage if possible
+                                             const context = activePath ?
+                                                            `Learning Path: ${activePath.skill || activePath.name}. Structure: ${activePath.stages?.map(s => s.stage_name).join(', ')}`
+                                                            : 'General Learning';
+
+                                             const res = await learningService.askCoach({
+                                                            context: context,
+                                                            question: userMsg.content
+                                             });
+
+                                             setChatHistory(prev => [...prev, { role: 'assistant', content: res.answer }]);
+                              } catch (err) {
+                                             setChatHistory(prev => [...prev, { role: 'assistant', content: 'Sorry, I couldn\'t reach the server. Try again!' }]);
+                              } finally {
+                                             setAsking(false);
+                              }
                };
 
                if (!user) return null;
@@ -173,20 +210,68 @@ const LearningPath = () => {
                                                                                                                                        <div style={{ marginBottom: '1.5rem' }}>
                                                                                                                                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                                                                                                                                      <h2 style={{ color: '#1e293b', margin: 0 }}>{activePath.skill || activePath.name}</h2>
-                                                                                                                                                                     <span style={{
-                                                                                                                                                                                    padding: '0.5rem 1rem',
-                                                                                                                                                                                    background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                                                                                                                                                                                    color: 'white',
-                                                                                                                                                                                    borderRadius: '9999px',
-                                                                                                                                                                                    fontWeight: 600
-                                                                                                                                                                     }}>
-                                                                                                                                                                                    {getProgress(activePath)}% Complete
-                                                                                                                                                                     </span>
+                                                                                                                                                                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                                                                                                                                                                    <button
+                                                                                                                                                                                                   onClick={() => setIsChatOpen(!isChatOpen)}
+                                                                                                                                                                                                   className="form-button"
+                                                                                                                                                                                                   style={{ background: '#8b5cf6', margin: 0 }}
+                                                                                                                                                                                    >
+                                                                                                                                                                                                   {isChatOpen ? 'Close Chat' : 'Ask AI Mentor'}
+                                                                                                                                                                                    </button>
+                                                                                                                                                                                    <span style={{
+                                                                                                                                                                                                   padding: '0.5rem 1rem',
+                                                                                                                                                                                                   background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                                                                                                                                                                                                   color: 'white',
+                                                                                                                                                                                                   borderRadius: '9999px',
+                                                                                                                                                                                                   fontWeight: 600
+                                                                                                                                                                                    }}>
+                                                                                                                                                                                                   {getProgress(activePath)}% Complete
+                                                                                                                                                                                    </span>
+                                                                                                                                                                     </div>
                                                                                                                                                       </div>
                                                                                                                                                       {activePath.description && (
                                                                                                                                                                      <p style={{ color: '#64748b', marginTop: '0.5rem' }}>{activePath.description}</p>
                                                                                                                                                       )}
                                                                                                                                        </div>
+
+                                                                                                                                       {/* Chatbot Interface */}
+                                                                                                                                       {isChatOpen && (
+                                                                                                                                                      <div style={{ marginBottom: '2rem', padding: '1rem', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                                                                                                                                                                     <div style={{ height: '200px', overflowY: 'auto', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                                                                                                                                                    {chatHistory.map((msg, i) => (
+                                                                                                                                                                                                   <div key={i} style={{
+                                                                                                                                                                                                                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                                                                                                                                                                                                                  background: msg.role === 'user' ? '#3b82f6' : '#e2e8f0',
+                                                                                                                                                                                                                  color: msg.role === 'user' ? 'white' : '#1e293b',
+                                                                                                                                                                                                                  padding: '0.5rem 1rem',
+                                                                                                                                                                                                                  borderRadius: '8px',
+                                                                                                                                                                                                                  maxWidth: '80%'
+                                                                                                                                                                                                   }}>
+                                                                                                                                                                                                                  {msg.content}
+                                                                                                                                                                                                   </div>
+                                                                                                                                                                                    ))}
+                                                                                                                                                                     </div>
+                                                                                                                                                                     <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                                                                                                                                                    <input
+                                                                                                                                                                                                   type="text"
+                                                                                                                                                                                                   value={chatInput}
+                                                                                                                                                                                                   onChange={e => setChatInput(e.target.value)}
+                                                                                                                                                                                                   onKeyDown={e => e.key === 'Enter' && handleAskAI()}
+                                                                                                                                                                                                   placeholder="Ask about this topic..."
+                                                                                                                                                                                                   className="form-input"
+                                                                                                                                                                                                   style={{ marginBottom: 0 }}
+                                                                                                                                                                                    />
+                                                                                                                                                                                    <button
+                                                                                                                                                                                                   onClick={handleAskAI}
+                                                                                                                                                                                                   className="form-button"
+                                                                                                                                                                                                   disabled={asking}
+                                                                                                                                                                                                   style={{ marginBottom: 0 }}
+                                                                                                                                                                                    >
+                                                                                                                                                                                                   {asking ? '...' : 'Send'}
+                                                                                                                                                                                    </button>
+                                                                                                                                                                     </div>
+                                                                                                                                                      </div>
+                                                                                                                                       )}
 
                                                                                                                                        {/* Timeline */}
                                                                                                                                        <div style={{ position: 'relative' }}>
@@ -245,7 +330,7 @@ const LearningPath = () => {
                                                                                                                                                                                                    border: `1px solid ${stage.completed ? '#bbf7d0' : '#e2e8f0'}`
                                                                                                                                                                                     }}>
                                                                                                                                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                                                                                                                                                                                                  <h4 style={{ margin: 0, color: '#1e293b' }}>{stage.title || stage.name}</h4>
+                                                                                                                                                                                                                  <h4 style={{ margin: 0, color: '#1e293b' }}>{stage.title || stage.name || stage.stage_name}</h4>
                                                                                                                                                                                                                   {stage.duration && (
                                                                                                                                                                                                                                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#64748b' }}>
                                                                                                                                                                                                                                                 <FiClock /> {stage.duration}
@@ -253,7 +338,7 @@ const LearningPath = () => {
                                                                                                                                                                                                                   )}
                                                                                                                                                                                                    </div>
                                                                                                                                                                                                    <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
-                                                                                                                                                                                                                  {stage.description}
+                                                                                                                                                                                                                  {stage.description || stage.goal}
                                                                                                                                                                                                    </p>
 
                                                                                                                                                                                                    {/* Resources */}

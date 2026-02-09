@@ -35,6 +35,23 @@ def test_db_lifecycle():
     # We'll creating a temporary one for fixtures/cleanup.
     pass # Managed by app startup or manual client below
 
+@pytest.fixture(scope="session", autouse=True)
+def mock_otp_service():
+    """Mock OTP service to allow signups without actual OTP verification."""
+    from unittest.mock import AsyncMock, patch
+    
+    # Mock verify_otp to always return success
+    async def mock_verify_otp(email, otp, purpose, consume=True):
+        return True, "OTP verified (mocked)"
+    
+    # Mock generate_otp to return a fake OTP
+    async def mock_generate_otp(email, purpose):
+        return "123456"
+    
+    with patch("backend.services.otp_service.otp_service.verify_otp", new=mock_verify_otp):
+        with patch("backend.services.otp_service.otp_service.generate_otp", new=mock_generate_otp):
+            yield
+
 @pytest.fixture(scope="function", autouse=True)
 def clear_db():
     """Clean database between tests."""

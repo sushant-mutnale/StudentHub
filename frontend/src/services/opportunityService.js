@@ -1,22 +1,35 @@
-import { api } from '../api/client';
+import { mockJobs } from './mockData';
 
 export const opportunityService = {
                // Get jobs with filters
                getJobs: async (filters = {}) => {
-                              const { data } = await api.get('/opportunities/jobs', { params: filters });
-                              return data;
+                              try {
+                                             const { data } = await api.get('/opportunities/jobs', { params: filters });
+                                             return data;
+                              } catch (error) {
+                                             console.warn('Backend unavailable, using mock jobs for demo.');
+                                             return mockJobs;
+                              }
                },
 
                // Get hackathons
                getHackathons: async (filters = {}) => {
-                              const { data } = await api.get('/opportunities/hackathons', { params: filters });
-                              return data;
+                              try {
+                                             const { data } = await api.get('/opportunities/hackathons', { params: filters });
+                                             return data;
+                              } catch (error) {
+                                             return [];
+                              }
                },
 
                // Get trending content
                getContent: async (filters = {}) => {
-                              const { data } = await api.get('/opportunities/content', { params: filters });
-                              return data;
+                              try {
+                                             const { data } = await api.get('/opportunities/content', { params: filters });
+                                             return data;
+                              } catch (error) {
+                                             return [];
+                              }
                },
 
                // Get single job details

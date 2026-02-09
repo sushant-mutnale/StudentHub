@@ -159,49 +159,63 @@ const JobDetail = () => {
           </div>
 
           {isStudent && (
-            <div className="job-item" style={{ maxWidth: 800, margin: '1.5rem auto 0' }}>
-              <h2 style={{ marginBottom: '0.75rem' }}>Apply to this job</h2>
-              {applySuccess && (
-                <div className="success-message" style={{ marginBottom: '0.5rem' }}>
-                  {applySuccess}
-                </div>
-              )}
-              {error && (
-                <div className="error-message" style={{ marginBottom: '0.5rem' }}>
-                  {error}
-                </div>
-              )}
-              <form onSubmit={handleApply} className="auth-form">
-                <div className="form-group">
-                  <label className="form-label">Message to recruiter *</label>
-                  <textarea
-                    className="form-textarea"
-                    rows="4"
-                    value={applyMessage}
-                    onChange={(e) => setApplyMessage(e.target.value)}
-                    placeholder="Briefly explain why you're a good fit for this role..."
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Resume URL (optional)</label>
-                  <input
-                    type="url"
-                    className="form-input"
-                    value={applyResumeUrl}
-                    onChange={(e) => setApplyResumeUrl(e.target.value)}
-                    placeholder="https://drive.google.com/your-resume"
-                  />
-                </div>
-                <button
-                  type="submit"
+            <>
+              <div className="job-item" style={{ maxWidth: 800, margin: '1.5rem auto 0', padding: '1.5rem', textAlign: 'center', backgroundColor: '#f0f9ff', borderColor: '#bae6fd', borderLeft: '4px solid #0284c7' }}>
+                <h3 style={{ color: '#0f172a', marginBottom: '0.5rem', fontSize: '1.1rem' }}>🤖 Prepare for this Role</h3>
+                <p style={{ marginBottom: '1rem', color: '#64748b', fontSize: '0.95rem' }}>Practice with our AI Interviewer tailored to this job description.</p>
+                <Link
+                  to={`/interviews/agent/${jobId}`}
                   className="form-button"
-                  disabled={applyLoading || !applyMessage.trim()}
+                  style={{ backgroundColor: '#0284c7', display: 'inline-block', width: 'auto', padding: '0.75rem 1.5rem', textDecoration: 'none' }}
                 >
-                  {applyLoading ? 'Submitting...' : 'Submit Application'}
-                </button>
-              </form>
-            </div>
+                  Start AI Interview
+                </Link>
+              </div>
+
+              <div className="job-item" style={{ maxWidth: 800, margin: '1.5rem auto 0' }}>
+                <h2 style={{ marginBottom: '0.75rem' }}>Apply to this job</h2>
+                {applySuccess && (
+                  <div className="success-message" style={{ marginBottom: '0.5rem' }}>
+                    {applySuccess}
+                  </div>
+                )}
+                {error && (
+                  <div className="error-message" style={{ marginBottom: '0.5rem' }}>
+                    {error}
+                  </div>
+                )}
+                <form onSubmit={handleApply} className="auth-form">
+                  <div className="form-group">
+                    <label className="form-label">Message to recruiter *</label>
+                    <textarea
+                      className="form-textarea"
+                      rows="4"
+                      value={applyMessage}
+                      onChange={(e) => setApplyMessage(e.target.value)}
+                      placeholder="Briefly explain why you're a good fit for this role..."
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Resume URL (optional)</label>
+                    <input
+                      type="url"
+                      className="form-input"
+                      value={applyResumeUrl}
+                      onChange={(e) => setApplyResumeUrl(e.target.value)}
+                      placeholder="https://drive.google.com/your-resume"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="form-button"
+                    disabled={applyLoading || !applyMessage.trim()}
+                  >
+                    {applyLoading ? 'Submitting...' : 'Submit Application'}
+                  </button>
+                </form>
+              </div>
+            </>
           )}
 
           {isRecruiter && (

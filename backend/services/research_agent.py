@@ -10,10 +10,13 @@ import json
 import asyncio
 import hashlib
 from typing import Dict, List, Any, Optional
+import logging
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 import aiohttp
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -207,34 +210,69 @@ class DeepResearchTool:
     
     # ============ Search Methods ============
     
+    # ============ Search Methods ============
+    
     async def _search_serp(self, query: str, max_results: int = 5) -> List[Dict]:
-        """Search using SerpAPI."""
-        if not self.SERP_API_KEY:
-            return []
+        """Search using SerpAPI or Tavily (fallback)."""
         
+        # 1. Try SerpAPI if key exists
+        if self.SERP_API_KEY:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    params = {
+                        "q": query,
+                        "api_key": self.SERP_API_KEY,
+                        "num": max_results,
+                        "engine": "google"
+                    }
+                    async with session.get(self.SERP_API_URL, params=params, timeout=10) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            organic = data.get("organic_results", [])
+                            return [
+                                {
+                                    "title": r.get("title", ""),
+                                    "url": r.get("link", ""),
+                                    "snippet": r.get("snippet", "")
+                                }
+                                for r in organic[:max_results]
+                            ]
+            except Exception as e:
+                logger.error(f"SerpAPI error: {e}")
+
+        # 2. Try Tavily if SerpAPI key missing or failed
+        tavily_key = os.getenv("TAVILY_API_KEY")
+        if tavily_key:
+            return await self._search_tavily(query, max_results, tavily_key)
+        
+        return []
+
+    async def _search_tavily(self, query: str, max_results: int, api_key: str) -> List[Dict]:
+        """Search using Tavily API."""
         try:
+            url = "https://api.tavily.com/search"
+            payload = {
+                "query": query,
+                "api_key": api_key,
+                "search_depth": "basic",
+                "max_results": max_results
+            }
+            
             async with aiohttp.ClientSession() as session:
-                params = {
-                    "q": query,
-                    "api_key": self.SERP_API_KEY,
-                    "num": max_results,
-                    "engine": "google"
-                }
-                
-                async with session.get(self.SERP_API_URL, params=params, timeout=10) as resp:
+                async with session.post(url, json=payload, timeout=10) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        organic = data.get("organic_results", [])
+                        results = data.get("results", [])
                         return [
                             {
                                 "title": r.get("title", ""),
-                                "url": r.get("link", ""),
-                                "snippet": r.get("snippet", "")
+                                "url": r.get("url", ""),
+                                "snippet": r.get("content", "")
                             }
-                            for r in organic[:max_results]
+                            for r in results
                         ]
         except Exception as e:
-            print(f"SerpAPI error: {e}")
+            logger.error(f"Tavily API error: {e}")
         
         return []
     
@@ -255,7 +293,7 @@ class DeepResearchTool:
                         html = await resp.text()
                         return self._extract_text(html)
         except Exception as e:
-            print(f"Scraping error for {url}: {e}")
+            logger.error(f"Scraping error for {url}: {e}")
         
         return None
     

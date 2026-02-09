@@ -15,7 +15,8 @@ def test_signup_student(client: TestClient):
         "prn": "PRN12345",
         "college": "Test College",
         "branch": "CS",
-        "year": "2024"
+        "year": "2024",
+        "otp": "123456"
     }
     response = client.post("/auth/signup/student", json=payload)
     if response.status_code != 200:
@@ -38,7 +39,8 @@ def test_signup_duplicate_email(client: TestClient):
         "prn": "PRN999",
         "college": "Test U",
         "branch": "IT",
-        "year": "2025"
+        "year": "2025",
+        "otp": "123456"
     }
     # First signup
     client.post("/auth/signup/student", json=payload)
@@ -63,7 +65,8 @@ def test_login_success(client: TestClient):
         "prn": "PRN555",
         "college": "Login U",
         "branch": "Login Branch",
-        "year": "2026"
+        "year": "2026",
+        "otp": "123456"
     })
     
     # Login

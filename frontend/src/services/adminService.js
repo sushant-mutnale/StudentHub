@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'https://studenthub-i7pa.onrender.com';
+import API_URL from '../config/api';
 
 const getAuthHeader = () => {
                const token = localStorage.getItem('token');

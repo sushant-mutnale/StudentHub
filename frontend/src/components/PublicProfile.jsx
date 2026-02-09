@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { postService } from '../services/postService';
 import { userService } from '../services/userService';
+import { useAuth } from '../contexts/AuthContext';
 import Avatar from './Avatar';
 import '../App.css';
 
 const PublicProfile = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +106,15 @@ const PublicProfile = () => {
               {isStudent ? 'Student' : 'Recruiter'}
             </p>
           </div>
+          {user && user.id !== userId && (
+            <button
+              className="post-button"
+              style={{ marginLeft: 'auto' }}
+              onClick={() => navigate(`/messages?compose=true&recipientId=${userId}`)}
+            >
+              Message
+            </button>
+          )}
         </div>
 
         {profile.bio && <p className="profile-bio">{profile.bio}</p>}

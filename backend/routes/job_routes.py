@@ -51,6 +51,21 @@ async def create_job(payload: JobCreate, recruiter=Depends(get_current_recruiter
         "JOB_CREATED", 
         {"job_id": str(doc["_id"]), "title": doc.get("title")}
     )
+    
+    # [NEW] Publish Event for RAG Vectorization
+    try:
+        from ..events.event_bus import event_bus, Events
+        await event_bus.publish(Events.JOB_POSTED, {
+            "id": str(doc["_id"]),
+            "title": doc.get("title", ""),
+            "description": doc.get("description", ""),
+            "company_name": doc.get("company_name", ""),
+            "location": doc.get("location", "")
+        })
+    except Exception as e:
+        # Don't fail the request if event publishing fails
+        print(f"Failed to publish JOB_POSTED event: {e}")
+
     return db_job_to_public(doc)
 
 
@@ -80,6 +95,61 @@ async def list_jobs(
         skip=skip,
     )
     return [db_job_to_public(job) for job in jobs]
+
+
+@router.post("/search/semantic", response_model=list[JobResponse])
+async def search_jobs_semantic(
+    query: str, 
+    limit: int = 20, 
+    current_user=Depends(get_current_user)
+):
+    """
+    AI-Powered Semantic Search using RAG.
+    Finds jobs based on meaning interaction, not just keywords.
+    """
+    try:
+        from ..services.rag_manager import rag_manager
+        from bson import ObjectId
+        
+        # 1. Search Pinecone for vectors
+        matches = await rag_manager.search_public(query, limit=limit)
+        
+        if not matches:
+            return []
+            
+        # 2. Extract Job IDs form metadata
+        job_ids = []
+        for match in matches:
+             # Our ID format in Pinecone is "job_{id}"
+             if match.id.startswith("job_"):
+                 job_ids.append(match.id.replace("job_", ""))
+        
+        # 3. Fetch full job details from MongoDB preserving rank order
+        valid_ids = []
+        for jid in job_ids:
+            try:
+                valid_ids.append(ObjectId(jid))
+            except:
+                continue
+        
+        if not valid_ids:
+            return []
+
+        db_jobs = await job_model.jobs_collection().find({"_id": {"$in": valid_ids}}).to_list(length=len(valid_ids))
+        
+        # Re-order based on relevance (Pinecone rank)
+        job_map = {str(j["_id"]): j for j in db_jobs}
+        ordered_jobs = []
+        for jid in job_ids:
+            if jid in job_map:
+                ordered_jobs.append(job_map[jid])
+                
+        return [db_job_to_public(job) for job in ordered_jobs]
+        
+    except Exception as e:
+        print(f"Semantic search failed: {e}")
+        # Return empty list on failure rather than 500
+        return []
 
 
 @router.get("/my", response_model=list[JobResponse])

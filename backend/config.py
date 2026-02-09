@@ -11,16 +11,16 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_db: str = "student_hub"
     
-    # Redis
-    redis_host: str = "redis-10898.c232.us-east-1-2.ec2.cloud.redislabs.com"
-    redis_port: int = 10898
+    # Redis (MUST be set in .env)
+    redis_host: str = "localhost"
+    redis_port: int = 6379
     redis_username: str = "default"
-    redis_password: Optional[str] = "WsixNP6MHjEJJ0p27Kzrs2CCBj1roH2G"
+    redis_password: Optional[str] = None  # Loaded from .env
     redis_db: int = 0
     redis_ssl: bool = False
     
-    # Authentication
-    jwt_secret: str = "change-me"
+    # Authentication (MUST be set in .env for production)
+    jwt_secret: str = "dev-only-change-me-in-production"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
     
@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     
     # AI Services - OpenAI (Optional)
     openai_api_key: Optional[str] = None
+    
+    # AI Services - Pinecone (Memory/RAG)
+    pinecone_api_key: Optional[str] = None
+    pinecone_index: str = "studenthub"
+
+    # Scrapers
+    apify_api_key: Optional[str] = None
     
     # Rate Limiting
     rate_limit_enabled: bool = True

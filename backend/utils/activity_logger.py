@@ -1,5 +1,8 @@
 from typing import Any, Dict, Optional
+import logging
 from ..models import activity as activity_model
+
+logger = logging.getLogger(__name__)
 
 async def log_activity(
     user_id: str, 
@@ -14,4 +17,4 @@ async def log_activity(
         await activity_model.log_activity(user_id, event_type, metadata)
     except Exception as e:
         # We don't want activity logging to break the main flow
-        print(f"Error logging activity {event_type} for user {user_id}: {e}")
+        logger.error(f"Error logging activity {event_type} for user {user_id}: {e}")

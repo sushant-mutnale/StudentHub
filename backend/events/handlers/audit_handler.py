@@ -209,8 +209,8 @@ async def handle_audited_event(event: Event):
         severity = "critical"
     
     await audit_logger.log(
-        action=event.type.value,
-        actor_id=event.actor_id or payload.get("actor_id") or "system",
+        action=str(event.type),
+        actor_id=payload.get("actor_id") or "system",
         resource_type=resource_type,
         resource_id=resource_id or "unknown",
         before_state=payload.get("before_state"),
@@ -225,10 +225,9 @@ def register_audit_handlers():
     """Register audit handlers for all audited events."""
     
     for event_type in AUDITED_EVENTS:
-        event_bus.register_handler(
+        event_bus.subscribe(
             event_type,
-            handle_audited_event,
-            priority=100  # Highest priority - always audit first
+            handle_audited_event
         )
     
     logger.info(f"Registered audit handlers for {len(AUDITED_EVENTS)} event types")

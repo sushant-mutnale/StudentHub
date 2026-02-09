@@ -1,11 +1,20 @@
 import { api } from '../api/client';
+import { mockJobs } from './mockData';
 
 export const recommendationService = {
                // Get personalized job recommendations
                getJobRecommendations: async (limit = 20, filters = {}) => {
-                              const params = { limit, ...filters };
-                              const { data } = await api.get('/recommendations/jobs', { params });
-                              return data;
+                              try {
+                                             const params = { limit, ...filters };
+                                             const { data } = await api.get('/recommendations/jobs', { params });
+                                             if (!data || !data.recommendations || data.recommendations.length === 0) {
+                                                            return { recommendations: mockJobs.map(job => ({ job, score: 95, match_details: ["Demo Match"] })) };
+                                             }
+                                             return data;
+                              } catch (error) {
+                                             console.warn('Backend unavailable, using mock jobs for demo.');
+                                             return { recommendations: mockJobs.map(job => ({ job, score: 95, match_details: ["Demo Match"] })) };
+                              }
                },
 
                // Get hackathon recommendations

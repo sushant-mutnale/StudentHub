@@ -153,6 +153,63 @@ class LearningPathBuilder:
         else:
             return ["beginner", "intermediate", "advanced"]
     
+    async def generate_curriculum(
+        self,
+        skill: str,
+        current_level: int,
+        target_level: int,
+        current_skills: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Generate a comprehensive Week-by-Week Learning Curriculum using LLM.
+        Includes topics, daily tasks, and FREE learning resources.
+        """
+        llm = self._get_llm_service()
+        if not llm:
+            return None
+
+        duration_weeks = self.estimate_duration(current_level, target_level)
+        if duration_weeks == 0: duration_weeks = 4 # Default to 4 weeks if gap is small but user requested path
+        
+        prompt = f"""
+        Act as a Senior Technical Mentor. Create a detailed {duration_weeks}-Week Learning Plan for '{skill}'.
+        
+        User Context:
+        - Current Level: {current_level}/100
+        - Target Level: {target_level}/100
+        - Existing Skills: {", ".join(current_skills)}
+        
+        Requirements:
+        1. Break down into Weeks.
+        2. For each week, provide a Topic and a clear Goal.
+        3. Provide 3-4 actionable Tasks per week.
+        4. CRITICAL: Provide 2-3 FREE HIGH-QUALITY LEARNING RESOURCES (Documentation, Youtube, Tutorials) for each week.
+           - Include 'title', 'url', and 'type' (video/article/docs).
+        
+        Output JSON Format ONLY:
+        {{
+            "weeks": [
+                {{
+                    "week": 1,
+                    "topic": "Topic Name",
+                    "goal": "Week Goal",
+                    "tasks": ["Task 1", "Task 2"],
+                    "resources": [
+                        {{"title": "Docs Name", "url": "https://...", "type": "documentation"}}
+                    ]
+                }}
+            ]
+        }}
+        """
+        
+        try:
+            response = await llm.generate(prompt, "You are a curriculum developer. Output strict JSON.")
+            clean_json = response.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_json)
+        except Exception as e:
+            # logger.error(f"Curriculum Generation Failed: {e}")
+            return None
+
     async def _generate_ai_personalization(
         self,
         skill: str,
@@ -161,37 +218,22 @@ class LearningPathBuilder:
         target_level: int,
         priority: str
     ) -> Dict[str, Any]:
-        """Generate AI-powered personalization for a learning path."""
-        llm = self._get_llm_service()
+        """
+        Generate AI-powered personalization for a learning path.
+        NOW ENHANCED to use generate_curriculum for structure.
+        """
+        # Try to generate full curriculum
+        curriculum = await self.generate_curriculum(skill, current_level, target_level, current_skills)
         
-        if llm is None:
-            return self._generate_rule_personalization(skill, priority)
-        
-        try:
-            from .ai_prompts import PERSONALIZED_PATH_PROMPT, LEARNING_COACH_SYSTEM
+        if curriculum and "weeks" in curriculum:
+            return {
+                "ai_advice": f"I've created a custom {len(curriculum['weeks'])}-week plan for you to master {skill}.",
+                "ai_powered": True,
+                "curriculum": curriculum # Pass this through to the path builder
+            }
             
-            prompt = PERSONALIZED_PATH_PROMPT.format(
-                skill=skill,
-                current_skills=", ".join(current_skills) if current_skills else "Not specified",
-                experience_level="Beginner" if current_level < 30 else "Intermediate" if current_level < 60 else "Advanced",
-                hours_per_week=10,  # Default assumption
-                priority=priority,
-                current_level=current_level,
-                target_level=target_level
-            )
-            
-            response = await llm.generate(prompt, LEARNING_COACH_SYSTEM)
-            
-            if response and not response.startswith("Error"):
-                return {
-                    "ai_advice": response.strip(),
-                    "ai_powered": True
-                }
-            else:
-                return self._generate_rule_personalization(skill, priority)
-                
-        except Exception:
-            return self._generate_rule_personalization(skill, priority)
+        # Fallback to old simple advice if curriculum fails
+        return self._generate_rule_personalization(skill, priority)
     
     def _generate_rule_personalization(self, skill: str, priority: str) -> Dict[str, Any]:
         """Generate rule-based personalization (fallback)."""
@@ -267,36 +309,66 @@ class LearningPathBuilder:
         else:
             personalization = self._generate_rule_personalization(skill, priority)
         
-        weeks_per_stage = max(1, total_weeks // len(stage_levels))
-        
         stages = []
-        stage_names = {
-            "beginner": "Foundation",
-            "intermediate": "Core Concepts",
-            "advanced": "Advanced Skills"
-        }
         
-        for i, level in enumerate(stage_levels, start=1):
-            resources = self.fetch_resources(skill, level)
-            topics = self.fetch_topics(skill, level)
+        # [NEW] specific logic for AI Curriculum
+        if personalization.get("curriculum"):
+            curriculum = personalization["curriculum"]
+            weeks = curriculum.get("weeks", [])
+            total_weeks = len(weeks)
             
-            stage = {
-                "stage_number": i,
-                "stage_name": stage_names.get(level, level.title()),
-                "level": level,
-                "duration_weeks": weeks_per_stage,
-                "topics": topics,
-                "resources": resources,
-                "assessment": {
-                    "type": "quiz",
-                    "questions_count": 10,
-                    "passing_score": 70
-                },
-                "status": "not_started",
-                "completed_at": None
+            for i, week in enumerate(weeks, start=1):
+                # Map resources to our schema
+                resources = []
+                for res in week.get("resources", []):
+                    resources.append({
+                        "resource_id": str(uuid.uuid4()),
+                        "type": res.get("type", "article"),
+                        "title": res.get("title", "Resource"),
+                        "url": res.get("url", "#"),
+                        "duration_minutes": 45, # Default estimation
+                        "source": "AI Recommendation",
+                        "completed": False,
+                        "completed_at": None
+                    })
+                
+                stages.append({
+                    "stage_number": week.get("week", i),
+                    "stage_name": f"Week {week.get('week', i)}: {week.get('topic', 'Topic')}",
+                    "level": "intermediate", # Generalized
+                    "duration_weeks": 1,
+                    "topics": week.get("tasks", []), # Use tasks as detailed topics
+                    "resources": resources,
+                    "goal": week.get("goal", ""),
+                    "status": "not_started",
+                    "completed_at": None
+                })
+        else:
+            # Fallback to old logic
+            current_stage_levels = self.determine_stages(current_level, target_level) # Renamed to avoid confusion
+            weeks_per_stage = max(1, total_weeks // len(current_stage_levels)) if current_stage_levels else 1
+            
+            stage_names = {
+                "beginner": "Foundation",
+                "intermediate": "Core Concepts",
+                "advanced": "Advanced Skills"
             }
-            stages.append(stage)
-        
+            
+            for i, level in enumerate(current_stage_levels, start=1):
+                resources = self.fetch_resources(skill, level)
+                topics = self.fetch_topics(skill, level)
+                
+                stages.append({
+                    "stage_number": i,
+                    "stage_name": stage_names.get(level, level.title()),
+                    "level": level,
+                    "duration_weeks": weeks_per_stage,
+                    "topics": topics,
+                    "resources": resources,
+                    "status": "not_started",
+                    "completed_at": None
+                })
+
         completion_date = datetime.utcnow() + timedelta(weeks=total_weeks)
         
         return {

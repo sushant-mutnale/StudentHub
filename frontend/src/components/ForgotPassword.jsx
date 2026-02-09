@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import OTPInput from './OTPInput';
 import '../App.css';
 
-const API_BASE = 'https://studenthub-i7pa.onrender.com';
+const API_BASE = 'http://127.0.0.1:8000';
 
 const ForgotPassword = () => {
                const navigate = useNavigate();
@@ -87,18 +87,7 @@ const ForgotPassword = () => {
                               setLoading(true);
 
                               try {
-                                             // Need to resend OTP for final verification
-                                             const otpRes = await fetch(`${API_BASE}/auth/forgot-password`, {
-                                                            method: 'POST',
-                                                            headers: { 'Content-Type': 'application/json' },
-                                                            body: JSON.stringify({ email, purpose: 'password_reset' }),
-                                             });
 
-                                             if (!otpRes.ok) {
-                                                            setError('Session expired. Please start again.');
-                                                            setStep(1);
-                                                            return;
-                                             }
 
                                              // For now, we'll use the remembered OTP
                                              const res = await fetch(`${API_BASE}/auth/reset-password`, {

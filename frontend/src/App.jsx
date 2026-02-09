@@ -15,6 +15,7 @@ import Inbox from './components/messages/Inbox';
 import Conversation from './components/messages/Conversation';
 import InterviewsPage from './components/interviews/InterviewsPage';
 import InterviewDetail from './components/interviews/InterviewDetail';
+import InterviewAgent from './components/interviews/InterviewAgent';
 import JobDetail from './components/JobDetail';
 // Module 1-4 Components
 import ResumeUpload from './components/ResumeUpload';
@@ -29,6 +30,7 @@ import ApplicationPipeline from './components/ApplicationPipeline';
 import ApplicationTracker from './components/ApplicationTracker';
 import AdminDashboard from './components/AdminDashboard';
 import VerificationStatus from './components/VerificationStatus';
+import AnalyticsDashboard from './components/Analytics/AnalyticsDashboard';
 import './App.css';
 
 // Protected Route Component
@@ -216,6 +218,14 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/interviews/agent/:jobId"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <InterviewAgent />
+                </ProtectedRoute>
+              }
+            />
 
             <Route
               path="/jobs/:jobId"
@@ -259,6 +269,15 @@ function App() {
               element={
                 <ProtectedRoute allowedType="recruiter">
                   <VerificationStatus />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/analytics"
+              element={
+                <ProtectedRoute>
+                  <AnalyticsDashboard />
                 </ProtectedRoute>
               }
             />

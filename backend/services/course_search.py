@@ -12,9 +12,12 @@ Falls back to local resources if APIs unavailable.
 import os
 import asyncio
 import aiohttp
+import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
+
+logger = logging.getLogger(__name__)
 
 
 class CourseSearchProvider:
@@ -84,10 +87,10 @@ class YouTubeProvider(CourseSearchProvider):
             return results
             
         except asyncio.TimeoutError:
-            print(f"[{self.name}] Timeout during search")
+            logger.warning(f"[{self.name}] Timeout during search")
             return []
         except Exception as e:
-            print(f"[{self.name}] Error: {str(e)}")
+            logger.error(f"[{self.name}] Error: {str(e)}")
             return []
 
 
@@ -159,10 +162,10 @@ class UdemyScraperProvider(CourseSearchProvider):
             return results
             
         except asyncio.TimeoutError:
-            print(f"[{self.name}] Timeout during search")
+            logger.warning(f"[{self.name}] Timeout during search")
             return []
         except Exception as e:
-            print(f"[{self.name}] Error: {str(e)}")
+            logger.error(f"[{self.name}] Error: {str(e)}")
             return []
 
 
@@ -230,10 +233,10 @@ class CourseraScraperProvider(CourseSearchProvider):
             return results
             
         except asyncio.TimeoutError:
-            print(f"[{self.name}] Timeout during search")
+            logger.warning(f"[{self.name}] Timeout during search")
             return []
         except Exception as e:
-            print(f"[{self.name}] Error: {str(e)}")
+            logger.error(f"[{self.name}] Error: {str(e)}")
             return []
 
 
@@ -300,10 +303,10 @@ class EdXScraperProvider(CourseSearchProvider):
             return results
             
         except asyncio.TimeoutError:
-            print(f"[{self.name}] Timeout during search")
+            logger.warning(f"[{self.name}] Timeout during search")
             return []
         except Exception as e:
-            print(f"[{self.name}] Error: {str(e)}")
+            logger.error(f"[{self.name}] Error: {str(e)}")
             return []
 
 
@@ -462,7 +465,7 @@ class CourseSearchService:
         
         for provider, results in zip(active_providers, results_list):
             if isinstance(results, Exception):
-                print(f"[{provider.name}] Search failed: {results}")
+                logger.error(f"[{provider.name}] Search failed: {results}")
                 continue
             
             if results:
@@ -572,7 +575,7 @@ Student Background:
                 }
             
         except Exception as e:
-            print(f"LLM ranking failed: {e}")
+            logger.error(f"LLM ranking failed: {e}")
         
         # Fallback - return results without AI ranking
         return {

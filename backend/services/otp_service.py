@@ -73,10 +73,11 @@ class OTPService:
         logger.info(f"Generated OTP for {email} ({purpose})")
         return otp
     
-    async def verify_otp(self, email: str, otp: str, purpose: str = "verification") -> Tuple[bool, str]:
+    async def verify_otp(self, email: str, otp: str, purpose: str = "verification", consume: bool = True) -> Tuple[bool, str]:
         """
         Verify an OTP.
         Returns (success, message).
+        If consume is False, the OTP is NOT deleted upon successful verification.
         """
         key = self._get_key(email, purpose)
         
@@ -94,7 +95,8 @@ class OTPService:
                     return False, "Too many failed attempts. Please request a new OTP."
                 
                 if otp == stored_otp:
-                    await self._redis.delete(key)
+                    if consume:
+                        await self._redis.delete(key)
                     return True, "OTP verified successfully"
                 else:
                     # Increment attempts
@@ -107,7 +109,7 @@ class OTPService:
                     return False, f"Invalid OTP. {remaining} attempts remaining."
                     
             except Exception as e:
-                logger.error(f"Redis OTP verify failed: {e}")
+                logger.error(f"Redis OTP verify verify failed: {e}")
                 # Try memory fallback
         
         # Memory store verification
@@ -125,7 +127,8 @@ class OTPService:
             return False, "Too many failed attempts. Please request a new OTP."
         
         if otp == stored_otp:
-            del self._memory_store[key]
+            if consume:
+                del self._memory_store[key]
             return True, "OTP verified successfully"
         else:
             # Increment attempts

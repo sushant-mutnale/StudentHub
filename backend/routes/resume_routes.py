@@ -103,9 +103,23 @@ async def upload_resume(
             "file_hash": file_hash
         })
         if existing:
-            raise HTTPException(
-                status_code=409,
-                detail="This resume has already been uploaded"
+            # [FIX] Return success for duplicate upload to refine UX
+            return ResumeUploadResponse(
+                resume_id=str(existing["_id"]),
+                file_name=existing.get("file_name", file.filename),
+                parsed_data=ParsedResume(
+                    contact=ParsedContact(**existing.get("parsed_data", {}).get("contact", {})),
+                    skills=existing.get("parsed_data", {}).get("skills", []),
+                    experience=[ParsedExperience(**e) for e in existing.get("parsed_data", {}).get("experience", [])],
+                    education=[ParsedEducation(**e) for e in existing.get("parsed_data", {}).get("education", [])],
+                    projects=[ParsedProject(**p) for p in existing.get("parsed_data", {}).get("projects", [])],
+                    parsing_confidence=existing.get("parsing_confidence", 0),
+                    ai_enhanced=existing.get("ai_enhanced", False),
+                    extraction_method=existing.get("extraction_method", ""),
+                ),
+                parsing_confidence=existing.get("parsing_confidence", 0),
+                ai_enhanced=existing.get("ai_enhanced", False),
+                message="Resume already exists. Retrieved existing data."
             )
     
     # Save file

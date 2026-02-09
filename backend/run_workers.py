@@ -43,7 +43,13 @@ async def main():
     
     # Recommendations: Periodically update
     # In prod, this might run less frequently (e.g. 1 hour)
+    # Recommendations: Periodically update
+    # In prod, this might run less frequently (e.g. 1 hour)
     worker_manager.register(RecommendationWorker(poll_interval=60.0)) 
+    
+    # Ingestion: Fetch external opportunities (every 12 hours)
+    from backend.workers.ingestion_worker import IngestionWorker
+    worker_manager.register(IngestionWorker(poll_interval=43200)) 
     
     # 3. Start All
     await worker_manager.start_all()

@@ -140,6 +140,10 @@ const RecruiterDashboard = () => {
             <FiUsers />
             <span>Matches</span>
           </div>
+          <div className="nav-item" onClick={() => navigate('/analytics')}>
+            <FiTrendingUp />
+            <span>Analytics</span>
+          </div>
           <div className="nav-item" onClick={() => navigate('/pipeline')}>
             <FiTrello />
             <span>Pipeline</span>

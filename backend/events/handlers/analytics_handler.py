@@ -71,8 +71,8 @@ async def track_analytics_event(event: Event):
         resource_id = payload["offer_id"]
     
     analytics_event = {
-        "event_type": event.type.value,
-        "user_id": event.actor_id or payload.get("user_id") or payload.get("student_id"),
+        "event_type": str(event.type),
+        "user_id": payload.get("user_id") or payload.get("student_id"),
         "resource_type": resource_type,
         "resource_id": resource_id,
         "job_id": payload.get("job_id"),
@@ -89,9 +89,10 @@ async def track_analytics_event(event: Event):
     try:
         db = get_database()
         await db.analytics_events.insert_one(analytics_event)
-        logger.debug(f"Tracked analytics event: {event.type.value}")
+        logger.debug(f"Tracked analytics event: {event.type}")
     except Exception as e:
         logger.error(f"Failed to track analytics event: {e}")
+
 
 
 async def get_funnel_metrics(job_id: str) -> Dict[str, int]:
@@ -164,10 +165,9 @@ def register_analytics_handlers():
     """Register analytics handlers for all tracked events."""
     
     for event_type in TRACKED_EVENTS:
-        event_bus.register_handler(
+        event_bus.subscribe(
             event_type,
-            track_analytics_event,
-            priority=5  # Lower priority than notifications
+            track_analytics_event
         )
     
     logger.info(f"Registered analytics handlers for {len(TRACKED_EVENTS)} event types")

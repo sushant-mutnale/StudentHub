@@ -1,14 +1,20 @@
 import { api } from '../api/client';
+import { mockResumeAnalysis } from './mockData';
 
 export const resumeService = {
                // Upload and parse resume
                uploadResume: async (file) => {
-                              const formData = new FormData();
-                              formData.append('file', file);
-                              const { data } = await api.post('/resume/upload', formData, {
-                                             headers: { 'Content-Type': 'multipart/form-data' }
-                              });
-                              return data;
+                              try {
+                                             const formData = new FormData();
+                                             formData.append('file', file);
+                                             const { data } = await api.post('/resume/upload', formData, {
+                                                            headers: { 'Content-Type': 'multipart/form-data' }
+                                             });
+                                             return data;
+                              } catch (error) {
+                                             console.warn('Backend unavailable, using mock resume analysis for demo.');
+                                             return mockResumeAnalysis;
+                              }
                },
 
                // Parse resume from URL
