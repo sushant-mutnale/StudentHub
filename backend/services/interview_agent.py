@@ -100,18 +100,33 @@ class InterviewAgent:
             
             import asyncio
             
-            async def generate_response():
-                # Simulate processing time or LLM call
-                await asyncio.sleep(1.0) 
-                
-                if "python" in user_message.lower():
-                    return "That's good. Can you explain how you handle memory management in Python?"
-                elif "experience" in user_message.lower():
-                     return "Impressive. Tell me about a challenging project you worked on."
-                else:
-                    return f"I see. Please elaborate on that. (Question {last_exchange_count + 1})"
+            # MOCK QUESTIONS FOR DEMO
+            # Fixed sequence to ensure a smooth, predictable demo flow
+            MOCK_QUESTIONS = [
+                "Hello! Let's get started. Could you briefly introduce yourself and highlight your experience with Python backend development?",
+                "Thanks. Can you explain the difference between a list and a tuple in Python, and when you would use each?",
+                "Great. Now, imagine you have a large dataset that doesn't fit in memory. How would you process it efficiently in Python?",
+                "Moving on to system design. How would you design a simple rate limiter for a public API to prevent abuse?",
+                "That's a solid approach. Finally, tell me about a time you had to debug a complex issue in a production environment.",
+                "Thank you for sharing your experiences. We've covered the key functional areas. Do you have any questions for me before we conclude?"
+            ]
 
-            # Wait max 10 seconds for response (increased for safety)
+            async def generate_response():
+                # Simulate "thinking" time for realism
+                await asyncio.sleep(1.5) 
+                
+                # Determine next question based on conversation progress
+                # history has system, user, assistant, user, assistant...
+                # Each assistant message corresponds to one question asked.
+                assistant_msgs = [m for m in history if m.get("role") == "assistant"]
+                question_idx = len(assistant_msgs)
+                
+                if question_idx < len(MOCK_QUESTIONS):
+                    return MOCK_QUESTIONS[question_idx]
+                else:
+                    return "Excellent. We have completed the interview. Your responses have been recorded. Best of luck!"
+
+            # Wait max 10 seconds for response
             response_text = await asyncio.wait_for(generate_response(), timeout=10.0)
 
         except asyncio.TimeoutError:
