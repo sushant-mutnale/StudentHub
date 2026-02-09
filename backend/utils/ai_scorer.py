@@ -54,10 +54,11 @@ async def calculate_student_scores(user_id: str):
     profile_completeness = (filled_count / len(required_fields)) * 100
 
     # 5. Overall Score (Weighted)
+    # BOOSTED FOR DEMO: Higher weight on recent activity to show immediate changes
     overall_score = (
-        (skill_score * 0.4) +
-        (interview_score * 0.3) +
-        (activity_score * 0.2) +
+        (skill_score * 0.35) +
+        (interview_score * 0.25) +
+        (activity_score * 0.3) +  # Increased weight
         (profile_completeness * 0.1)
     )
 

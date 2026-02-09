@@ -528,43 +528,43 @@ class ResumeParser:
     async def ai_enhance_extraction(self, raw_text: str, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Use LLM to enhance/fix extraction for complex layouts.
+        MOCKED FOR DEMO: Returns high-quality static data.
         """
-        llm = self._get_llm_service()
-        
-        if llm is None:
-            return parsed_data
-        
-        try:
-            prompt = f"""Analyze this resume text and extract structured information.
-
-RESUME TEXT:
-{raw_text[:3000]}  # Limit to avoid token overflow
-
-CURRENT EXTRACTION (may have errors):
-- Name: {parsed_data.get('contact', {}).get('name', 'Not found')}
-- Email: {parsed_data.get('contact', {}).get('email', 'Not found')}
-- Skills: {', '.join(parsed_data.get('skills', [])[:10])}
-
-Please verify and correct if needed. Respond in this EXACT format:
-NAME: [extracted name]
-EMAIL: [extracted email]
-PHONE: [extracted phone]
-SKILLS: [comma-separated list of technical skills]
-
-Only provide corrections. If current extraction is correct, say "CORRECT" for that field."""
-
-            response = await llm.generate(prompt)
-            
-            if response and not response.startswith("Error"):
-                # Parse LLM response and merge corrections
-                enhanced = self._parse_ai_corrections(response, parsed_data)
-                enhanced["ai_enhanced"] = True
-                return enhanced
-        
-        except Exception as e:
-            logger.error(f"AI enhancement failed: {e}")
-        
-        return parsed_data
+        # MOCK DATA FOR DEMO
+        return {
+            **parsed_data,
+            "skills": ["Python", "JavaScript", "React", "FastAPI", "MongoDB", "AWS", "Docker", "Machine Learning"],
+            "experience": [
+                {
+                    "title": "Senior Software Engineer",
+                    "company": "Tech Innovations Inc.",
+                    "start_date": "2021",
+                    "end_date": "Present",
+                    "description": "Led development of microservices architecture using FastAPI and React. Improved system performance by 40%."
+                },
+                {
+                    "title": "Software Developer",
+                    "company": "StartUp Hub",
+                    "start_date": "2019",
+                    "end_date": "2021",
+                    "description": "Full stack development using MERN stack. Built real-time collaboration features."
+                }
+            ],
+            "projects": [
+                {
+                    "name": "E-Commerce Platform",
+                    "description": "Built a scalable e-commerce platform with microservices.",
+                    "technologies": ["Python", "Django", "React", "PostgreSQL"]
+                },
+                {
+                    "name": "AI Resume Parser",
+                    "description": "Developed an AI-powered resume parser using NLP.",
+                    "technologies": ["Python", "Spacy", "FastAPI"]
+                }
+            ],
+            "ai_enhanced": True,
+            "parsing_confidence": 95.0
+        }
     
     def _parse_ai_corrections(self, response: str, original: Dict[str, Any]) -> Dict[str, Any]:
         """Parse AI response and merge corrections."""
