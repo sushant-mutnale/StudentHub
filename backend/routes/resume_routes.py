@@ -167,6 +167,7 @@ async def upload_resume(
         resume_id = str(result.inserted_id)
         
         # Build response
+        # Build response
         parsed_response = ParsedResume(
             contact=ParsedContact(**parsed_data.get("contact", {})),
             skills=parsed_data.get("skills", []),
@@ -177,11 +178,48 @@ async def upload_resume(
             ai_enhanced=parsed_data.get("ai_enhanced", False),
             extraction_method=parsed_data.get("extraction_method", ""),
         )
+
+        # MOCK FEEDBACK FOR DEMO
+        mock_feedback = {
+            "summary": "AI/ML-focused Computer Science undergraduate (2026) with hands-on experience building production-grade backend and AI systems. Built scalable FastAPI + Docker + Redis applications deployed on AWS supporting real users. Developed computer vision pipelines and RAG-based LLM systems with measurable performance gains. Strong problem solver with 500+ DSA problems and proven internship experience.",
+            "rating": {
+                "overall": 8.5,
+                "breakdown": [
+                    {"aspect": "ATS Friendliness", "score": 8.5, "max": 10},
+                    {"aspect": "Technical Depth", "score": 9.0, "max": 10},
+                    {"aspect": "Clarity", "score": 7.5, "max": 10},
+                    {"aspect": "Impact Quantification", "score": 8.0, "max": 10},
+                    {"aspect": "Recruiter Readability", "score": 7.0, "max": 10},
+                    {"aspect": "Industry Alignment", "score": 9.0, "max": 10}
+                ]
+            },
+            "strengths": [
+                {"title": "Very Good Technical Coverage", "description": "Backend (FastAPI, Docker, Redis, AWS) + AI/ML (YOLO, RAG, LLM) combo is comprehensive and high-demand."},
+                {"title": "Quantified Achievements", "description": "Strong use of metrics: '>85% accuracy', 'Latency reduced 3.5s to 1.2s', '200 FPS'. Shows impact-driven mindset."},
+                {"title": "Real Industry Internships", "description": "Two internships with meaningful contributions (Dockerized systems, RAG pipelines) sets you apart from typical freshers."},
+            ],
+            "issues": [
+                {"title": "Summary is Generic", "description": "Current summary sounds like many others. Doesn't highlight your strongest parts immediately."},
+                {"title": "Skills Section Needs Reordering", "description": "Too many buzzwords without clear prioritization. Needs better grouping (Backend, AI/ML, Cloud)."},
+                {"title": "Experience Bullets Lack Business Context", "description": "Technically good but misses the 'Why it matters'. Needs to connect tech to business value/impact."},
+                {"title": "Project Section Needs Product Angle", "description": "Descriptions sound academic. Frame them as scalable products solving real user problems."},
+                {"title": "Contact Formatting", "description": "Minor issue: links should be clean and clickable for better recruiter experience."}
+            ],
+            "action_plan": [
+                "Rewrite summary with strict impact focus",
+                "Reorder technical skills by priority (Languages, Backend, AI/ML, Cloud)",
+                "Add business impact in experience bullets (Tech -> Impact -> Value)",
+                "Standardize project descriptions to sound like products",
+                "Add a small 'Achievements' subsection (CodeChef, Hackathons)",
+                "Ensure all contact links are clickable and clean"
+            ]
+        }
         
         return ResumeUploadResponse(
             resume_id=resume_id,
             file_name=file.filename,
             parsed_data=parsed_response,
+            feedback=mock_feedback,
             parsing_confidence=parsed_data.get("parsing_confidence", 0),
             ai_enhanced=parsed_data.get("ai_enhanced", False),
             message=f"Resume parsed with {parsed_data.get('parsing_confidence', 0):.1f}% confidence"

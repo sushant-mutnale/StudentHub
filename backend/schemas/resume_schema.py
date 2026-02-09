@@ -69,6 +69,34 @@ class ResumeUploadResponse(BaseModel):
     message: str = "Resume parsed successfully"
 
 
+class FeedbackItem(BaseModel):
+    title: str
+    description: str
+
+class FeedbackRating(BaseModel):
+    overall: float
+    breakdown: List[Dict[str, Any]]
+
+class ResumeFeedback(BaseModel):
+    summary: str
+    rating: FeedbackRating
+    strengths: List[FeedbackItem]
+    issues: List[FeedbackItem]
+    action_plan: List[str]
+
+
+class ResumeUploadResponse(BaseModel):
+    """Response after uploading a resume."""
+    status: str = "success"
+    resume_id: str
+    file_name: str
+    parsed_data: ParsedResume
+    feedback: Optional[ResumeFeedback] = None
+    parsing_confidence: float
+    ai_enhanced: bool
+    message: str = "Resume parsed successfully"
+
+
 class ResumeListItem(BaseModel):
     """Resume item in list view."""
     id: str
