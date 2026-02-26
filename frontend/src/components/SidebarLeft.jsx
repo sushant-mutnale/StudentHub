@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  FiHome, FiUser, FiFileText, FiTrendingUp, FiBook, FiMic, FiSearch,
-  FiTarget, FiBell, FiLogOut, FiMessageSquare, FiCalendar, FiClipboard,
-  FiChevronDown, FiChevronRight, FiBriefcase, FiLayers
+  FiHome, FiUser, FiTrendingUp, FiBook,
+  FiBell, FiLogOut, FiMessageSquare,
+  FiChevronDown, FiChevronRight, FiBriefcase, FiLayers,
+  FiSettings, FiHelpCircle
 } from 'react-icons/fi';
 import Avatar from './Avatar';
 import '../App.css';
@@ -13,13 +14,14 @@ const SidebarLeft = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const [scrolled, setScrolled] = useState(false);
 
   // State for expanded groups
   const [expanded, setExpanded] = useState({
     learning: true,
     career: true,
-    assessment: false,
-    communication: false
+    assessment: true,
+    communication: true
   });
 
   const toggleGroup = (key) => {
@@ -35,10 +37,14 @@ const SidebarLeft = () => {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
-  // Only expand groups if a child is active (on mount)
+  // Handle scroll effect for sidebar if needed in future
   useEffect(() => {
-    // Logic to auto-expand can be added here
-  }, [location.pathname]);
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const navStructure = [
     { type: 'link', label: 'Dashboard', icon: FiHome, path: '/dashboard/student' },
@@ -51,7 +57,7 @@ const SidebarLeft = () => {
       key: 'learning',
       icon: FiBook,
       children: [
-        { label: 'Courses', path: '/learning' },
+        { label: 'My Courses', path: '/learning' },
         { label: 'Skill Gaps', path: '/skill-gaps' },
         { label: 'Research', path: '/research' }
       ]
@@ -64,9 +70,10 @@ const SidebarLeft = () => {
       icon: FiBriefcase,
       children: [
         { label: 'Opportunities', path: '/opportunities' },
-        { label: 'My Applications', path: '/applications' },
+        { label: 'Applications', path: '/applications' },
         { label: 'Resume', path: '/resume' },
-        { label: 'Mock Interview', path: '/mock-interview' },
+        { label: 'Mock Interview (Chat)', path: '/mock-interview' },
+        { label: '🎤 Voice Interview', path: '/interview/voice' },
         { label: 'Interviews', path: '/interviews' }
       ]
     },
@@ -98,36 +105,145 @@ const SidebarLeft = () => {
     return (
       <div
         key={item.path}
-        className={`nav-item ${active ? 'active' : ''}`}
-        style={{ paddingLeft: isNested ? '3rem' : '1rem' }}
         onClick={() => navigate(item.path)}
+        className={`nav-item-modern ${active ? 'active' : ''}`}
+        style={{
+          paddingLeft: isNested ? '3.25rem' : '1.25rem',
+          position: 'relative',
+          marginBottom: '0.25rem'
+        }}
       >
-        {!isNested && item.icon && <item.icon />}
-        <span>{item.label}</span>
+        {active && (
+          <div className="active-indicator" style={{
+            position: 'absolute',
+            left: 0,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: '4px',
+            height: '60%',
+            background: 'var(--gradient-primary)',
+            borderRadius: '0 4px 4px 0',
+            boxShadow: '0 0 10px rgba(102, 126, 234, 0.5)'
+          }} />
+        )}
+
+        {!isNested && item.icon && (
+          <span className={`icon-container ${active ? 'active' : ''}`} style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '24px',
+            height: '24px',
+            marginRight: '0.75rem',
+            color: active ? 'var(--color-primary)' : 'var(--color-text-muted)',
+            transition: 'color 0.3s ease'
+          }}>
+            <item.icon size={20} />
+          </span>
+        )}
+
+        <span style={{
+          fontWeight: active ? '600' : '500',
+          color: active ? 'var(--color-primary)' : 'var(--color-text)',
+          fontSize: '0.95rem',
+          transition: 'color 0.3s ease'
+        }}>
+          {item.label}
+        </span>
       </div>
     );
   };
 
   return (
-    <div className="sidebar-left">
-      <div className="sidebar-logo">Student Hub</div>
+    <div className="sidebar-left glass-panel" style={{
+      borderRight: '1px solid rgba(255,255,255,0.5)',
+      background: 'rgba(255, 255, 255, 0.8)',
+      backdropFilter: 'blur(20px)',
+      boxShadow: '5px 0 25px rgba(0,0,0,0.03)',
+      zIndex: 50
+    }}>
+      {/* Logo Area */}
+      <div style={{
+        padding: '2rem 1.5rem',
+        marginBottom: '1rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem'
+      }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          background: 'var(--gradient-primary)',
+          borderRadius: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontWeight: 'bold',
+          fontSize: '1.2rem',
+          boxShadow: 'var(--shadow-glow)'
+        }}>S</div>
+        <span style={{
+          fontSize: '1.5rem',
+          fontWeight: '800',
+          background: 'var(--gradient-primary)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+          letterSpacing: '-0.5px'
+        }}>StudentHub</span>
+      </div>
+
+      {/* User Quick Profile */}
       {user && (
-        <div style={{ padding: '0 1.5rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="interactive-card" style={{
+          margin: '0 1rem 2rem 1rem',
+          padding: '0.75rem',
+          background: 'white',
+          borderRadius: 'var(--radius-lg)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          border: '1px solid var(--color-border-light)',
+          boxShadow: 'var(--shadow-sm)'
+        }}>
           <Avatar
             src={user.avatar_url}
             alt={user.fullName || user.companyName || user.username}
             size={40}
+            style={{ border: '2px solid white', boxShadow: 'var(--shadow-sm)' }}
           />
-          <div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              {user.fullName || user.companyName}
+          <div style={{ overflow: 'hidden' }}>
+            <div style={{
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              color: 'var(--color-text)'
+            }}>
+              {user.fullName || user.companyName || 'User'}
             </div>
-            <div style={{ fontSize: '0.8rem', color: '#999' }}>@{user.username}</div>
+            <div style={{
+              fontSize: '0.75rem',
+              color: 'var(--color-text-muted)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}>
+              @{user.username}
+            </div>
           </div>
         </div>
       )}
-      <nav className="sidebar-nav">
-        {navStructure.map((item, index) => {
+
+      {/* Navigation */}
+      <nav className="sidebar-nav custom-scrollbar" style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '0 0.75rem 2rem 0.75rem'
+      }}>
+        {navStructure.map((item) => {
           if (item.type === 'link') {
             return renderNavItem(item);
           }
@@ -135,35 +251,72 @@ const SidebarLeft = () => {
           if (item.type === 'group') {
             const isExpanded = expanded[item.key];
             const Icon = item.icon;
+
             return (
-              <div key={item.key} className="nav-group">
+              <div key={item.key} style={{ marginBottom: '0.5rem' }}>
                 <div
-                  className="nav-item group-header"
+                  className="nav-item-modern group-header"
                   onClick={() => toggleGroup(item.key)}
-                  style={{ justifyContent: 'space-between' }}
+                  style={{
+                    padding: '0.75rem 1.25rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    borderRadius: 'var(--radius-md)',
+                    transition: 'var(--transition-fast)',
+                    color: 'var(--color-text-secondary)',
+                    fontWeight: '600',
+                    fontSize: '0.9rem'
+                  }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <Icon />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <Icon size={18} />
                     <span>{item.label}</span>
                   </div>
                   {isExpanded ? <FiChevronDown /> : <FiChevronRight />}
                 </div>
-                {isExpanded && (
-                  <div className="nav-group-children">
-                    {item.children.map(child => renderNavItem(child, true))}
-                  </div>
-                )}
+
+                <div style={{
+                  maxHeight: isExpanded ? '500px' : '0',
+                  overflow: 'hidden',
+                  transition: 'max-height 0.3s ease-in-out',
+                  opacity: isExpanded ? 1 : 0.5
+                }}>
+                  {item.children.map(child => renderNavItem(child, true))}
+                </div>
               </div>
             );
           }
           return null;
         })}
+      </nav>
 
-        <div className="nav-item logout" onClick={handleLogout} style={{ marginTop: 'auto' }}>
-          <FiLogOut />
+      {/* Footer Actions */}
+      <div style={{
+        padding: '1rem',
+        borderTop: '1px solid var(--color-border-light)',
+        background: 'rgba(255,255,255,0.5)'
+      }}>
+        <div
+          className="nav-item-modern logout"
+          onClick={handleLogout}
+          style={{
+            padding: '0.875rem 1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            color: 'var(--color-danger)',
+            fontWeight: '600',
+            cursor: 'pointer',
+            borderRadius: 'var(--radius-md)',
+            transition: 'var(--transition-normal)'
+          }}
+        >
+          <FiLogOut size={20} />
           <span>Logout</span>
         </div>
-      </nav>
+      </div>
     </div>
   );
 };

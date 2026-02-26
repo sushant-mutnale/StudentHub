@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     password_reset_token_expires_minutes: int = 60
     password_min_length: int = 8
     
+    # AI Services - Provider Selection
+    llm_provider: str = "openrouter"
+    llm_model: Optional[str] = None
+    
     # AI Services - OpenRouter (Default)
     openrouter_api_key: Optional[str] = None
     openrouter_model: str = "tngtech/deepseek-r1t-chimera:free"

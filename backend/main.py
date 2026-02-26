@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
@@ -39,6 +39,8 @@ from .routes import (
     hackathon_routes,
     message_routes,
     analytics_routes,
+    voice_routes,
+    demo_routes,
 )
 from .utils.auth import hash_password
 from .events.handlers import register_all_handlers
@@ -46,6 +48,20 @@ from .workers import worker_manager, OutboxWorker, OutboxCleanupWorker, Recommen
 from .middleware import RateLimitMiddleware, CorrelationIdMiddleware, IdempotencyMiddleware
 
 app = FastAPI(title="Student Hub API")
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    import time
+    print(f"Incoming Request: {request.method} {request.url.path}")
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        print(f"Request Completed: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.4f}s")
+        return response
+    except Exception as e:
+        print(f"Request Failed: {request.method} {request.url.path} - Error: {str(e)}")
+        raise e
 
 # Middlewares (Order matters: executed bottom-to-top for request, top-to-bottom for response)
 if settings.app_env != "testing":
@@ -55,8 +71,13 @@ if settings.app_env != "testing":
 
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=settings.frontend_origins,  # Strictly limited origins
-    allow_origin_regex="https?://.*",  # Allow ALL origins (http/https) to support Vercel/Render/Localhost
+    allow_origins=[
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173", 
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ],
+    allow_origin_regex="https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -128,6 +149,8 @@ app.include_router(verification_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(hackathon_routes.router)
 app.include_router(analytics_routes.router)
+app.include_router(voice_routes.router, prefix="/api", tags=["voice"])
+app.include_router(demo_routes.router, tags=["demo"])
 
 
 async def seed_default_users():
@@ -148,6 +171,21 @@ async def seed_default_users():
                 "branch": "Computer Science",
                 "year": "3rd Year",
                 "skills": ["React", "Python", "MongoDB"],
+                "created_at": now,
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "role": "student",
+                "username": "sushant_dev",
+                "email": "sushantmutnale512@gmail.com",
+                "password_hash": hash_password("Sushant@512"),
+                "full_name": "Sushant Mutnale",
+                "prn": "PRN_DEV_001",
+                "college": "Dev University",
+                "branch": "Computer Science",
+                "year": "4th Year",
+                "skills": ["React", "Python", "FastAPI", "AI"],
                 "created_at": now,
                 "updated_at": now,
             },

@@ -16,6 +16,8 @@ import Conversation from './components/messages/Conversation';
 import InterviewsPage from './components/interviews/InterviewsPage';
 import InterviewDetail from './components/interviews/InterviewDetail';
 import InterviewAgent from './components/interviews/InterviewAgent';
+import VoiceInterview from './components/VoiceInterview'; // Imported VoiceInterview
+import './components/VoiceInterview.css'; // Imported VoiceInterview styles
 import JobDetail from './components/JobDetail';
 // Module 1-4 Components
 import ResumeUpload from './components/ResumeUpload';
@@ -223,6 +225,15 @@ function App() {
               element={
                 <ProtectedRoute allowedType="student">
                   <InterviewAgent />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/interview/voice"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <VoiceInterview />
                 </ProtectedRoute>
               }
             />

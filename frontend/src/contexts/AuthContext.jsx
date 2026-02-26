@@ -48,8 +48,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const refreshUser = async (overrideToken) => {
+    console.log('AuthContext: refreshUser called', { hasOverrideToken: !!overrideToken });
     try {
       const response = await userService.getMe();
+      console.log('AuthContext: refreshUser success', response);
       const normalized = normalizeUser(response);
       setUser(normalized);
       const activeToken = overrideToken || token;
@@ -57,7 +59,7 @@ export const AuthProvider = ({ children }) => {
         persistSession(activeToken, normalized);
       }
     } catch (error) {
-      console.error('Failed to refresh user:', error);
+      console.error('AuthContext: Failed to refresh user:', error);
       logout();
     } finally {
       setLoading(false);
@@ -65,8 +67,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (username, password, role) => {
+    console.log('AuthContext: login attempt', { username, role });
     try {
       const response = await authService.login({ username, password, role });
+      console.log('AuthContext: login success', response);
       const normalized = normalizeUser(response.user);
       setToken(response.access_token);
       setAuthToken(response.access_token);
@@ -74,7 +78,7 @@ export const AuthProvider = ({ children }) => {
       persistSession(response.access_token, normalized);
       return { success: true, user: normalized };
     } catch (error) {
-      console.error('Login error:', {
+      console.error('AuthContext: Login error details:', {
         message: error.message,
         code: error.code,
         responseStatus: error.response?.status,

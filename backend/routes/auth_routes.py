@@ -85,17 +85,25 @@ async def signup_recruiter(payload: RecruiterCreate):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest):
+    print(f"Login Attempt: {payload.username} with role {payload.role}")
     user = await user_model.get_user_by_username(payload.username)
     if not user:
         # Try checking by email if username not found
         user = await user_model.get_user_by_email(payload.username)
 
-    if not user or user.get("role") != payload.role:
+    if not user:
+        print(f"Login Failed: User not found for {payload.username}")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+    if user.get("role") != payload.role:
+        print(f"Login Failed: Role mismatch. Expected {payload.role}, got {user.get('role')}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not verify_password(payload.password, user.get("password_hash", "")):
+        print(f"Login Failed: Invalid password for {payload.username}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    print(f"Login Success: {payload.username} ({user['_id']})")
     token, expires_at = create_access_token(
         data={"sub": str(user["_id"]), "role": user["role"]},
         expires_delta=timedelta(minutes=60 * 24),

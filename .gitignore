@@ -33,6 +33,10 @@ env/
 .env.production
 backend/.env
 backend/.env.production
+backend/*.env
+backend/* - Copy.env
+*Copy*.env
+* - Copy.env
 
 # IDE
 .vscode/

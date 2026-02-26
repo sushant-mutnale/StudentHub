@@ -171,11 +171,16 @@ const PublicProfile = () => {
           <div className="profile-skills-section">
             <span className="detail-label">Skills</span>
             <div className="profile-skills">
-              {profile.skills.map((skill) => (
-                <span key={skill} className="skill-tag">
-                  {skill}
-                </span>
-              ))}
+              {profile.skills.map((skill, idx) => {
+                const skillName = typeof skill === 'string' ? skill : skill?.name;
+                const skillLevel = typeof skill === 'object' ? skill?.proficiency : null;
+                return (
+                  <span key={skillName || idx} className="skill-tag" title={skillLevel || ''}>
+                    {skillName}
+                    {skillLevel && <small style={{ opacity: 0.7, marginLeft: '0.3rem' }}>· {skillLevel}</small>}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
