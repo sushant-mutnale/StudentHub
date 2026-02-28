@@ -2,7 +2,7 @@ import axios from 'axios';
 
 import { mockApplications } from './mockData';
 
-const API_URL = 'http://127.0.0.1:8000';
+import API_URL from '../config/api';
 
 const getAuthHeader = () => {
     const token = localStorage.getItem('token');
