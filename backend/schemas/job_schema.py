@@ -29,6 +29,9 @@ class JobResponse(BaseModel):
     created_at: datetime
     visibility: str
     company_name: Optional[str] = None
+    salary_range: Optional[str] = None
+    type: Optional[str] = None
+    source_url: Optional[str] = None
 
     class Config:
         from_attributes = True

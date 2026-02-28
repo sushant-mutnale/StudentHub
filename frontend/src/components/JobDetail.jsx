@@ -3,7 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { jobService } from '../services/jobService';
 import SidebarLeft from './SidebarLeft';
-import { FiMapPin, FiBriefcase, FiDollarSign, FiClock, FiCheckCircle, FiSend, FiLoader, FiArrowLeft, FiUser, FiInfo } from 'react-icons/fi';
+import { FiMapPin, FiBriefcase, FiDollarSign, FiClock, FiCheckCircle, FiSend, FiLoader, FiArrowLeft, FiUser, FiInfo, FiExternalLink } from 'react-icons/fi';
 import '../App.css';
 
 const JobDetail = () => {
@@ -301,7 +301,35 @@ const JobDetail = () => {
                 <div className="glass-card animate-fade-in-up delay-300" style={{ padding: '2rem', borderRadius: 'var(--radius-lg)' }}>
                   <h3 style={{ marginBottom: '1.5rem', color: 'var(--color-text)' }}>Apply Now</h3>
 
-                  {applySuccess ? (
+                  {job.source_url ? (
+                    <div>
+                      <p style={{ color: 'var(--color-text-secondary)', marginBottom: '1.5rem', lineHeight: '1.6' }}>
+                        This opportunity is hosted externally. Click below to apply on the company website.
+                      </p>
+                      <a
+                        href={job.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-glow hover-lift"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.75rem',
+                          background: 'var(--gradient-primary)',
+                          color: 'white',
+                          padding: '0.85rem 1.75rem',
+                          borderRadius: 'var(--radius-md)',
+                          textDecoration: 'none',
+                          fontWeight: '600',
+                          fontSize: '1.05rem',
+                          width: '100%'
+                        }}
+                      >
+                        Apply Externally <FiExternalLink />
+                      </a>
+                    </div>
+                  ) : applySuccess ? (
                     <div className="animate-scale-in" style={{
                       padding: '1.5rem',
                       background: 'rgba(16, 185, 129, 0.1)',

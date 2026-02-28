@@ -18,15 +18,18 @@ router = APIRouter()
 def db_job_to_public(db_job: dict) -> JobResponse:
     """Convert MongoDB job document to JobResponse with string IDs."""
     return JobResponse(
-        id=str(db_job.get("_id") or db_job.get("id")),
-        recruiter_id=str(db_job.get("recruiter_id")),
-        title=db_job.get("title"),
-        description=db_job.get("description"),
+        id=str(db_job.get("_id") or db_job.get("id") or db_job.get("source_id")),
+        recruiter_id=str(db_job.get("recruiter_id", "external")),
+        title=db_job.get("title", ""),
+        description=db_job.get("description") or db_job.get("description_snippet", ""),
         skills_required=db_job.get("skills_required", []),
-        location=db_job.get("location"),
-        created_at=db_job.get("created_at"),
+        location=db_job.get("location", ""),
+        created_at=db_job.get("created_at") or db_job.get("posted_at") or db_job.get("scraped_at"),
         visibility=db_job.get("visibility", "public"),
-        company_name=db_job.get("company_name"),
+        company_name=db_job.get("company_name") or db_job.get("company"),
+        salary_range=db_job.get("salary_range") or db_job.get("stipend"),
+        type=db_job.get("type") or db_job.get("work_mode"),
+        source_url=db_job.get("source_url"),
     )
 
 
@@ -162,6 +165,20 @@ async def my_jobs(recruiter=Depends(get_current_recruiter)):
 async def get_job(job_id: str, current_user=Depends(get_current_user)):
     job = await job_model.get_job(job_id)
     if not job:
+        from ..database import get_database
+        from bson import ObjectId
+        from bson.errors import InvalidId
+        try:
+            opp_col = get_database()["opportunities_jobs"]
+            try:
+                oid = ObjectId(job_id)
+                job = await opp_col.find_one({"_id": oid})
+            except InvalidId:
+                job = await opp_col.find_one({"source_id": job_id})
+        except Exception:
+            pass
+
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Enforce visibility for student users: they should not be able to fetch
@@ -227,6 +244,7 @@ async def apply_to_job(
     
     # Create ATS application record (Module 5)
     recruiter_id = str(job["recruiter_id"])
+    print(f"DEBUG: recruiter_id={recruiter_id} job={job.get('_id')}")
     pipeline = await pipeline_model.get_active_pipeline(recruiter_id)
     
     if not pipeline:
@@ -249,8 +267,9 @@ async def apply_to_job(
                 initial_stage_id=applied_stage["id"],
                 initial_stage_name=applied_stage["name"]
             )
-        except Exception:
+        except Exception as e:
             # Application record might already exist (duplicate apply)
+            print(f"DEBUG Error creating ATS application record: {repr(e)}")
             pass
     
     await log_activity(

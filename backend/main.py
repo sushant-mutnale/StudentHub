@@ -41,6 +41,7 @@ from .routes import (
     analytics_routes,
     voice_routes,
     demo_routes,
+    sidebar_routes,
 )
 from .utils.auth import hash_password
 from .events.handlers import register_all_handlers
@@ -151,7 +152,7 @@ app.include_router(hackathon_routes.router)
 app.include_router(analytics_routes.router)
 app.include_router(voice_routes.router, prefix="/api", tags=["voice"])
 app.include_router(demo_routes.router, tags=["demo"])
-
+app.include_router(sidebar_routes.router)
 
 async def seed_default_users():
     db = get_database()
@@ -214,3 +215,4 @@ try:
 except ImportError:
     # Mangum not installed (local dev), ignore
     handler = None
+

@@ -163,6 +163,10 @@ class DeepResearchTool:
         results["summary"] = await self._generate_summary(company_name, results["categories"])
         results["key_insights"] = await self._extract_insights(results["categories"])
         
+        # Generate company-specific LLM summaries for each tab (culture, interview, tech_stack)
+        # This ensures tabs show real AI content even when Tavily returns sparse category-specific results
+        await self._generate_category_summaries(company_name, results["categories"])
+        
         # Cache results
         self._set_cache(cache_key, results)
         
@@ -174,26 +178,28 @@ class DeepResearchTool:
         category: str,
         max_results: int
     ) -> List[Dict]:
-        """Research a single category."""
+        """Research a single category using real web search (Tavily/SerpAPI)."""
         results = []
         templates = self.RESEARCH_TEMPLATES.get(category, [])
         
         for template in templates[:2]:  # Limit queries to avoid rate limits
             query = template.format(company=company_name)
             
-            # Try SerpAPI first
-            if self.SERP_API_KEY:
-                serp_results = await self._search_serp(query, max_results)
-                results.extend(serp_results)
-            else:
-                # Fallback to mock data for demo
-                mock_results = self._get_mock_results(company_name, category)
-                results.extend(mock_results)
+            # Always try real search first (_search_serp handles both SerpAPI and Tavily internally)
+            search_results = await self._search_serp(query, max_results)
+            if search_results:
+                results.extend(search_results)
             
             if len(results) >= max_results:
                 break
         
-        # Scrape content from top results
+        # If real search returned nothing, return empty list —
+        # _generate_category_summaries() will still fill this tab with LLM content
+        if not results:
+            logger.warning(f"No real search results for {company_name}/{category} — LLM will generate content")
+            return []
+        
+        # Scrape content from top results (best-effort — many sites block, that's fine)
         scraped = []
         for result in results[:max_results]:
             content = await self._scrape_url(result.get("url", ""))
@@ -202,10 +208,11 @@ class DeepResearchTool:
                     "title": result.get("title", ""),
                     "url": result.get("url", ""),
                     "snippet": result.get("snippet", ""),
-                    "content": content[:1000],  # Limit content
+                    "content": content[:1000],
                     "source": self._extract_domain(result.get("url", ""))
                 })
         
+        # Return scraped content if available, otherwise raw search results (with snippets)
         return scraped if scraped else results[:max_results]
     
     # ============ Search Methods ============
@@ -271,6 +278,9 @@ class DeepResearchTool:
                             }
                             for r in results
                         ]
+                    else:
+                        error_text = await resp.text()
+                        logger.error(f"Tavily API failed with status {resp.status}: {error_text}")
         except Exception as e:
             logger.error(f"Tavily API error: {e}")
         
@@ -366,21 +376,77 @@ Be concise and actionable."""
         except Exception:
             return f"Research data collected for {company_name}. See categories for details."
     
+    async def _generate_category_summaries(
+        self,
+        company_name: str,
+        categories: Dict[str, List]
+    ) -> None:
+        """
+        Use the LLM to generate company-specific 2-3 sentence summaries
+        for each tab (culture, interview, tech_stack) from ALL available research snippets.
+        The generated summary is prepended to each category's result list so
+        adaptResearchShape() in the frontend picks it up as the primary content.
+        """
+        llm = self._get_llm_service()
+        if not llm:
+            return
+
+        # Collect all snippets across all categories as shared context
+        all_snippets = []
+        for cat, items in categories.items():
+            for r in items[:3]:
+                s = (r.get("snippet") or r.get("content") or "")[:300]
+                if s:
+                    all_snippets.append(f"[{cat.upper()}] {s}")
+
+        if not all_snippets:
+            return
+
+        research_context = "\n".join(all_snippets[:12])
+
+        CATEGORY_PROMPTS = {
+            "culture": f"""Based on this research about {company_name}, write 2-3 focused sentences about the company's work culture, employee experience, and work-life balance. Be specific to {company_name}, not generic.
+
+Research data:\n{research_context}\n\nWrite only the culture summary (2-3 sentences, no headers):""",
+            "interview": f"""Based on this research about {company_name}, write 2-3 focused sentences describing the interview process: what rounds are involved, what topics are tested, and how to prepare. Be specific to {company_name}.
+
+Research data:\n{research_context}\n\nWrite only the interview process summary (2-3 sentences, no headers):""",
+            "tech_stack": f"""Based on this research about {company_name}, write 2-3 sentences about the technologies, programming languages, and tools used by {company_name}'s engineering teams. Be specific.
+
+Research data:\n{research_context}\n\nWrite only the tech stack summary (2-3 sentences, no headers):""",
+        }
+
+        for cat, prompt in CATEGORY_PROMPTS.items():
+            if cat not in categories:
+                continue
+            try:
+                llm_text = await llm.generate(prompt)
+                llm_text = llm_text.strip()
+                if llm_text and not llm_text.startswith("Error:"):
+                    # Prepend the LLM-generated summary as the first (highest-priority) item
+                    categories[cat].insert(0, {
+                        "title": f"{company_name} — AI-generated {cat.replace('_', ' ')} summary",
+                        "url": "",
+                        "snippet": llm_text,
+                        "source": "ai-generated"
+                    })
+            except Exception as e:
+                logger.warning(f"LLM category summary failed for {cat}: {e}")
+
+
     async def _extract_insights(self, categories: Dict[str, List]) -> List[str]:
-        """Extract key insights from research."""
+        """Extract real key insights from actual search result snippets."""
         insights = []
         
         for category, results in categories.items():
-            if results:
-                # Add a basic insight per category
-                if category == "interview":
-                    insights.append("Technical interviews typically include coding and system design")
-                elif category == "culture":
-                    insights.append("Company culture information available from employee reviews")
-                elif category == "salary":
-                    insights.append("Salary data found - research compensation expectations")
-                elif category == "tech_stack":
-                    insights.append("Technology stack information available")
+            for r in results[:2]:  # top 2 results per category
+                snippet = (r.get("snippet") or r.get("content") or "").strip()
+                if snippet and len(snippet) > 30:
+                    # Take first meaningful sentence from the snippet
+                    sentences = [s.strip() for s in snippet.replace("\n", " ").split(".") if len(s.strip()) > 20]
+                    if sentences:
+                        insights.append(sentences[0][:180])
+                        break  # one insight per category is enough
         
         return insights[:5]
     

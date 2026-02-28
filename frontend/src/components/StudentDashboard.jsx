@@ -6,7 +6,8 @@ import SidebarRight from './SidebarRight';
 import PostBox from './PostBox';
 import PostFeed from './PostFeed';
 import JobFeed from './JobFeed';
-import { FiHome } from 'react-icons/fi';
+import CoreModules from './CoreModules';
+import { FiHome, FiGrid } from 'react-icons/fi';
 import '../App.css';
 
 const StudentDashboard = () => {
@@ -59,7 +60,33 @@ const StudentDashboard = () => {
         </div>
 
         <div className="dashboard-content" style={{ maxWidth: '800px', margin: '0 auto' }}>
-          <div className="animate-fade-in-up">
+
+          <div className="animate-fade-in-up" style={{ marginBottom: '2.5rem' }}>
+            <h3 style={{
+              marginBottom: '1rem',
+              color: 'var(--color-text)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '1.2rem'
+            }}>
+              <FiGrid size={20} color="var(--color-primary)" />
+              Core Modules
+            </h3>
+            <CoreModules />
+          </div>
+
+          <div className="animate-fade-in-up delay-100">
+            <h3 style={{
+              marginBottom: '1rem',
+              color: 'var(--color-text)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '1.2rem'
+            }}>
+              Community Updates
+            </h3>
             <PostBox onPostCreated={handlePostCreated} />
           </div>
 

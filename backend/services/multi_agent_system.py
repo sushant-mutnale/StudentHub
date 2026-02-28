@@ -41,6 +41,9 @@ class InterviewContext:
     company: str
     role: str
     difficulty: str = "medium"
+    interview_type: str = "mixed"          # behavioral | technical | mixed
+    resume_text: str = ""                  # candidate resume for personalized Qs
+    question_count: int = 0                # total questions asked so far
     current_question: Dict = field(default_factory=dict)
     questions_asked: List[Dict] = field(default_factory=list)
     answers_given: List[Dict] = field(default_factory=list)
@@ -92,16 +95,18 @@ class InterviewerAgent(BaseAgent):
         self.question_bank = []
     
     def get_system_prompt(self) -> str:
-        return """You are Alex, a senior software engineer conducting technical interviews.
+        return """You are Alex, a senior software engineer at a top tech company. You are the INTERVIEWER.
+The user (the person responding to you) is the CANDIDATE who is being interviewed.
 
-Your style:
-- Professional yet friendly
-- Ask clarifying questions when answers are vague
-- Gradually increase difficulty if candidate is doing well
-- Provide context for system design questions
-- Be encouraging but maintain interview standards
+Your responsibilities:
+- Ask the candidate questions (you do NOT answer questions yourself)
+- Evaluate their responses and decide the next question
+- Be professional, encouraging, and conversational
+- Ask ONE question at a time
+- NEVER introduce yourself as the candidate or describe your own experience as a job-seeker
 
-Format your questions clearly and one at a time."""
+Remember: YOU ask questions. The CANDIDATE answers them."""
+
     
     async def process(
         self, 
@@ -160,81 +165,171 @@ Format your questions clearly and one at a time."""
         )
     
     async def _generate_opening(self, context: InterviewContext) -> str:
-        """Generate opening question."""
+        """Generate opening — warm intro, interview overview, ask candidate to introduce themselves."""
         llm = self._get_llm()
         if not llm:
             return self._get_fallback_opening(context)
-        
-        prompt = f"""Generate an opening interview question for:
-Company: {context.company}
-Role: {context.role}
-Difficulty: {context.difficulty}
 
-Start with a warm greeting, then ask a coding or technical question.
-Keep it natural and conversational. One question only."""
-        
+        resume_snippet = ""
+        if context.resume_text:
+            resume_snippet = f"\nCANDIDATE RESUME SUMMARY (first 500 chars):\n{context.resume_text[:500]}\nUse this to personalize your greeting — mention 1 specific skill or project you noticed.\n"
+
+        interview_focus = ""
+        if context.interview_type == "behavioral":
+            interview_focus = "This will be a behavioral interview focusing on past experiences and soft skills."
+        elif context.interview_type == "technical":
+            interview_focus = "This will be a technical interview covering coding, system design, and technical depth."
+        else:
+            interview_focus = "This will cover a brief intro, some behavioral scenarios, then technical questions."
+
+        prompt = f"""CONTEXT: You are Alex, the INTERVIEWER at {context.company}. You are starting an interview with a candidate for the {context.role} position.
+{resume_snippet}
+Write your opening message to the CANDIDATE. Your message should:
+1. Greet them warmly and say you are Alex, the interviewer from {context.company}
+2. Mention: "{interview_focus}"
+3. Ask the candidate to introduce themselves{" and mention any relevant projects" if context.resume_text else ""}
+
+Write ONLY what you (the interviewer, Alex) would say. Do NOT write what the candidate says.
+Keep it under 4 sentences. Natural conversational tone.
+
+Example format: "Hi! I'm Alex from {context.company}. Thanks for joining us today for the {context.role} interview. {interview_focus} To kick off — could you tell me a bit about yourself?"
+
+Your opening message:"""
+
         try:
             response = await llm.generate(prompt, self.get_system_prompt())
             return response.strip()
         except Exception:
             return self._get_fallback_opening(context)
+
     
     def _get_fallback_opening(self, context: InterviewContext) -> str:
-        """Fallback opening questions."""
-        openings = [
-            f"Hi there! Thanks for interviewing with {context.company}. Let's start with a coding problem. Can you implement a function to find the two numbers in an array that add up to a target sum?",
-            f"Welcome to your {context.company} interview! Let's warm up with a classic. How would you reverse a linked list?",
-            f"Great to meet you! For your {context.role} interview, let's start with a problem: Given a string, find the longest palindromic substring."
-        ]
+        """Fallback opening — interviewer greets the candidate."""
         import random
+        openings = [
+            f"Hi there! Welcome to your {context.role} interview at {context.company}. I'm Alex, your interviewer today. We'll start with a quick intro, move into some behavioral questions, and then wrap up with technical topics. To kick things off — could you tell me a bit about yourself and your background?",
+            f"Hello! Great to meet you. I'm Alex from {context.company}, and I'll be conducting your {context.role} interview today. We have about 45 minutes together — we'll cover introductions, a few behavioral scenarios, and then some technical questions. Let's start simply: could you walk me through your background and what draws you to this role?",
+            f"Hi, welcome! I'm Alex, interviewing you for the {context.role} position at {context.company}. Thanks for making the time. Before we dive into the technical stuff, I'd love to hear a bit about you — what's your background, and what are you most excited to work on professionally?",
+        ]
         return random.choice(openings)
+
     
     async def _generate_question(self, context: InterviewContext, difficulty: str) -> str:
-        """Generate next question based on context."""
+        """Generate next question following: intro → behavioral → technical (discussion) → cross-questioning."""
         llm = self._get_llm()
         if not llm:
-            return self._get_fallback_question(difficulty)
-        
-        previous = [q.get("title", "") for q in context.questions_asked[-3:]]
-        
-        prompt = f"""Generate the next interview question for:
-Company: {context.company}
-Role: {context.role}
-Difficulty: {difficulty}
-Questions already asked: {', '.join(previous) if previous else 'None'}
-Average performance: {sum(context.scores)/len(context.scores) if context.scores else 'N/A'}%
+            return self._get_fallback_question(context.interview_type, difficulty)
 
-Generate a fresh question that hasn't been asked. Could be coding, system design, or behavioral.
-Be conversational. One question only."""
-        
+        num_answered = len(context.answers_given)
+        last_answer  = context.answers_given[-1]["answer"] if context.answers_given else ""
+        previous_qs  = [q.get("content", q.get("title", "")) for q in context.questions_asked[-3:]]
+        avg_score    = sum(context.scores) / len(context.scores) if context.scores else 50
+
+        # --- Determine interview stage based on type and count ---
+        is_behavioral_only = context.interview_type == "behavioral"
+        is_technical_only  = context.interview_type == "technical"
+
+        if num_answered <= 1:
+            stage = "behavioral"
+            instruction = f"""The candidate just introduced themselves. Now ask ONE behavioral question.
+- Use the STAR method context (Situation, Task, Action, Result)
+- Reference something they shared in their intro if possible
+- Themes: teamwork, handling failure, leadership, problem-solving under pressure
+- One question only, conversational tone"""
+
+        elif num_answered <= 3 and not is_behavioral_only:
+            stage = "technical_discussion"
+            instruction = f"""Move to a technical discussion question for a {context.role} at {context.company}.
+Based on what they said: "{last_answer[:300]}"
+
+IMPORTANT: This is a VOICE interview. Do NOT ask them to write code or implement anything.
+Instead, ask a question they can ANSWER VERBALLY:
+- System design: "How would you design X? Walk me through your approach."
+- Architecture: "What database would you choose for X and why?"
+- Concepts: "Explain how Y works and when you'd use it."
+- Trade-offs: "What are the tradeoffs between approach A and B?"
+- Experience: "Have you worked with X? Tell me about that experience."
+
+Difficulty: {difficulty} (avg score so far: {avg_score:.0f}%)
+Do NOT repeat these topics: {', '.join(previous_qs) or 'none yet'}
+
+One question only. Start with a brief transition like "Let's explore some technical areas..."."""
+
+        elif is_behavioral_only:
+            stage = "behavioral_deep"
+            instruction = f"""Continue behavioral questioning. Last answer: "{last_answer[:300]}"
+
+Ask a follow-up behavioral question that:
+- Digs into a different soft skill or situation type
+- Could probe: conflict resolution, mentoring, receiving feedback, working under pressure, initiative
+- References their answer if useful
+- Is NOT a repeat of previous questions: {', '.join(previous_qs) or 'none yet'}
+
+One question only."""
+
+        else:
+            stage = "cross_question"
+            instruction = f"""Cross-question the candidate based on their last answer: "{last_answer[:400]}"
+
+This is a VOICE interview — no code writing. Ask a verbal follow-up that:
+- Challenges an assumption they made
+- Asks for a concrete real-world example from their experience
+- Explores edge cases or trade-offs they glossed over
+- Asks how they'd handle a specific scenario related to what they said
+- Probes technical depth without asking to write code
+
+Be curious and direct. One follow-up question only."""
+
+        prompt = f"""Company: {context.company} | Role: {context.role} | Stage: {stage}
+
+{instruction}"""
+
         try:
             response = await llm.generate(prompt, self.get_system_prompt())
             return response.strip()
         except Exception:
-            return self._get_fallback_question(difficulty)
+            return self._get_fallback_question(context.interview_type, difficulty)
+
     
-    def _get_fallback_question(self, difficulty: str) -> str:
-        """Fallback questions by difficulty."""
-        questions = {
+    def _get_fallback_question(self, interview_type: str = "mixed", difficulty: str = "medium") -> str:
+        """Fallback questions — ALL voice-appropriate (no code writing)."""
+        behavioral = [
+            "Tell me about a time you had to work with a difficult team member. How did you handle it?",
+            "Describe a project where you had to learn something new quickly. What was your approach?",
+            "Tell me about a time something went wrong in a project. What did you do?",
+            "How do you prioritize when you have multiple deadlines at once?",
+            "Describe a situation where you disagreed with your manager or lead. How did you handle it?",
+            "Tell me about a technical decision you're proud of. What made it the right choice?",
+        ]
+        technical = {
             "easy": [
-                "Can you write a function to check if a string is a palindrome?",
-                "How would you find the maximum element in an array?",
-                "Explain the difference between a stack and a queue."
+                "Can you explain the difference between a stack and a queue, and give a real use case for each?",
+                "How does HTTP differ from HTTPS? Why does it matter?",
+                "What is the difference between SQL and NoSQL databases? When would you use each?",
             ],
             "medium": [
-                "Implement a LRU Cache with O(1) get and put operations.",
-                "Design a rate limiter that allows 100 requests per minute.",
-                "How would you detect a cycle in a linked list?"
+                "How would you design an API for a ride-sharing app like Uber? Walk me through the main endpoints.",
+                "Explain how you'd approach caching in a high-traffic web application. What are the tradeoffs?",
+                "Walk me through how you'd debug a slow database query in production.",
+                "How would you ensure data consistency in a system with multiple microservices?",
             ],
             "hard": [
-                "Design a distributed key-value store. What tradeoffs would you make?",
-                "Implement a concurrent web crawler with proper throttling.",
-                "How would you design Twitter's trending topics algorithm?"
+                "How would you design a distributed notification system that can handle millions of users?",
+                "Walk me through your approach to designing Twitter's feed. What scalability challenges would you solve first?",
+                "How would you architect a real-time collaborative editing system like Google Docs?",
             ]
         }
         import random
-        return random.choice(questions.get(difficulty, questions["medium"]))
-    
+        if interview_type == "behavioral":
+            return random.choice(behavioral)
+        elif interview_type == "technical":
+            return random.choice(technical.get(difficulty, technical["medium"]))
+        else:
+            # mixed: alternate between behavioral and technical
+            pool = behavioral + technical.get(difficulty, technical["medium"])
+            return random.choice(pool)
+
+
     async def _generate_follow_up(self, context: InterviewContext, answer: str) -> str:
         """Generate follow-up question based on answer."""
         llm = self._get_llm()
@@ -797,7 +892,9 @@ class MultiAgentInterviewService:
         student_id: str,
         company: str = "Tech Company",
         role: str = "Software Engineer",
-        difficulty: str = "medium"
+        difficulty: str = "medium",
+        interview_type: str = "mixed",
+        resume_text: str = ""
     ) -> InterviewContext:
         """Create new interview context."""
         context = InterviewContext(
@@ -805,7 +902,9 @@ class MultiAgentInterviewService:
             student_id=student_id,
             company=company,
             role=role,
-            difficulty=difficulty
+            difficulty=difficulty,
+            interview_type=interview_type,
+            resume_text=resume_text
         )
         self.active_contexts[session_id] = context
         return context
@@ -820,16 +919,22 @@ class MultiAgentInterviewService:
         student_id: str,
         company: str = "Tech Company",
         role: str = "Software Engineer",
-        difficulty: str = "medium"
+        difficulty: str = "medium",
+        interview_type: str = "mixed",
+        resume_text: str = ""
     ) -> Dict[str, Any]:
         """Start new multi-agent interview."""
-        context = self.create_context(session_id, student_id, company, role, difficulty)
+        context = self.create_context(
+            session_id, student_id, company, role, difficulty,
+            interview_type, resume_text
+        )
         result = await self.coordinator.start_interview(context)
-        
-        # Store current question
+
+        # Store current question & increment counter
         context.current_question = {"content": result["question"]}
         context.questions_asked.append(context.current_question)
-        
+        context.question_count += 1
+
         return result
     
     async def answer(self, session_id: str, answer: str) -> Dict[str, Any]:
@@ -837,13 +942,14 @@ class MultiAgentInterviewService:
         context = self.get_context(session_id)
         if not context:
             return {"error": "Session not found"}
-        
+
         result = await self.coordinator.submit_answer(context, answer)
-        
-        # Update current question
+
+        # Update current question & counter
         context.current_question = {"content": result["next_question"]}
         context.questions_asked.append(context.current_question)
-        
+        context.question_count += 1
+
         return result
     
     async def hint(self, session_id: str, level: int = 1) -> Dict[str, Any]:
@@ -859,14 +965,89 @@ class MultiAgentInterviewService:
         context = self.get_context(session_id)
         if not context:
             return {"error": "Session not found"}
-        
+
         result = await self.coordinator.end_interview(context)
-        
-        # Cleanup
-        del self.active_contexts[session_id]
-        
+        result["question_count"] = context.question_count
+
+        # Keep context briefly for feedback call (don't delete immediately)
+        # It will be cleaned up in feedback() or after 30 min
         return result
-    
+
+    async def feedback(self, session_id: str) -> Dict[str, Any]:
+        """Generate structured 7-dimension feedback from full conversation."""
+        context = self.get_context(session_id)
+        if not context:
+            return {"error": "Session not found"}
+
+        llm = None
+        try:
+            from .llm_service import llm_service
+            llm = llm_service
+        except Exception:
+            pass
+
+        # Build conversation transcript
+        transcript = []
+        qs = context.questions_asked
+        ans = context.answers_given
+        for i, a in enumerate(ans):
+            q_text = qs[i]["content"] if i < len(qs) else "(question)"
+            transcript.append(f"Q{i+1}: {q_text}")
+            transcript.append(f"A{i+1}: {a.get('answer', '')}")
+        transcript_str = "\n".join(transcript) or "No answers recorded."
+
+        avg_score = sum(context.scores) / len(context.scores) if context.scores else 50
+
+        if llm:
+            try:
+                prompt = f"""You are an expert interview evaluator. Analyze this interview transcript and return ONLY a JSON object.
+
+CANDIDATE: {context.role} at {context.company}
+TRANSCRIPT:
+{transcript_str[:3000]}
+
+Return ONLY this JSON (no markdown, no explanation):
+{{
+  "communication_clarity": <0-100>,
+  "technical_depth": <0-100>,
+  "confidence": <0-100>,
+  "overall_rating": <1.0-5.0>,
+  "strengths": ["<strength1>", "<strength2>", "<strength3>"],
+  "improvements": ["<area1>", "<area2>", "<area3>"],
+  "suggested_answers": {{
+    "best_moment": "<which answer was strongest and why>",
+    "improve_this": "<which answer needed work and a better version>"
+  }},
+  "summary": "<2-3 sentence overall assessment>"
+}}"""
+                raw = await llm.generate(prompt, "You are an expert interview coach. Return ONLY valid JSON.")
+                import re, json as _json
+                m = re.search(r'\{[\s\S]*\}', raw)
+                if m:
+                    return _json.loads(m.group())
+            except Exception:
+                pass
+
+        # Graceful fallback
+        rating = round(1 + (avg_score / 100) * 4, 1)
+        return {
+            "communication_clarity": int(avg_score),
+            "technical_depth": max(30, int(avg_score) - 5),
+            "confidence": min(100, int(avg_score) + 5),
+            "overall_rating": rating,
+            "strengths": ["Attempted all questions", "Showed engagement", "Communicated clearly"],
+            "improvements": ["Add more specific examples", "Discuss complexity tradeoffs", "Structure answers with STAR method"],
+            "suggested_answers": {
+                "best_moment": "Your introductory answer showed good self-awareness.",
+                "improve_this": "Technical answers could benefit from concrete code examples or system diagrams."
+            },
+            "summary": f"Overall performance: {avg_score:.0f}/100. You completed {context.question_count} questions. Keep practicing to build confidence and depth."
+        }
+
+    def cleanup(self, session_id: str):
+        """Remove session context."""
+        self.active_contexts.pop(session_id, None)
+
     def get_active_sessions(self) -> List[str]:
         """Get list of active session IDs."""
         return list(self.active_contexts.keys())

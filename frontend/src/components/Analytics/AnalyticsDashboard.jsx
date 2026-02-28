@@ -7,74 +7,72 @@ import SidebarLeft from '../SidebarLeft';
 import { FiLoader } from 'react-icons/fi';
 
 const AnalyticsDashboard = () => {
-               const { user } = useAuth();
-               const [data, setData] = useState(null);
-               const [loading, setLoading] = useState(true);
-               const [error, setError] = useState(null);
+    const { user } = useAuth();
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
-               useEffect(() => {
-                              const loadAnalytics = async () => {
-                                             if (!user) return;
+    useEffect(() => {
+        const loadAnalytics = async () => {
+            if (!user) return;
 
-                                             setLoading(true);
-                                             try {
-                                                            let result;
-                                                            if (user.role === 'student') {
-                                                                           result = await analyticsService.getStudentOverview();
-                                                            } else if (user.role === 'recruiter') {
-                                                                           result = await analyticsService.getRecruiterOverview();
-                                                            }
-                                                            setData(result);
-                                             } catch (err) {
-                                                            console.error("Failed to load analytics:", err);
-                                                            setError("Failed to load analytics data.");
-                                             } finally {
-                                                            setLoading(false);
-                                             }
-                              };
+            setLoading(true);
+            try {
+                let result;
+                if (user.role === 'student') {
+                    result = await analyticsService.getStudentOverview();
+                } else if (user.role === 'recruiter') {
+                    result = await analyticsService.getRecruiterOverview();
+                }
+                setData(result);
+            } catch (err) {
+                console.error("Failed to load analytics:", err);
+                setError("Failed to load analytics data.");
+            } finally {
+                setLoading(false);
+            }
+        };
 
-                              loadAnalytics();
-               }, [user]);
+        loadAnalytics();
+    }, [user]);
 
-               if (loading) {
-                              return (
-                                             <div className="flex h-screen bg-gray-50">
-                                                            <SidebarLeft />
-                                                            <div className="flex-1 flex items-center justify-center">
-                                                                           <FiLoader className="animate-spin text-blue-600" size={32} />
-                                                            </div>
-                                             </div>
-                              );
-               }
+    if (loading) {
+        return (
+            <div className="dashboard-container">
+                <SidebarLeft />
+                <div className="dashboard-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+                    <FiLoader className="loading-spinner" size={32} />
+                </div>
+            </div>
+        );
+    }
 
-               return (
-                              <div className="flex h-screen bg-gray-50 overflow-hidden">
-                                             <SidebarLeft />
-                                             <div className="flex-1 overflow-auto">
-                                                            <header className="bg-white shadow-sm sticky top-0 z-10">
-                                                                           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-                                                                                          <h1 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h1>
-                                                                                          <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded capitalize">
-                                                                                                         {user?.role} View
-                                                                                          </span>
-                                                                           </div>
-                                                            </header>
+    return (
+        <div className="dashboard-container">
+            <SidebarLeft />
+            <div className="dashboard-main">
+                <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h1 className="dashboard-title">Analytics Dashboard</h1>
+                    <span style={{ backgroundColor: '#e0e7ff', color: '#3730a3', fontSize: '0.75rem', fontWeight: 600, padding: '0.25rem 0.5rem', borderRadius: '4px', textTransform: 'capitalize' }}>
+                        {user?.role} View
+                    </span>
+                </div>
 
-                                                            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                                                                           {error ? (
-                                                                                          <div className="bg-red-50 text-red-700 p-4 rounded-lg">
-                                                                                                         {error}
-                                                                                          </div>
-                                                                           ) : (
-                                                                                          <>
-                                                                                                         {user?.role === 'student' && <StudentAnalytics data={data} />}
-                                                                                                         {user?.role === 'recruiter' && <RecruiterAnalytics data={data} />}
-                                                                                          </>
-                                                                           )}
-                                                            </main>
-                                             </div>
-                              </div>
-               );
+                <div className="dashboard-content">
+                    {error ? (
+                        <div style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '1rem', borderRadius: '8px' }}>
+                            {error}
+                        </div>
+                    ) : (
+                        <>
+                            {user?.role === 'student' && <StudentAnalytics data={data} />}
+                            {user?.role === 'recruiter' && <RecruiterAnalytics data={data} />}
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default AnalyticsDashboard;

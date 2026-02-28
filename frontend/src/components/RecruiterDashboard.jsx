@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiMapPin, FiTrash2, FiUsers, FiLogOut, FiPlus, FiMessageSquare, FiCalendar, FiTrello, FiShield } from 'react-icons/fi';
+import { FiMapPin, FiTrash2, FiUsers, FiLogOut, FiPlus, FiMessageSquare, FiCalendar, FiTrello, FiShield, FiTrendingUp } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import { jobService } from '../services/jobService';
 import InterviewModal from './interviews/InterviewModal';

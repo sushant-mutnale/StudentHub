@@ -47,7 +47,7 @@ class GapAnalysisResponse(BaseModel):
 
 class LearningResource(BaseModel):
     resource_id: str
-    type: str  # video, article, course, practice
+    type: str  # video, article, course, practice, documentation, repository
     title: str
     url: str
     duration_minutes: Optional[int] = None
@@ -57,12 +57,24 @@ class LearningResource(BaseModel):
     completed_at: Optional[datetime] = None
 
 
+class LearningSubtopic(BaseModel):
+    title: str
+    estimated_time_minutes: int
+    acceptance_criteria: List[str] = Field(default_factory=list, description="Definition of Done statements")
+    resources: List[LearningResource] = Field(default_factory=list, description="Curated content specific to this subtopic")
+    completed: bool = False
+    completed_at: Optional[datetime] = None
+
+
 class LearningStage(BaseModel):
     stage_number: int
     stage_name: str  # Foundation, Intermediate, Advanced
     duration_weeks: int
-    topics: List[str]
-    resources: List[LearningResource]
+    topics: List[str] = Field(default_factory=list) # Kept for backward compatibility
+    subtopics: List[LearningSubtopic] = Field(default_factory=list)
+    goal: Optional[str] = None
+    resources: List[LearningResource] = Field(default_factory=list) # Kept for backward comp/global stage resources
+    mcq_score: Optional[int] = None
     assessment: Optional[Dict[str, Any]] = None
     status: str = "not_started"  # not_started, in_progress, completed
     completed_at: Optional[datetime] = None
@@ -85,6 +97,8 @@ class LearningPath(BaseModel):
     stages: List[LearningStage]
     progress: LearningPathProgress
     estimated_completion_weeks: int
+    available_time: Optional[str] = None
+    goal_level: str = "Intermediate"
     ai_advice: str = ""  # AI-generated personalized coaching
     ai_powered: bool = False  # Whether AI was used for personalization
     created_at: Optional[datetime] = None
@@ -92,8 +106,11 @@ class LearningPath(BaseModel):
 
 
 class GeneratePathRequest(BaseModel):
-    student_id: str
-    gaps: List[SkillGap]
+    student_id: Optional[str] = None
+    skill: Optional[str] = None # Added since user manually inputs it now (as seen in frontend)
+    gaps: List[SkillGap] = Field(default_factory=list)
+    available_time: str = "4 weeks"
+    goal_level: str = "Job-ready"
 
 
 class GeneratePathResponse(BaseModel):
@@ -106,6 +123,7 @@ class GeneratePathResponse(BaseModel):
 class MarkProgressRequest(BaseModel):
     learning_path_id: str
     stage_number: int
+    subtopic_index: Optional[int] = None
     resource_index: int
     action: str = "completed"  # completed, skipped
 

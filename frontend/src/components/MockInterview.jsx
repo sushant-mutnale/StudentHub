@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { mockInterviewService } from '../services/mockInterviewService';
-import { sandboxService } from '../services/sandboxService';
+import { api } from '../api/client';
 import SidebarLeft from './SidebarLeft';
 import { FiMic, FiPlay, FiSend, FiClock, FiTarget, FiAward, FiCode, FiMessageSquare, FiHelpCircle, FiCheck, FiCpu, FiVideo } from 'react-icons/fi';
 import '../App.css';
+
 
 const MockInterview = () => {
     const navigate = useNavigate();
@@ -59,96 +59,93 @@ const MockInterview = () => {
     const startSession = async () => {
         setLoading(true);
         try {
-            const sess = await mockInterviewService.startSession({
-                interview_type: config.type,
-                difficulty: config.difficulty,
-                topic: config.topic || undefined,
-                company: config.company || undefined
+            const { data } = await api.post('/agent-interview/start', {
+                company: config.company || 'Tech Company',
+                role: config.topic || 'Software Engineer',
+                difficulty: config.difficulty
             });
-            setSession(sess);
+
+            // Store session ID separately since agent-interview doesn't return a session object
+            const agentSessionId = data.session_id;
+            setSession({ session_id: agentSessionId, ...config });
             setShowConfig(false);
             setTimerActive(true);
 
-            // Get first question
-            const question = await mockInterviewService.getNextQuestion(sess._id || sess.id || sess.session_id);
-            setCurrentQuestion(question);
+            const firstMessage = data.interviewer_message || data.question || 'Welcome! Let\'s begin the interview.';
 
             setMessages([
-                { role: 'interviewer', content: `Welcome! Let's begin your ${config.type} interview${config.company ? ` for ${config.company}` : ''}.` },
-                { role: 'interviewer', content: question.question || question.text, type: question.type }
+                { role: 'interviewer', content: `🤖 Alex (AI Interviewer) — ${config.company || 'Tech Company'} · ${config.difficulty} difficulty` },
+                { role: 'interviewer', content: firstMessage }
             ]);
         } catch (err) {
             console.error('Failed to start session:', err);
+            setMessages([{ role: 'system', content: 'Failed to start interview. Please try again.' }]);
+            setShowConfig(true);
         } finally {
             setLoading(false);
         }
     };
+
 
     const submitAnswer = async () => {
         if (!answer.trim() && !code.trim()) return;
 
-        const userMessage = config.type === 'dsa' && code ? code : answer;
+        const userMessage = config.type === 'dsa' && code
+            ? `${answer.trim()}\n\n\`\`\`python\n${code.trim()}\n\`\`\``
+            : answer;
+
         setMessages(prev => [...prev, { role: 'candidate', content: userMessage }]);
+        setAnswer('');
+        setCode('');
         setLoading(true);
 
         try {
-            const sessionId = session._id || session.id || session.session_id;
-            const questionId = currentQuestion._id || currentQuestion.id || currentQuestion.question_id;
+            const agentSessionId = session?.session_id;
 
-            // For DSA, run code first
-            if (config.type === 'dsa' && code) {
-                const codeResult = await sandboxService.runCode(code, 'python');
+            const { data } = await api.post('/agent-interview/answer', {
+                session_id: agentSessionId,
+                answer: answer.trim() || code.trim()
+            });
+
+            // Show evaluation feedback
+            const eval_ = data.evaluation || {};
+            if (eval_.feedback) {
                 setMessages(prev => [...prev, {
-                    role: 'system',
-                    content: `Code Output:\n${codeResult.output || 'No output'}${codeResult.error ? `\nError: ${codeResult.error}` : ''}`
+                    role: 'feedback',
+                    content: eval_.feedback,
+                    score: eval_.score
                 }]);
             }
 
-            const result = await mockInterviewService.submitAnswer(sessionId, questionId, userMessage, code || null);
-
-            setFeedback(result.feedback || result.evaluation);
-            setMessages(prev => [...prev, {
-                role: 'feedback',
-                content: result.feedback?.summary || result.evaluation?.feedback || 'Answer recorded.',
-                score: result.feedback?.score || result.evaluation?.score
-            }]);
-
-            setAnswer('');
-            setCode('');
-
-            // Get next question if available
-            if (!result.session_complete && !result.is_complete) {
-                const nextQ = await mockInterviewService.getNextQuestion(sessionId);
-                if (nextQ && nextQ.question) {
-                    setCurrentQuestion(nextQ);
-                    setMessages(prev => [...prev, {
-                        role: 'interviewer',
-                        content: nextQ.question || nextQ.text,
-                        type: nextQ.type
-                    }]);
-                } else {
-                    endSession();
-                }
+            // Show next question
+            if (data.next_question) {
+                setMessages(prev => [...prev, {
+                    role: 'interviewer',
+                    content: data.next_question
+                }]);
             } else {
-                endSession();
+                // No more questions → end
+                await endSession();
             }
         } catch (err) {
             console.error('Failed to submit answer:', err);
+            setMessages(prev => [...prev, { role: 'system', content: 'Could not submit answer. Please try again.' }]);
         } finally {
             setLoading(false);
         }
     };
 
+
     const getHint = async () => {
-        if (!currentQuestion) return;
         setLoading(true);
         try {
-            const sessionId = session._id || session.id || session.session_id;
-            const questionId = currentQuestion._id || currentQuestion.id || currentQuestion.question_id;
-            const hint = await mockInterviewService.getHint(sessionId, questionId);
+            const { data } = await api.post('/agent-interview/hint', {
+                session_id: session?.session_id,
+                level: 1
+            });
             setMessages(prev => [...prev, {
                 role: 'hint',
-                content: hint.hint || hint.message || 'Think about the problem step by step...'
+                content: data.hint || 'Think step by step. What data structures might help here?'
             }]);
         } catch (err) {
             console.error('Failed to get hint:', err);
@@ -157,19 +154,27 @@ const MockInterview = () => {
         }
     };
 
+
     const endSession = async () => {
         setTimerActive(false);
         try {
-            const sessionId = session._id || session.id || session.session_id;
-            const summary = await mockInterviewService.getSummary(sessionId);
+            const { data } = await api.post('/agent-interview/end', {
+                session_id: session?.session_id
+            });
             setMessages(prev => [...prev, {
                 role: 'summary',
-                content: summary
+                content: {
+                    overall_score: data.final_score,
+                    questions_answered: data.questions_answered,
+                    coaching: data.career_coaching || data.coaching,
+                    breakdown: data.performance_breakdown
+                }
             }]);
         } catch (err) {
-            console.error('Failed to get summary:', err);
+            console.error('Failed to end session:', err);
         }
     };
+
 
     if (!user) return null;
 

@@ -175,15 +175,15 @@ async def get_pipeline_board(
 ):
     """Get the pipeline board view for a specific job (kanban-style)."""
     # 1. Try Read Model (CQRS)
-    from ..models.views import view_pipeline_boards
-    view_col = view_pipeline_boards()
-    cached_view = await view_col.find_one({"job_id": job_id})
-    
-    if cached_view:
-        # Verify ownership
-        if str(cached_view.get("company_id")) == str(recruiter["_id"]):
-             # Return directly from view
-            return PipelineBoardResponse(**cached_view)
+    # from ..models.views import view_pipeline_boards
+    # view_col = view_pipeline_boards()
+    # cached_view = await view_col.find_one({"job_id": job_id})
+    # 
+    # if cached_view:
+    #     # Verify ownership
+    #     if str(cached_view.get("company_id")) == str(recruiter["_id"]):
+    #          # Return directly from view
+    #         return PipelineBoardResponse(**cached_view)
     
     # 2. Fallback to Live Aggregation (Write Model)
     # This happens if view is missing or outdated logic triggered

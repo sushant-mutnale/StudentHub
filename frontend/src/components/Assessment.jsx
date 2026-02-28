@@ -240,17 +240,34 @@ const Assessment = () => {
     if (user.skills && user.skills.length > 0) {
       const availableAssessments = user.skills
         .map((skill) => {
-          const normalizedSkill = skill.trim();
-          if (quizData[normalizedSkill]) {
+          const skillName = typeof skill === 'string' ? skill : (skill.name || '');
+          const normalizedSkill = skillName.trim();
+
+          let matchedQuiz = null;
+          let matchedName = null;
+
+          // Fuzzy match against our available quizzes
+          Object.keys(quizData).forEach(key => {
+            if (normalizedSkill.toLowerCase() === key.toLowerCase() ||
+              normalizedSkill.toLowerCase().includes(key.toLowerCase()) ||
+              key.toLowerCase().includes(normalizedSkill.toLowerCase())) {
+              matchedQuiz = quizData[key];
+              matchedName = key;
+            }
+          });
+
+          if (matchedQuiz) {
             return {
-              skill: normalizedSkill,
-              questions: quizData[normalizedSkill],
+              skill: matchedName,
+              questions: matchedQuiz,
               completed: false
             };
           }
           return null;
         })
-        .filter((a) => a !== null);
+        .filter((a, index, self) =>
+          a !== null && self.findIndex(t => t.skill === a.skill) === index
+        );
 
       setAssessments(availableAssessments);
     }
@@ -489,8 +506,8 @@ const Assessment = () => {
                       {score.percentage >= 80
                         ? 'Excellent work! You have a strong understanding of this skill.'
                         : score.percentage >= 60
-                        ? 'Good job! Consider reviewing some topics for better mastery.'
-                        : 'Keep learning! Review the topics and try again.'}
+                          ? 'Good job! Consider reviewing some topics for better mastery.'
+                          : 'Keep learning! Review the topics and try again.'}
                     </p>
 
                     <div style={{ marginTop: '2rem' }}>

@@ -47,6 +47,7 @@ export default defineConfig({
       '/hackathons': { target: 'http://127.0.0.1:8000', changeOrigin: true, secure: false },
       '/analytics': { target: 'http://127.0.0.1:8000', changeOrigin: true, secure: false },
       '/demo': { target: 'http://127.0.0.1:8000', changeOrigin: true, secure: false },
+      '/agent-interview': { target: 'http://127.0.0.1:8000', changeOrigin: true, secure: false },
     }
   }
 })

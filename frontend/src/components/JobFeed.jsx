@@ -97,7 +97,7 @@ const JobFeed = ({ refreshTrigger = 0 }) => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {jobs.map((job, idx) => (
           <div
-            key={job.id}
+            key={job.id || idx}
             className="glass-card hover-lift"
             style={{
               padding: '1.25rem',
@@ -105,7 +105,14 @@ const JobFeed = ({ refreshTrigger = 0 }) => {
               cursor: 'pointer',
               animationDelay: `${idx * 50}ms`
             }}
-            onClick={() => navigate(`/jobs/${job.id}`)}
+            onClick={() => {
+              const applyUrl = job.url || job.apply_url || job.link;
+              if (applyUrl) {
+                window.open(applyUrl, '_blank', 'noopener,noreferrer');
+              } else {
+                navigate(`/jobs/${job.id}`);
+              }
+            }}
           >
             <div style={{ display: 'flex', gap: '1rem' }}>
               {/* Company Icon Placeholder */}
@@ -206,6 +213,26 @@ const JobFeed = ({ refreshTrigger = 0 }) => {
                 </div>
               </div>
             </div>
+            {/* Apply link */}
+            {(job.url || job.apply_url) && (
+              <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
+                <a
+                  href={job.url || job.apply_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="btn-glow"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                    padding: '0.4rem 1rem', background: 'var(--gradient-primary)',
+                    color: 'white', borderRadius: 'var(--radius-full)', fontSize: '0.8rem',
+                    fontWeight: '600', textDecoration: 'none'
+                  }}
+                >
+                  Apply Now <FiArrowRight size={13} />
+                </a>
+              </div>
+            )}
           </div>
         ))}
       </div>

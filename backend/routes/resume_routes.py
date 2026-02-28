@@ -12,6 +12,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 
 from ..database import get_database
+from ..models import user as user_model
 from ..services.resume_parser import resume_parser
 from ..schemas.resume_schema import (
     ResumeUploadResponse,
@@ -28,6 +29,7 @@ from ..schemas.resume_schema import (
     DeleteResponse,
 )
 from ..utils.dependencies import get_current_user
+from ..services.ai_resume_evaluator import ai_resume_evaluator
 
 
 router = APIRouter(prefix="/resume", tags=["resume"])
@@ -179,47 +181,47 @@ async def upload_resume(
             extraction_method=parsed_data.get("extraction_method", ""),
         )
 
-        # MOCK FEEDBACK FOR DEMO
-        mock_feedback = {
-            "summary": "AI/ML-focused Computer Science undergraduate (2026) with hands-on experience building production-grade backend and AI systems. Built scalable FastAPI + Docker + Redis applications deployed on AWS supporting real users. Developed computer vision pipelines and RAG-based LLM systems with measurable performance gains. Strong problem solver with 500+ DSA problems and proven internship experience.",
-            "rating": {
-                "overall": 8.5,
-                "breakdown": [
-                    {"aspect": "ATS Friendliness", "score": 8.5, "max": 10},
-                    {"aspect": "Technical Depth", "score": 9.0, "max": 10},
-                    {"aspect": "Clarity", "score": 7.5, "max": 10},
-                    {"aspect": "Impact Quantification", "score": 8.0, "max": 10},
-                    {"aspect": "Recruiter Readability", "score": 7.0, "max": 10},
-                    {"aspect": "Industry Alignment", "score": 9.0, "max": 10}
-                ]
-            },
-            "strengths": [
-                {"title": "Very Good Technical Coverage", "description": "Backend (FastAPI, Docker, Redis, AWS) + AI/ML (YOLO, RAG, LLM) combo is comprehensive and high-demand."},
-                {"title": "Quantified Achievements", "description": "Strong use of metrics: '>85% accuracy', 'Latency reduced 3.5s to 1.2s', '200 FPS'. Shows impact-driven mindset."},
-                {"title": "Real Industry Internships", "description": "Two internships with meaningful contributions (Dockerized systems, RAG pipelines) sets you apart from typical freshers."},
-            ],
-            "issues": [
-                {"title": "Summary is Generic", "description": "Current summary sounds like many others. Doesn't highlight your strongest parts immediately."},
-                {"title": "Skills Section Needs Reordering", "description": "Too many buzzwords without clear prioritization. Needs better grouping (Backend, AI/ML, Cloud)."},
-                {"title": "Experience Bullets Lack Business Context", "description": "Technically good but misses the 'Why it matters'. Needs to connect tech to business value/impact."},
-                {"title": "Project Section Needs Product Angle", "description": "Descriptions sound academic. Frame them as scalable products solving real user problems."},
-                {"title": "Contact Formatting", "description": "Minor issue: links should be clean and clickable for better recruiter experience."}
-            ],
-            "action_plan": [
-                "Rewrite summary with strict impact focus",
-                "Reorder technical skills by priority (Languages, Backend, AI/ML, Cloud)",
-                "Add business impact in experience bullets (Tech -> Impact -> Value)",
-                "Standardize project descriptions to sound like products",
-                "Add a small 'Achievements' subsection (CodeChef, Hackathons)",
-                "Ensure all contact links are clickable and clean"
-            ]
-        }
+        # Generate Real AI Feedback
+        ai_feedback = await ai_resume_evaluator.evaluate_resume(
+            parsed_data={"contact": parsed_data.get("contact", {}), "skills": parsed_data.get("skills", []), "experience": parsed_data.get("experience", []), "education": parsed_data.get("education", []), "projects": parsed_data.get("projects", [])}
+        )
+        
+        # Save feedback back to document
+        if ai_feedback:
+            await resumes_collection().update_one(
+                {"_id": ObjectId(resume_id)},
+                {"$set": {"feedback": ai_feedback}}
+            )
+            
+        # Merge skills into user profile for Gap Analysis
+        if parsed_data.get("skills"):
+            user = await user_model.get_user_by_id(student_id)
+            if user:
+                user_skills = user.get("skills", [])
+                existing_skill_names = set(
+                    s.get("name", "").lower() if isinstance(s, dict) else str(s).lower() 
+                    for s in user_skills
+                )
+                
+                new_skills = []
+                for skill in parsed_data["skills"]:
+                    if isinstance(skill, str) and skill.lower() not in existing_skill_names:
+                        new_skills.append(skill)
+                        existing_skill_names.add(skill.lower())
+                
+                if new_skills:
+                    # User model update_user automatically formats string skills into dicts
+                    all_skills = [
+                        s.get("name") if isinstance(s, dict) else str(s)
+                        for s in user_skills
+                    ] + new_skills
+                    await user_model.update_user(student_id, {"skills": all_skills})
         
         return ResumeUploadResponse(
             resume_id=resume_id,
             file_name=file.filename,
             parsed_data=parsed_response,
-            feedback=mock_feedback,
+            feedback=ai_feedback,
             parsing_confidence=parsed_data.get("parsing_confidence", 0),
             ai_enhanced=parsed_data.get("ai_enhanced", False),
             message=f"Resume parsed with {parsed_data.get('parsing_confidence', 0):.1f}% confidence"
@@ -300,6 +302,7 @@ async def get_resume(resume_id: str, current_user=Depends(get_current_user)):
             ai_enhanced=doc.get("ai_enhanced", False),
             extraction_method=doc.get("extraction_method", ""),
         ),
+        feedback=doc.get("feedback"),
         uploaded_at=doc.get("uploaded_at", datetime.utcnow()),
         updated_at=doc.get("updated_at")
     )
@@ -368,18 +371,49 @@ async def reparse_resume(
     if len(old_data.get("experience", [])) != len(new_data["experience"]):
         changes.append(f"Experience entries: {len(new_data['experience'])}")
     
+    # Generate New AI Feedback based on reparsed data
+    ai_feedback = await ai_resume_evaluator.evaluate_resume(
+        parsed_data=new_data
+    )
+    
     # Update in MongoDB
+    update_data = {
+        "parsed_data": new_data,
+        "parsing_confidence": parsed_data.get("parsing_confidence", 0),
+        "ai_enhanced": parsed_data.get("ai_enhanced", False),
+        "updated_at": datetime.utcnow(),
+    }
+    if ai_feedback:
+        update_data["feedback"] = ai_feedback
+        changes.append("AI Profile Evaluator generated fresh feedback and actionable insights.")
+
     await resumes_collection().update_one(
         {"_id": ObjectId(resume_id)},
-        {
-            "$set": {
-                "parsed_data": new_data,
-                "parsing_confidence": parsed_data.get("parsing_confidence", 0),
-                "ai_enhanced": parsed_data.get("ai_enhanced", False),
-                "updated_at": datetime.utcnow(),
-            }
-        }
+        {"$set": update_data}
     )
+    
+    # Merge skills into user profile for Gap Analysis
+    if new_data.get("skills"):
+        user = await user_model.get_user_by_id(str(doc["student_id"]))
+        if user:
+            user_skills = user.get("skills", [])
+            existing_skill_names = set(
+                s.get("name", "").lower() if isinstance(s, dict) else str(s).lower() 
+                for s in user_skills
+            )
+            
+            new_skills = []
+            for skill in new_data["skills"]:
+                if isinstance(skill, str) and skill.lower() not in existing_skill_names:
+                    new_skills.append(skill)
+                    existing_skill_names.add(skill.lower())
+            
+            if new_skills:
+                all_skills = [
+                    s.get("name") if isinstance(s, dict) else str(s)
+                    for s in user_skills
+                ] + new_skills
+                await user_model.update_user(str(doc["student_id"]), {"skills": all_skills})
     
     return ReparseResponse(
         resume_id=resume_id,

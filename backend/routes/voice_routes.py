@@ -228,7 +228,7 @@ async def get_voice_session_status(
     current_user: dict = Depends(get_current_user)
 ):
     """Get current status of voice interview session."""
-    from backend.database import get_database
+    from ..database import get_database
     db = get_database()
     
     # Check sessions
@@ -261,7 +261,7 @@ async def end_voice_session(
     current_user: dict = Depends(get_current_user)
 ):
     """End voice interview session and get final report."""
-    from backend.database import get_database
+    from ..database import get_database
     db = get_database()
     
     # Try to end session
@@ -287,7 +287,7 @@ async def end_voice_session(
     agent = await db.agent_interviews.find_one({"session_id": session_id})
     
     if agent:
-        from backend.routes.agent_routes import end_agent_interview_logic
+        from ..routes.agent_routes import end_agent_interview_logic
         result = await end_agent_interview_logic(session_id)
         
         farewell = f"Interview completed. Your final score is {result['final_score']}. {result['career_coaching'][:100]}"

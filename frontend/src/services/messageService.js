@@ -1,28 +1,17 @@
 import { api } from '../api/client';
-import { mockThreads, mockMessages } from './mockData';
 
 export const messageService = {
   listThreads: async () => {
-    try {
-      const { data } = await api.get('/threads');
-      return data;
-    } catch (error) {
-      console.warn('Backend unavailable, using mock threads for demo.');
-      return mockThreads;
-    }
+    const { data } = await api.get('/threads');
+    return data;
   },
   createThread: async (payload) => {
     const { data } = await api.post('/threads', payload);
     return data;
   },
   getThread: async (threadId, params = {}) => {
-    try {
-      const { data } = await api.get(`/threads/${threadId}`, { params });
-      return data;
-    } catch (error) {
-      console.warn('Backend unavailable, using mock messages for demo.');
-      return mockMessages;
-    }
+    const { data } = await api.get(`/threads/${threadId}`, { params });
+    return data;
   },
   sendMessage: async (threadId, payload) => {
     const { data } = await api.post(`/threads/${threadId}/messages`, payload);

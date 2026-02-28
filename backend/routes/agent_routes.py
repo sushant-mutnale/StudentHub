@@ -22,6 +22,8 @@ class StartInterviewRequest(BaseModel):
     company: str = Field(default="Tech Company", description="Target company")
     role: str = Field(default="Software Engineer", description="Target role")
     difficulty: str = Field(default="medium", description="Difficulty: easy, medium, hard")
+    interview_type: Optional[str] = Field(default="mixed", description="behavioral | technical | mixed")
+    resume_text: Optional[str] = Field(default=None, description="Candidate resume text for personalized questions")
 
 
 class AnswerRequest(BaseModel):
@@ -62,7 +64,9 @@ async def start_interview(
             student_id=student_id,
             company=payload.company,
             role=payload.role,
-            difficulty=payload.difficulty
+            difficulty=payload.difficulty,
+            interview_type=payload.interview_type or "mixed",
+            resume_text=payload.resume_text or ""
         )
         
         return {
@@ -187,6 +191,42 @@ async def end_interview(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to end interview: {str(e)}")
+
+
+# ============ Structured Feedback ============
+
+class FeedbackRequest(BaseModel):
+    """Request structured interview feedback."""
+    session_id: str = Field(..., description="Interview session ID")
+
+
+@router.post("/feedback")
+async def get_interview_feedback(
+    payload: FeedbackRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Generate structured AI feedback after interview.
+    Returns 7-dimension analysis: communication, technical depth,
+    confidence, strengths, improvements, suggested answers, overall rating.
+    """
+    try:
+        result = await multi_agent_interview.feedback(payload.session_id)
+
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+
+        return {
+            "status": "success",
+            "session_id": payload.session_id,
+            "feedback": result
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate feedback: {str(e)}")
+
+
 
 
 # ============ Quick Demo ============

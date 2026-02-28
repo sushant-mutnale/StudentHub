@@ -49,53 +49,61 @@ const SidebarLeft = () => {
   const navStructure = [
     { type: 'link', label: 'Dashboard', icon: FiHome, path: '/dashboard/student' },
     { type: 'link', label: 'Analytics', icon: FiTrendingUp, path: '/analytics' },
-    { type: 'link', label: 'Profile', icon: FiUser, path: '/profile/student' },
-
     {
       type: 'group',
-      label: 'Learning',
-      key: 'learning',
-      icon: FiBook,
+      label: 'User & Profile',
+      key: 'profile',
+      icon: FiUser,
       children: [
-        { label: 'My Courses', path: '/learning' },
-        { label: 'Skill Gaps', path: '/skill-gaps' },
-        { label: 'Research', path: '/research' }
+        { label: 'Profile', path: '/profile/student' },
+        { label: 'Resume', path: '/resume' }
       ]
     },
 
     {
       type: 'group',
-      label: 'Career',
-      key: 'career',
-      icon: FiBriefcase,
-      children: [
-        { label: 'Opportunities', path: '/opportunities' },
-        { label: 'Applications', path: '/applications' },
-        { label: 'Resume', path: '/resume' },
-        { label: 'Mock Interview (Chat)', path: '/mock-interview' },
-        { label: '🎤 Voice Interview', path: '/interview/voice' },
-        { label: 'Interviews', path: '/interviews' }
-      ]
-    },
-
-    {
-      type: 'group',
-      label: 'Assessments',
-      key: 'assessment',
+      label: 'Evaluation & Matching',
+      key: 'evaluation',
       icon: FiLayers,
       children: [
+        { label: 'Skill Gaps', path: '/skill-gaps' },
         { label: 'All Assessments', path: '/assessment' }
       ]
     },
 
     {
       type: 'group',
-      label: 'Communication',
+      label: 'Learning & Feedback',
+      key: 'learning',
+      icon: FiBook,
+      children: [
+        { label: 'Learning Paths', path: '/learning' }
+      ]
+    },
+
+    {
+      type: 'group',
+      label: 'Recommendations & Alerts',
+      key: 'recommendations',
+      icon: FiBell,
+      children: [
+        { label: 'Opportunities', path: '/opportunities' },
+        { label: 'Notifications', path: '/smart-notifications' },
+        { label: 'Research', path: '/research' }
+      ]
+    },
+
+    {
+      type: 'group',
+      label: 'Communication & Tracking',
       key: 'communication',
       icon: FiMessageSquare,
       children: [
+        { label: 'Applications', path: '/applications' },
         { label: 'Messages', path: '/messages' },
-        { label: 'Notifications', path: '/smart-notifications' }
+        { label: 'Interviews', path: '/interviews' },
+        { label: 'Mock Interview (Chat)', path: '/mock-interview' },
+        { label: '🎤 Voice Interview', path: '/interview/voice' }
       ]
     }
   ];
@@ -108,9 +116,11 @@ const SidebarLeft = () => {
         onClick={() => navigate(item.path)}
         className={`nav-item-modern ${active ? 'active' : ''}`}
         style={{
-          paddingLeft: isNested ? '3.25rem' : '1.25rem',
+          paddingLeft: isNested ? '2.5rem' : '1.25rem',
           position: 'relative',
-          marginBottom: '0.25rem'
+          marginBottom: '0.25rem',
+          paddingTop: isNested ? '0.5rem' : '0.75rem',
+          paddingBottom: isNested ? '0.5rem' : '0.75rem'
         }}
       >
         {active && (
@@ -281,7 +291,8 @@ const SidebarLeft = () => {
                   maxHeight: isExpanded ? '500px' : '0',
                   overflow: 'hidden',
                   transition: 'max-height 0.3s ease-in-out',
-                  opacity: isExpanded ? 1 : 0.5
+                  opacity: isExpanded ? 1 : 0.5,
+                  marginTop: '0.25rem'
                 }}>
                   {item.children.map(child => renderNavItem(child, true))}
                 </div>

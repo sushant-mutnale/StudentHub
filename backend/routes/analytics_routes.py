@@ -135,7 +135,7 @@ async def get_recruiter_analytics(current_user=Depends(get_current_user)):
     recruiters_jobs = await db.jobs.find(
         {"recruiter_id": recruiter_id}, {"_id": 1}
     ).to_list(None)
-    job_ids = [str(j["_id"]) for j in recruiters_jobs]
+    job_ids = [j["_id"] for j in recruiters_jobs]
     
     total_applications = await db.applications.count_documents(
         {"job_id": {"$in": job_ids}}
@@ -177,7 +177,7 @@ async def get_recruiter_analytics(current_user=Depends(get_current_user)):
     
     job_performance = []
     for job in recent_jobs:
-        app_count = await db.applications.count_documents({"job_id": str(job["_id"])})
+        app_count = await db.applications.count_documents({"job_id": job["_id"]})
         job_performance.append({
             "id": str(job["_id"]),
             "title": job["title"],
