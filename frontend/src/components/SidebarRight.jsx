@@ -77,11 +77,18 @@ const SidebarRight = () => {
           ) : (
             contests.map((contest) => {
               const { icon: Icon, color } = getCategoryIcon(contest.category);
+
+              // Ensure absolute URLs
+              let contestUrl = contest.url || '#';
+              if (contestUrl !== '#' && !contestUrl.startsWith('http://') && !contestUrl.startsWith('https://')) {
+                contestUrl = 'https://' + contestUrl;
+              }
+
               return (
                 <div
                   key={contest.id}
                   className="interactive-card hover-lift"
-                  onClick={() => window.open(contest.url, '_blank', 'noopener,noreferrer')}
+                  onClick={() => window.open(contestUrl, '_blank', 'noopener,noreferrer')}
                   style={{
                     padding: '0.75rem',
                     borderRadius: 'var(--radius-md)',
@@ -151,37 +158,45 @@ const SidebarRight = () => {
           ) : resources.length === 0 ? (
             <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', textAlign: 'center', padding: '1rem 0' }}>No recommended resources yet.</div>
           ) : (
-            resources.map((resource) => (
-              <a
-                key={resource.id}
-                href={resource.url || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover-lift"
-                style={{
-                  display: 'flex',
-                  alignItems: 'start',
-                  gap: '0.75rem',
-                  padding: '0.75rem',
-                  borderRadius: 'var(--radius-md)',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                  transition: 'var(--transition-fast)'
-                }}
-              >
-                <div style={{ mt: '3px', color: 'var(--color-primary)' }}>
-                  <FiBookOpen size={18} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--color-text)' }}>
-                    {resource.title}
+            resources.map((resource) => {
+              // Ensure absolute URLs
+              let resourceUrl = resource.url || '#';
+              if (resourceUrl !== '#' && !resourceUrl.startsWith('http://') && !resourceUrl.startsWith('https://')) {
+                resourceUrl = 'https://' + resourceUrl;
+              }
+
+              return (
+                <a
+                  key={resource.id}
+                  href={resourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover-lift"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'start',
+                    gap: '0.75rem',
+                    padding: '0.75rem',
+                    borderRadius: 'var(--radius-md)',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    transition: 'var(--transition-fast)'
+                  }}
+                >
+                  <div style={{ mt: '3px', color: 'var(--color-primary)' }}>
+                    <FiBookOpen size={18} />
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', lineHeight: '1.4' }}>
-                    {resource.source} • {resource.category}
+                  <div>
+                    <div style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--color-text)' }}>
+                      {resource.title}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', lineHeight: '1.4' }}>
+                      {resource.source} • {resource.category}
+                    </div>
                   </div>
-                </div>
-              </a>
-            ))
+                </a>
+              );
+            })
           )}
         </div>
 

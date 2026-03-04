@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import OTPInput from './OTPInput';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
 import '../App.css';
 
 // Debounce utility
@@ -43,6 +44,7 @@ const SignupStudent = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Real-time validation states
   const [usernameStatus, setUsernameStatus] = useState(null);
@@ -327,9 +329,9 @@ const SignupStudent = () => {
                 {usernameStatus === 'invalid' && <span className="field-warning">Min 3 characters</span>}
               </div>
 
-              <div className="form-group modern">
+              <div className="form-group modern" style={{ position: 'relative' }}>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   name="password"
                   className="form-input modern"
                   value={formData.password}
@@ -337,9 +339,31 @@ const SignupStudent = () => {
                   required
                   placeholder=" "
                   minLength="6"
+                  style={{ paddingRight: '40px' }}
                 />
                 <label className="form-label floating">Password</label>
                 <div className="input-icon">🔒</div>
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '20px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '4px',
+                    zIndex: 10
+                  }}
+                >
+                  {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                </button>
                 {formData.password && (
                   <div className="password-strength">
                     <div className="strength-bar">

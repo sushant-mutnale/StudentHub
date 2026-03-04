@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -173,7 +174,7 @@ const VoiceInterview = () => {
 
     // ── Setup state ─────────────────────────────
     const [phase, setPhase] = useState('setup');  // setup | loading | room | feedback
-    const [config, setConfig] = useState({
+    const [config, setConfig] = usePersistedState('voice_interview_config', {
         company: searchParams.get('company') || '',
         role: searchParams.get('role') || 'Software Engineer',
         interviewType: 'mixed',  // behavioral | technical | mixed

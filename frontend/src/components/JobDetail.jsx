@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { jobService } from '../services/jobService';
-import SidebarLeft from './SidebarLeft';
 import { FiMapPin, FiBriefcase, FiDollarSign, FiClock, FiCheckCircle, FiSend, FiLoader, FiArrowLeft, FiUser, FiInfo, FiExternalLink } from 'react-icons/fi';
 import '../App.css';
 
@@ -91,9 +90,8 @@ const JobDetail = () => {
 
   if (loading) {
     return (
-      <div className="dashboard-container">
-        <SidebarLeft />
-        <div className="dashboard-main" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      <div className="dashboard-container" style={{ display: 'block' }}>
+        <div className="dashboard-main" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
           <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
             <FiLoader className="animate-spin" size={32} />
             <p style={{ marginTop: '1rem' }}>Loading job details...</p>
@@ -105,9 +103,8 @@ const JobDetail = () => {
 
   if (error && !job) {
     return (
-      <div className="dashboard-container">
-        <SidebarLeft />
-        <div className="dashboard-main">
+      <div className="dashboard-container" style={{ display: 'block' }}>
+        <div className="dashboard-main" style={{ minHeight: '100vh' }}>
           <div style={{ padding: '2rem' }}>
             <button onClick={() => navigate(-1)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
               <FiArrowLeft /> Back
@@ -125,9 +122,8 @@ const JobDetail = () => {
   const isRecruiter = user?.role === 'recruiter';
 
   return (
-    <div className="dashboard-container">
-      <SidebarLeft />
-      <div className="dashboard-main custom-scrollbar">
+    <div className="dashboard-container" style={{ display: 'block' }}>
+      <div className="dashboard-main custom-scrollbar" style={{ minHeight: '100vh', padding: '0 2rem' }}>
         <div className="dashboard-header animate-fade-in-down">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <button

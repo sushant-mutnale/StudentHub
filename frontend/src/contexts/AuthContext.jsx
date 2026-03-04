@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { setAuthToken } from '../api/client';
 import { authService } from '../services/authService';
 import { userService } from '../services/userService';
+import { clearAllPersistedState } from '../hooks/usePersistedState';
 
 const SESSION_KEY = 'studenthub_session';
 
@@ -122,6 +123,7 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setAuthToken(null);
     localStorage.removeItem(SESSION_KEY);
+    clearAllPersistedState();
   };
 
   const updateUser = (updates) => {

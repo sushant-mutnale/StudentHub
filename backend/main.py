@@ -107,6 +107,33 @@ async def startup_event():
         worker_manager.register(RetentionWorker(poll_interval=86400))
         worker_manager.register(IngestionWorker(poll_interval=43200)) # 12 hours
         await worker_manager.start_all()
+        
+        # Check if we need immediate ingestion (startup check)
+        from .services.opportunity_ingestion import ingestion_log_collection, opportunity_ingestion
+        from datetime import timedelta
+        
+        try:
+            latest_log = await ingestion_log_collection().find_one(sort=[("timestamp", -1)])
+            
+            needs_ingestion = False
+            if not latest_log:
+                # No logs exist, run first time
+                needs_ingestion = True
+            else:
+                last_run = latest_log.get("timestamp")
+                if last_run and (datetime.utcnow() - last_run) > timedelta(hours=24):
+                    # More than 24h since last run
+                    needs_ingestion = True
+                    
+            if needs_ingestion:
+                import sys
+                print("Running initial opportunity ingestion check on startup...", file=sys.stderr)
+                # Fire and forget
+                import asyncio
+                asyncio.create_task(opportunity_ingestion.ingest_all(use_mock=False))
+        except Exception as e:
+            import sys
+            print(f"Failed to check ingestion status on startup: {e}", file=sys.stderr)
     
     if settings.app_env.lower() != "production":
         await seed_default_users()

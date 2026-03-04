@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { resumeService } from '../services/resumeService';
@@ -13,9 +14,33 @@ const ResumeUpload = () => {
 
     const [file, setFile] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState(null);
+    const [result, setResult] = usePersistedState('resume_result', null, { maxAgeMs: 24 * 60 * 60 * 1000 });
     const [error, setError] = useState('');
     const [dragOver, setDragOver] = useState(false);
+
+    // Fetch existing resume on mount if no local cache exists
+    useEffect(() => {
+        if (!user || result) return;
+
+        const fetchExisting = async () => {
+            setLoading(true);
+            try {
+                const data = await resumeService.getMyResume();
+                if (data && data.status === 'success') {
+                    setResult(data);
+                }
+            } catch (err) {
+                // Ignore 404s (no resume uploaded yet)
+                if (err.response?.status !== 404) {
+                    console.error('Failed to fetch existing resume:', err);
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchExisting();
+    }, [user, result, setResult]);
 
     const handleFileSelect = (e) => {
         const selectedFile = e.target.files?.[0];
@@ -368,10 +393,10 @@ const ResumeUpload = () => {
                             </div>
 
                             {/* AI Feedback Section */}
-                            {result.feedback && (
+                            {result.overall_score !== undefined && (
                                 <div className="animate-fade-in-up">
                                     {/* Summary */}
-                                    {result.feedback.summary && (
+                                    {result.executive_summary && (
                                         <div style={{
                                             padding: '1.5rem',
                                             background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.08) 100%)',
@@ -393,12 +418,12 @@ const ResumeUpload = () => {
                                                 color: 'var(--color-text)',
                                                 lineHeight: '1.7',
                                                 margin: 0
-                                            }}>{result.feedback.summary}</p>
+                                            }}>{result.executive_summary}</p>
                                         </div>
                                     )}
 
                                     {/* Ratings */}
-                                    {result.feedback.rating && (
+                                    {result.overall_score !== undefined && (
                                         <div style={{ marginBottom: '2rem' }} className="animate-fade-in-up delay-100">
                                             <h4 style={{
                                                 marginBottom: '1.25rem',
@@ -418,7 +443,7 @@ const ResumeUpload = () => {
                                                     fontWeight: '700',
                                                     fontSize: '1.1rem'
                                                 }}>
-                                                    {result.feedback.rating.overall}/10
+                                                    {result.overall_score}/10
                                                 </span>
                                                 Overall Score
                                             </h4>
@@ -427,9 +452,9 @@ const ResumeUpload = () => {
                                                 gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                                                 gap: '1rem'
                                             }}>
-                                                {result.feedback.rating.breakdown.map((item, idx) => {
-                                                    const scoreColor = item.score >= 8 ? 'var(--color-success)' :
-                                                        item.score >= 6 ? 'var(--color-warning)' : 'var(--color-danger)';
+                                                {Object.entries(result.category_scores || {}).map(([aspect, score], idx) => {
+                                                    const scoreColor = score >= 8 ? 'var(--color-success)' :
+                                                        score >= 6 ? 'var(--color-warning)' : 'var(--color-danger)';
                                                     return (
                                                         <div
                                                             key={idx}
@@ -448,18 +473,18 @@ const ResumeUpload = () => {
                                                                 marginBottom: '0.5rem',
                                                                 textTransform: 'uppercase',
                                                                 letterSpacing: '0.5px'
-                                                            }}>{item.aspect}</div>
+                                                            }}>{aspect}</div>
                                                             <div style={{
                                                                 fontSize: '1.5rem',
                                                                 fontWeight: '700',
                                                                 color: scoreColor
                                                             }}>
-                                                                {item.score}
+                                                                {score}
                                                                 <span style={{
                                                                     fontSize: '1rem',
                                                                     color: 'var(--color-text-muted)',
                                                                     fontWeight: '400'
-                                                                }}> / {item.max}</span>
+                                                                }}> / 10</span>
                                                             </div>
                                                         </div>
                                                     );
@@ -476,7 +501,7 @@ const ResumeUpload = () => {
                                         marginBottom: '2rem'
                                     }}>
                                         {/* Strengths */}
-                                        {result.feedback.strengths && (
+                                        {result.strengths && result.strengths.length > 0 && (
                                             <div className="animate-fade-in-up delay-200">
                                                 <h4 style={{
                                                     marginBottom: '1rem',
@@ -497,7 +522,7 @@ const ResumeUpload = () => {
                                                     }}>✨</span>
                                                     What's Excellent
                                                 </h4>
-                                                {result.feedback.strengths.map((str, idx) => (
+                                                {result.strengths.map((str, idx) => (
                                                     <div
                                                         key={idx}
                                                         className="hover-lift"
@@ -525,7 +550,7 @@ const ResumeUpload = () => {
                                         )}
 
                                         {/* Issues */}
-                                        {result.feedback.issues && (
+                                        {result.improvements && result.improvements.length > 0 && (
                                             <div className="animate-fade-in-up delay-300">
                                                 <h4 style={{
                                                     marginBottom: '1rem',
@@ -546,7 +571,7 @@ const ResumeUpload = () => {
                                                     }}>⚠️</span>
                                                     Needs Improvement
                                                 </h4>
-                                                {result.feedback.issues.map((iss, idx) => (
+                                                {result.improvements.map((iss, idx) => (
                                                     <div
                                                         key={idx}
                                                         className="hover-lift"
@@ -575,7 +600,7 @@ const ResumeUpload = () => {
                                     </div>
 
                                     {/* Action Plan */}
-                                    {result.feedback.action_plan && (
+                                    {result.action_plan && result.action_plan.length > 0 && (
                                         <div className="animate-fade-in-up delay-300" style={{
                                             padding: '1.5rem',
                                             background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.08) 100%)',
@@ -594,7 +619,7 @@ const ResumeUpload = () => {
                                                 Actionable Improvement Plan
                                             </h4>
                                             <ul style={{ paddingLeft: '1.5rem', margin: 0 }}>
-                                                {result.feedback.action_plan.map((action, idx) => (
+                                                {result.action_plan.map((action, idx) => (
                                                     <li key={idx} style={{
                                                         marginBottom: '0.6rem',
                                                         color: 'var(--color-text)',
@@ -614,7 +639,7 @@ const ResumeUpload = () => {
                                 gap: '1rem',
                                 marginBottom: '1.5rem'
                             }} className="animate-fade-in delay-200">
-                                {result.extracted_data?.name && (
+                                {result.contact?.name && (
                                     <div className="hover-lift" style={{
                                         padding: '1.25rem',
                                         background: 'var(--color-bg-alt)',
@@ -629,11 +654,11 @@ const ResumeUpload = () => {
                                             marginBottom: '0.5rem'
                                         }}>Name</div>
                                         <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>
-                                            {result.extracted_data.name}
+                                            {result.contact.name}
                                         </div>
                                     </div>
                                 )}
-                                {result.extracted_data?.email && (
+                                {result.contact?.email && (
                                     <div className="hover-lift" style={{
                                         padding: '1.25rem',
                                         background: 'var(--color-bg-alt)',
@@ -648,11 +673,11 @@ const ResumeUpload = () => {
                                             marginBottom: '0.5rem'
                                         }}>Email</div>
                                         <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>
-                                            {result.extracted_data.email}
+                                            {result.contact.email}
                                         </div>
                                     </div>
                                 )}
-                                {result.extracted_data?.phone && (
+                                {result.contact?.phone && (
                                     <div className="hover-lift" style={{
                                         padding: '1.25rem',
                                         background: 'var(--color-bg-alt)',
@@ -667,14 +692,14 @@ const ResumeUpload = () => {
                                             marginBottom: '0.5rem'
                                         }}>Phone</div>
                                         <div style={{ fontWeight: '600', color: 'var(--color-text)' }}>
-                                            {result.extracted_data.phone}
+                                            {result.contact.phone}
                                         </div>
                                     </div>
                                 )}
                             </div>
 
                             {/* Skills */}
-                            {result.extracted_data?.skills && result.extracted_data.skills.length > 0 && (
+                            {result.extracted_skills && result.extracted_skills.length > 0 && (
                                 <div className="animate-fade-in-up delay-300" style={{ marginBottom: '1.5rem' }}>
                                     <h4 style={{
                                         marginBottom: '1rem',
@@ -697,7 +722,7 @@ const ResumeUpload = () => {
                                         Extracted Skills
                                     </h4>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                        {result.extracted_data.skills.map((skill, idx) => (
+                                        {result.extracted_skills.map((skill, idx) => (
                                             <span
                                                 key={idx}
                                                 className="hover-scale animate-fade-in"
@@ -720,7 +745,7 @@ const ResumeUpload = () => {
                             )}
 
                             {/* Experience */}
-                            {result.extracted_data?.experience && result.extracted_data.experience.length > 0 && (
+                            {result.experience && result.experience.length > 0 && (
                                 <div className="animate-fade-in-up delay-400" style={{ marginBottom: '1.5rem' }}>
                                     <h4 style={{
                                         marginBottom: '1rem',
@@ -732,7 +757,7 @@ const ResumeUpload = () => {
                                         <FiBriefcase size={18} />
                                         Experience
                                     </h4>
-                                    {result.extracted_data.experience.map((exp, idx) => (
+                                    {result.experience.map((exp, idx) => (
                                         <div
                                             key={idx}
                                             className="hover-lift"
@@ -748,7 +773,7 @@ const ResumeUpload = () => {
                                                 {exp.title || exp.role}
                                             </div>
                                             <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
-                                                {exp.company} • {exp.duration}
+                                                {exp.company} {exp.start_date ? `• ${exp.start_date}` : ''} {exp.end_date ? `- ${exp.end_date}` : ''}
                                             </div>
                                         </div>
                                     ))}
@@ -756,7 +781,7 @@ const ResumeUpload = () => {
                             )}
 
                             {/* Education */}
-                            {result.extracted_data?.education && result.extracted_data.education.length > 0 && (
+                            {result.education && result.education.length > 0 && (
                                 <div className="animate-fade-in-up delay-500" style={{ marginBottom: '2rem' }}>
                                     <h4 style={{
                                         marginBottom: '1rem',
@@ -767,7 +792,7 @@ const ResumeUpload = () => {
                                     }}>
                                         🎓 Education
                                     </h4>
-                                    {result.extracted_data.education.map((edu, idx) => (
+                                    {result.education.map((edu, idx) => (
                                         <div
                                             key={idx}
                                             className="hover-lift"

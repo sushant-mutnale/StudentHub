@@ -378,7 +378,8 @@ class QuestionGenerator:
         
         topic = random.choice(topics) if topics else "arrays"
         
-        prompt = f"""Generate a {difficulty} difficulty LeetCode-style coding problem.
+        prompt = f"""Generate a {difficulty} difficulty LeetCode-style algorithmic coding problem.
+DO NOT generate open-ended system design or behavioral questions. This MUST be a strict Data Structures and Algorithms problem.
 
 Topic: {topic}
 {"Company context: " + company if company else ""}

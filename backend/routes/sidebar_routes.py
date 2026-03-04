@@ -28,8 +28,12 @@ async def get_upcoming_events(
     Get upcoming events for the sidebar.
     Returns title, category, date & time, platform, registration URL, status.
     """
+    now = datetime.utcnow()
     cursor = opportunities_hackathons_collection().find(
-        {"status": {"$in": ["open", "upcoming", "live"]}}
+        {
+            "status": {"$in": ["open", "upcoming", "live"]},
+            "start_date": {"$gte": now}
+        }
     ).sort("start_date", 1).limit(limit)
     
     events = await cursor.to_list(length=limit)

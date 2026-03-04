@@ -82,41 +82,36 @@ Please evaluate the following extracted resume data for a candidate whose target
 
 Analyze this resume and provide highly specific, actionable, and insightful feedback. Do NOT use generic boilerplate text. Be critical but constructive.
 
-Return ONLY a JSON object exactly matching this structure:
+Return ONLY a JSON object exactly matching this structure. It must be completely flat corresponding to the keys below:
 {{
-  "summary": "A 2-3 sentence executive summary of the candidate's readiness, positioning, and overall competitiveness.",
-  "rating": {{
-    "overall": 8.5,
-    "breakdown": [
-      {{"aspect": "ATS Friendliness", "score": 8.0, "max": 10}},
-      {{"aspect": "Technical Depth", "score": 8.5, "max": 10}},
-      {{"aspect": "Clarity", "score": 7.0, "max": 10}},
-      {{"aspect": "Impact Quantification", "score": 6.5, "max": 10}},
-      {{"aspect": "Recruiter Readability", "score": 7.5, "max": 10}},
-      {{"aspect": "Industry Alignment", "score": 9.0, "max": 10}}
-    ]
+  "overall_score": 8.5,
+  "category_scores": {{
+    "ATS Friendliness": 8.5,
+    "Technical Depth": 9.0,
+    "Clarity": 7.5,
+    "Impact Quantification": 8.0,
+    "Recruiter Readability": 7.0,
+    "Industry Alignment": 9.0
   }},
+  "executive_summary": "A 2-3 sentence executive summary of the candidate's readiness, positioning, and overall competitiveness.",
   "strengths": [
     {{"title": "Short title 1 (e.g., Strong Backend Experience)", "description": "Specific detail from the resume about this strength."}},
-    {{"title": "Short title 2", "description": "Specific detail."}},
-    {{"title": "Short title 3", "description": "Specific detail."}}
+    {{"title": "Short title 2", "description": "Specific detail."}}
   ],
-  "issues": [
+  "improvements": [
     {{"title": "Short title 1 (e.g., Lacks Quantified Metrics)", "description": "Specific explanation of what is missing."}},
     {{"title": "Short title 2", "description": "Specific explanation."}}
   ],
   "action_plan": [
     "Specific step 1 to improve the resume or profile.",
-    "Specific step 2.",
-    "Specific step 3.",
-    "Specific step 4."
+    "Specific step 2."
   ]
 }}
 
 Guidelines:
-- "overall" score must be a logical average/aggregation of the breakdown scores (round to 1 decimal place).
-- Breakdown scores must be between 1 and 10.
-- Provide 2-4 strengths and 2-4 issues. Provide 3-5 action plan items.
+- "overall_score" must be a weighted average logic of the category scores (e.g., ATS 15%, Tech 25%, Clarity 15%, Impact 20%, Readable 10%, Align 15%) rounded to 1 decimal.
+- "category_scores" must be numbers between 1.0 and 10.0.
+- Provide 2-4 strengths and 2-4 improvements. Provide 3-5 action plan items.
 - Reference specific technologies, project names, or companies from the resume in your analysis to prove you evaluated it deeply.
 """
         
@@ -136,7 +131,7 @@ Guidelines:
             feedback = json.loads(clean_text)
             
             # Basic validation
-            if "rating" in feedback and "overall" in feedback["rating"]:
+            if "overall_score" in feedback and "category_scores" in feedback:
                 return feedback
             else:
                 logger.error("LLM returned JSON, but it did not match the required schema.")

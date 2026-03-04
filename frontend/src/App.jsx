@@ -33,6 +33,7 @@ import ApplicationTracker from './components/ApplicationTracker';
 import AdminDashboard from './components/AdminDashboard';
 import VerificationStatus from './components/VerificationStatus';
 import AnalyticsDashboard from './components/Analytics/AnalyticsDashboard';
+import CustomCursor from './components/CustomCursor';
 import './App.css';
 
 // Protected Route Component
@@ -63,6 +64,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        <CustomCursor />
         <div className="app">
           <Routes>
             <Route path="/" element={<Home />} />

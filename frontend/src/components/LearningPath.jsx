@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { usePersistedState } from '../hooks/usePersistedState';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { learningService } from '../services/learningService';
 import SidebarLeft from './SidebarLeft';
@@ -216,14 +217,15 @@ const Toast = ({ message, type = 'success', onClose }) => (
 // ─── Main Component ───────────────────────────────────────────────
 const LearningPath = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
 
     const [paths, setPaths] = useState([]);
-    const [activePath, setActivePath] = useState(null);
+    const [activePath, setActivePath] = usePersistedState('learning_activePath', null);
     const [loading, setLoading] = useState(true);
-    const [newSkill, setNewSkill] = useState('');
-    const [availableTime, setAvailableTime] = useState('4 weeks');
-    const [goalLevel, setGoalLevel] = useState('Job-ready');
+    const [newSkill, setNewSkill] = usePersistedState('learning_newSkill', '');
+    const [availableTime, setAvailableTime] = usePersistedState('learning_availableTime', '4 weeks');
+    const [goalLevel, setGoalLevel] = usePersistedState('learning_goalLevel', 'Job-ready');
     const [generating, setGenerating] = useState(false);
     const [normalizing, setNormalizing] = useState(false);
     const [correctedSkill, setCorrectedSkill] = useState('');
@@ -255,7 +257,21 @@ const LearningPath = () => {
             const data = await learningService.getMyPaths();
             const list = data.learning_paths || data.paths || (Array.isArray(data) ? data : []);
             setPaths(list);
-            if (list.length > 0) setActivePath(list[0]);
+
+            // Check if we came from Skill Gap with a new path immediately created
+            const newPathId = location.state?.newPathId;
+            if (newPathId && list.length > 0) {
+                const targetPath = list.find(p => (p._id || p.id) === newPathId);
+                if (targetPath) {
+                    setActivePath(targetPath);
+                    // Clear state so a page refresh doesn't lock us here
+                    window.history.replaceState({}, document.title);
+                } else if (!activePath) {
+                    setActivePath(list[0]);
+                }
+            } else if (list.length > 0 && (!activePath || !list.find(p => (p._id || p.id) === (activePath._id || activePath.id)))) {
+                setActivePath(list[0]);
+            }
         } catch (err) {
             console.error('Failed to load paths:', err);
         } finally {

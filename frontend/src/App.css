@@ -2,6 +2,47 @@
   min-height: 100vh;
 }
 
+/* Global Cursor & Interaction Adjustments */
+body {
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a,
+button,
+[role="button"],
+input[type="submit"],
+select,
+.interactive-card {
+  cursor: pointer;
+}
+
+/* Enhanced Hover Utilities */
+.hover-scale {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+.hover-scale:hover {
+  transform: scale(1.02);
+}
+
+.hover-scale:active {
+  transform: scale(0.98);
+}
+
+.hover-lift {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px -10px rgba(59, 130, 246, 0.3);
+}
+
+.hover-lift:active {
+  transform: translateY(-2px);
+}
+
 /* Home Page Styles */
 .home-container {
   min-height: 100vh;
@@ -188,13 +229,25 @@
 
 /* Left Sidebar */
 .sidebar-left {
-  width: 250px;
-  min-height: 100vh;
-  background-color: white;
-  border-right: 1px solid #e1e8ed;
+  width: 260px;
+  height: calc(100vh - 2rem);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+  border-radius: 20px;
   position: sticky;
-  top: 0;
+  top: 1rem;
+  margin: 1rem 1rem 1rem 1rem;
   padding: 1.5rem 0;
+  z-index: 40;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sidebar-left::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar-logo {
@@ -248,7 +301,7 @@
 .dashboard-main {
   flex: 1;
   min-width: 0;
-  border-right: 1px solid #e1e8ed;
+  padding-top: 1rem;
 }
 
 .dashboard-header {
@@ -274,11 +327,24 @@
 /* Right Sidebar */
 .sidebar-right {
   width: 320px;
-  min-height: 100vh;
-  background-color: #f7f9fa;
+  height: calc(100vh - 2rem);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+  border-radius: 20px;
   position: sticky;
-  top: 0;
+  top: 1rem;
+  margin: 1rem;
   padding: 1.5rem;
+  z-index: 40;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sidebar-right::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar-section {

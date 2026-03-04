@@ -105,20 +105,27 @@ async def upload_resume(
             "file_hash": file_hash
         })
         if existing:
-            # [FIX] Return success for duplicate upload to refine UX
+            # Return success for duplicate upload to refine UX
+            ai_feedback = existing.get("feedback", {})
+            parsed_data = existing.get("parsed_data", {})
+            
             return ResumeUploadResponse(
                 resume_id=str(existing["_id"]),
                 file_name=existing.get("file_name", file.filename),
-                parsed_data=ParsedResume(
-                    contact=ParsedContact(**existing.get("parsed_data", {}).get("contact", {})),
-                    skills=existing.get("parsed_data", {}).get("skills", []),
-                    experience=[ParsedExperience(**e) for e in existing.get("parsed_data", {}).get("experience", [])],
-                    education=[ParsedEducation(**e) for e in existing.get("parsed_data", {}).get("education", [])],
-                    projects=[ParsedProject(**p) for p in existing.get("parsed_data", {}).get("projects", [])],
-                    parsing_confidence=existing.get("parsing_confidence", 0),
-                    ai_enhanced=existing.get("ai_enhanced", False),
-                    extraction_method=existing.get("extraction_method", ""),
-                ),
+                
+                overall_score=ai_feedback.get("overall_score", 0.0),
+                category_scores=ai_feedback.get("category_scores", {}),
+                executive_summary=ai_feedback.get("executive_summary", ""),
+                strengths=ai_feedback.get("strengths", []),
+                improvements=ai_feedback.get("improvements", []),
+                action_plan=ai_feedback.get("action_plan", []),
+                
+                extracted_skills=parsed_data.get("skills", []),
+                experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])],
+                education=[ParsedEducation(**e) for e in parsed_data.get("education", [])],
+                contact=ParsedContact(**parsed_data.get("contact", {})),
+                projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])],
+                
                 parsing_confidence=existing.get("parsing_confidence", 0),
                 ai_enhanced=existing.get("ai_enhanced", False),
                 message="Resume already exists. Retrieved existing data."
@@ -169,17 +176,12 @@ async def upload_resume(
         resume_id = str(result.inserted_id)
         
         # Build response
-        # Build response
-        parsed_response = ParsedResume(
-            contact=ParsedContact(**parsed_data.get("contact", {})),
-            skills=parsed_data.get("skills", []),
-            experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])],
-            education=[ParsedEducation(**e) for e in parsed_data.get("education", [])],
-            projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])],
-            parsing_confidence=parsed_data.get("parsing_confidence", 0),
-            ai_enhanced=parsed_data.get("ai_enhanced", False),
-            extraction_method=parsed_data.get("extraction_method", ""),
-        )
+        # Build response base
+        parsed_skills=parsed_data.get("skills", [])
+        parsed_experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])]
+        parsed_education=[ParsedEducation(**e) for e in parsed_data.get("education", [])]
+        parsed_projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])]
+        parsed_contact=ParsedContact(**parsed_data.get("contact", {}))
 
         # Generate Real AI Feedback
         ai_feedback = await ai_resume_evaluator.evaluate_resume(
@@ -217,11 +219,28 @@ async def upload_resume(
                     ] + new_skills
                     await user_model.update_user(student_id, {"skills": all_skills})
         
+        # Default empty AI fields if failed
+        ai_data = ai_feedback or {}
+        
         return ResumeUploadResponse(
             resume_id=resume_id,
             file_name=file.filename,
-            parsed_data=parsed_response,
-            feedback=ai_feedback,
+            
+            # Merged flat AI fields
+            overall_score=ai_data.get("overall_score", 0.0),
+            category_scores=ai_data.get("category_scores", {}),
+            executive_summary=ai_data.get("executive_summary", ""),
+            strengths=ai_data.get("strengths", []),
+            improvements=ai_data.get("improvements", []),
+            action_plan=ai_data.get("action_plan", []),
+            
+            # Merged Parsed fields
+            extracted_skills=parsed_skills,
+            experience=parsed_experience,
+            education=parsed_education,
+            contact=parsed_contact,
+            projects=parsed_projects,
+
             parsing_confidence=parsed_data.get("parsing_confidence", 0),
             ai_enhanced=parsed_data.get("ai_enhanced", False),
             message=f"Resume parsed with {parsed_data.get('parsing_confidence', 0):.1f}% confidence"
@@ -287,22 +306,28 @@ async def get_resume(resume_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Access denied")
     
     parsed_data = doc.get("parsed_data", {})
+    ai_feedback = doc.get("feedback", {})
     
     return ResumeDetailResponse(
         id=str(doc["_id"]),
         file_name=doc.get("file_name", ""),
         file_url=None,  # Can add file serving later
-        parsed_data=ParsedResume(
-            contact=ParsedContact(**parsed_data.get("contact", {})),
-            skills=parsed_data.get("skills", []),
-            experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])],
-            education=[ParsedEducation(**e) for e in parsed_data.get("education", [])],
-            projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])],
-            parsing_confidence=doc.get("parsing_confidence", 0),
-            ai_enhanced=doc.get("ai_enhanced", False),
-            extraction_method=doc.get("extraction_method", ""),
-        ),
-        feedback=doc.get("feedback"),
+        
+        # AI fields
+        overall_score=ai_feedback.get("overall_score", 0.0),
+        category_scores=ai_feedback.get("category_scores", {}),
+        executive_summary=ai_feedback.get("executive_summary", ""),
+        strengths=ai_feedback.get("strengths", []),
+        improvements=ai_feedback.get("improvements", []),
+        action_plan=ai_feedback.get("action_plan", []),
+        
+        # Parsed fields
+        extracted_skills=parsed_data.get("skills", []),
+        experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])],
+        education=[ParsedEducation(**e) for e in parsed_data.get("education", [])],
+        contact=ParsedContact(**parsed_data.get("contact", {})),
+        projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])],
+        
         uploaded_at=doc.get("uploaded_at", datetime.utcnow()),
         updated_at=doc.get("updated_at")
     )

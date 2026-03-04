@@ -324,14 +324,14 @@ class JobsIngestionService:
             normalized.append({
                 "source": "internshala_apify",
                 "source_id": job.get("id", ""),
-                "source_url": job.get("url", ""),
+                "source_url": job.get("job_url", job.get("url", "")),
                 "title": job.get("title", ""),
                 "company": job.get("company", ""),
                 "location": job.get("location", ""),
                 "work_mode": self._detect_work_mode(job.get("location", "")),
                 "stipend": job.get("stipend", ""),
                 "skills_required": job.get("skills", []),
-                "description_snippet": (job.get("description", "")[:200] + "...") if job.get("description") else "",
+                "description_snippet": (job.get("job_description", job.get("description", ""))[:200] + "...") if job.get("job_description") or job.get("description") else "",
                 "posted_at": self._parse_date(job.get("posted")),
                 "apply_by": self._parse_date(job.get("deadline")),
                 "is_active": True

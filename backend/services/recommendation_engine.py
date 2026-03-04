@@ -712,6 +712,11 @@ class RecommendationEngine:
                 query["location"] = {"$regex": filters["location"], "$options": "i"}
             if filters.get("work_mode"):
                 query["work_mode"] = filters["work_mode"]
+            if filters.get("company"):
+                query["company"] = {"$regex": filters["company"], "$options": "i"}
+            if filters.get("experience"):
+                exp_filter = filters["experience"].lower()
+                query["experience_required"] = {"$regex": exp_filter, "$options": "i"}
             if filters.get("min_stipend"):
                 # This needs stipend parsing logic
                 pass

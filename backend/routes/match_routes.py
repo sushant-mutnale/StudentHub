@@ -47,17 +47,27 @@ def calculate_match_explanation(student: dict, required_skills: list[str]) -> Ma
     skill_match_sum = 0
     proficiency_sum = 0
     
+    # Also check bio for partial credit if it wasn't a direct skill match
+    student_bio = student.get("bio", "").lower()
+
     for req in normalized_required:
         if req in student_skills_dict:
             matched_skills.append(req)
             skill_match_sum += 1
             # Add proficiency weight (normalize level 0-100 to 0-1)
             proficiency_sum += (student_skills_dict[req].get("level", 50) / 100)
+        elif req in student_bio:
+            # Fuzzy matched in bio! Give 50% credit for the skill and 25% for proficiency
+            matched_skills.append(f"{req} (in bio)")
+            skill_match_sum += 0.5
+            proficiency_sum += 0.25
         else:
             missing_skills.append(req)
             
     # Component Scores (0.0 to 1.0)
-    skill_match_score = skill_match_sum / len(normalized_required)
+    # Ensure denominator isn't 0
+    total_reqs = len(normalized_required) if len(normalized_required) > 0 else 1
+    skill_match_score = skill_match_sum / total_reqs
     proficiency_score = proficiency_sum / skill_match_sum if skill_match_sum else 0
     
     # AI Profile signals

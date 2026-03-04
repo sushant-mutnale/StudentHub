@@ -1,0 +1,46 @@
+@startuml System Architecture
+!theme plain
+skinparam componentStyle uml2
+
+title StudentHub System Architecture
+
+package "Frontend (React / Vite)" {
+  [Student Dashboard]
+  [Recruiter Dashboard]
+  [Admin Panel]
+}
+
+package "Backend Core (FastAPI)" {
+  [User & Profile Management] as UPM
+  [Evaluation & Matching] as EM
+  [Learning & Feedback] as LF
+  [Recommendation & Notification] as RN
+  [Communication & Tracking] as CT
+}
+
+database "MongoDB" {
+  [User Profiles & Resumes] as DB_Users
+  [Jobs & Hackathons] as DB_Jobs
+  [Assessments & Scores] as DB_Assess
+  [Activity & Logs] as DB_Logs
+}
+
+cloud "AI & External Integrations" {
+  [LLM Engine (Gemini)] as LLM
+  [Web Scrapers (Apify)] as Scraper
+}
+
+[Student Dashboard] --> UPM : HTTP/REST
+[Recruiter Dashboard] --> CT : HTTP/REST
+[Student Dashboard] --> EM : HTTP/REST
+
+UPM --> DB_Users
+EM --> DB_Jobs
+EM --> DB_Assess
+EM --> LLM : API Calls (Matching/Scoring)
+LF --> LLM : API Calls (Feedback Generation)
+RN --> DB_Logs
+CT --> DB_Jobs
+Scraper --> DB_Jobs : Insert External Ops
+
+@enduml

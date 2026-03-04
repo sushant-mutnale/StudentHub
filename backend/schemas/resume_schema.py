@@ -58,42 +58,34 @@ class ParsedResume(BaseModel):
 
 # ============ API Request/Response Models ============
 
-class ResumeUploadResponse(BaseModel):
-    """Response after uploading a resume."""
-    status: str = "success"
-    resume_id: str
-    file_name: str
-    parsed_data: ParsedResume
-    parsing_confidence: float
-    ai_enhanced: bool
-    message: str = "Resume parsed successfully"
-
-
 class FeedbackItem(BaseModel):
     title: str
     description: str
 
-class FeedbackRating(BaseModel):
-    overall: float
-    breakdown: List[Dict[str, Any]]
-
-class ResumeFeedback(BaseModel):
-    summary: str
-    rating: FeedbackRating
-    strengths: List[FeedbackItem]
-    issues: List[FeedbackItem]
-    action_plan: List[str]
-
-
 class ResumeUploadResponse(BaseModel):
     """Response after uploading a resume."""
     status: str = "success"
     resume_id: str
     file_name: str
-    parsed_data: ParsedResume
-    feedback: Optional[ResumeFeedback] = None
-    parsing_confidence: float
-    ai_enhanced: bool
+    
+    # AI ETS Evaluation fields
+    overall_score: float = 0.0
+    category_scores: Dict[str, float] = Field(default_factory=dict)
+    executive_summary: str = ""
+    strengths: List[FeedbackItem] = Field(default_factory=list)
+    improvements: List[FeedbackItem] = Field(default_factory=list)
+    action_plan: List[str] = Field(default_factory=list)
+
+    # Parsed original fields
+    extracted_skills: List[str] = Field(default_factory=list)
+    experience: List[ParsedExperience] = Field(default_factory=list)
+    education: List[ParsedEducation] = Field(default_factory=list)
+    contact: ParsedContact = Field(default_factory=ParsedContact)
+    projects: List[ParsedProject] = Field(default_factory=list)
+
+    # Meta
+    parsing_confidence: float = 0.0
+    ai_enhanced: bool = False
     message: str = "Resume parsed successfully"
 
 
@@ -120,7 +112,23 @@ class ResumeDetailResponse(BaseModel):
     id: str
     file_name: str
     file_url: Optional[str] = None
-    parsed_data: ParsedResume
+    
+    # AI ETS Evaluation fields
+    overall_score: float = 0.0
+    category_scores: Dict[str, float] = Field(default_factory=dict)
+    executive_summary: str = ""
+    strengths: List[FeedbackItem] = Field(default_factory=list)
+    improvements: List[FeedbackItem] = Field(default_factory=list)
+    action_plan: List[str] = Field(default_factory=list)
+
+    # Parsed original fields
+    extracted_skills: List[str] = Field(default_factory=list)
+    experience: List[ParsedExperience] = Field(default_factory=list)
+    education: List[ParsedEducation] = Field(default_factory=list)
+    contact: ParsedContact = Field(default_factory=ParsedContact)
+    projects: List[ParsedProject] = Field(default_factory=list)
+
+    # Meta
     uploaded_at: datetime
     updated_at: Optional[datetime] = None
 

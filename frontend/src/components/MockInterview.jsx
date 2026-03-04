@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
@@ -18,9 +19,9 @@ const MockInterview = () => {
     const [code, setCode] = useState('');
     const [loading, setLoading] = useState(false);
     const [feedback, setFeedback] = useState(null);
-    const [messages, setMessages] = useState([]);
+    const [messages, setMessages] = usePersistedState('interview_messages', [], { useSession: true });
     const [interviewMode, setInterviewMode] = useState('chat'); // 'chat' | 'voice'
-    const [config, setConfig] = useState({
+    const [config, setConfig] = usePersistedState('interview_config', {
         type: 'behavioral',
         difficulty: 'medium',
         topic: '',
@@ -62,7 +63,8 @@ const MockInterview = () => {
             const { data } = await api.post('/agent-interview/start', {
                 company: config.company || 'Tech Company',
                 role: config.topic || 'Software Engineer',
-                difficulty: config.difficulty
+                difficulty: config.difficulty,
+                interview_type: config.type
             });
 
             // Store session ID separately since agent-interview doesn't return a session object
@@ -370,7 +372,7 @@ const MockInterview = () => {
                                             )}
                                             {msg.role === 'feedback' && msg.score !== undefined && (
                                                 <div style={{ fontSize: '0.875rem', color: '#16a34a', marginBottom: '0.5rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                                    <FiCheck /> Score: {msg.score}/10
+                                                    <FiCheck /> Score: {msg.score}/100
                                                 </div>
                                             )}
                                             {msg.role === 'summary' ? (

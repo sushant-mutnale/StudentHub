@@ -166,6 +166,37 @@ Remember: YOU ask questions. The CANDIDATE answers them."""
     
     async def _generate_opening(self, context: InterviewContext) -> str:
         """Generate opening — warm intro, interview overview, ask candidate to introduce themselves."""
+        
+        # If it's a DSA interview, jump straight into the first coding question instead of intro
+        if context.interview_type == "dsa":
+            try:
+                from .question_generator import question_generator
+                question = await question_generator.generate_dsa_question(
+                    difficulty=context.difficulty,
+                    company=context.company
+                )
+                
+                # Format exactly like a Leetcode problem description
+                formatted_question = f"### {question['title']}\n\n"
+                formatted_question += f"**Description:**\n{question['description']}\n\n"
+                
+                if question.get('examples'):
+                    formatted_question += "**Examples:**\n"
+                    for i, ex in enumerate(question['examples'], 1):
+                        formatted_question += f"*Example {i}:*\n"
+                        formatted_question += f"Input: {ex.get('input', '')}\n"
+                        formatted_question += f"Output: {ex.get('output', '')}\n\n"
+                
+                if question.get('constraints'):
+                    formatted_question += "**Constraints:**\n"
+                    for c in question['constraints']:
+                        formatted_question += f"- {c}\n"
+                        
+                return formatted_question
+            except Exception as e:
+                print(f"Error generating intro DSA question: {e}")
+                pass
+                
         llm = self._get_llm()
         if not llm:
             return self._get_fallback_opening(context)
@@ -228,8 +259,23 @@ Your opening message:"""
         # --- Determine interview stage based on type and count ---
         is_behavioral_only = context.interview_type == "behavioral"
         is_technical_only  = context.interview_type == "technical"
+        is_dsa_only        = context.interview_type == "dsa"
 
-        if num_answered <= 1:
+        if is_dsa_only:
+            stage = "dsa_follow_up"
+            instruction = f"""The candidate just submitted a code solution or answer. Answer: "{last_answer[:600]}"
+            
+You are conducting a strict DSA (Data Structures and Algorithms) interview. 
+DO NOT ask open-ended system design questions. DO NOT ask behavioral questions.
+
+Ask ONE direct, targeted follow-up question about their solution:
+- Ask them to analyze the time and space complexity.
+- Point out a potential edge case and ask how their code handles it (e.g., empty input, negative numbers).
+- Ask if there's a more optimal way (e.g., O(N) instead of O(N^2)).
+
+One question only, conversational and direct."""
+
+        elif num_answered <= 1:
             stage = "behavioral"
             instruction = f"""The candidate just introduced themselves. Now ask ONE behavioral question.
 - Use the STAR method context (Situation, Task, Action, Result)

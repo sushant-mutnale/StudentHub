@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
 import '../App.css';
 
 const Login = () => {
@@ -13,6 +14,7 @@ const Login = () => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
@@ -120,7 +122,7 @@ const Login = () => {
             </div>
             <div className="form-group modern">
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 name="password"
                 className="form-input modern"
                 value={formData.password}
@@ -128,9 +130,31 @@ const Login = () => {
                 required
                 placeholder=" "
                 autoComplete="current-password"
+                style={{ paddingRight: '40px' }}
               />
               <label className="form-label floating">Password</label>
               <div className="input-icon">🔒</div>
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px'
+                }}
+              >
+                {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+              </button>
             </div>
           </div>
 

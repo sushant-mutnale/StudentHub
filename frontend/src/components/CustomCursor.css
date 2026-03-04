@@ -1,0 +1,50 @@
+.custom-cursor-dot {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    background-color: var(--color-primary, #667eea);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.1s ease;
+}
+
+.custom-cursor-outline {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 40px;
+    height: 40px;
+    border: 2px solid var(--color-primary, #667eea);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: width 0.2s ease, height 0.2s ease, background-color 0.2s ease, opacity 0.2s ease;
+    opacity: 0.5;
+}
+
+.custom-cursor-outline.hover {
+    width: 60px;
+    height: 60px;
+    background-color: rgba(102, 126, 234, 0.1);
+    opacity: 0.8;
+}
+
+/* Hide default cursor globally when this is active */
+body {
+    cursor: none !important;
+}
+
+/* Ensure nothing overrides the none cursor */
+a,
+button,
+[role="button"],
+input,
+select,
+textarea {
+    cursor: none !important;
+}

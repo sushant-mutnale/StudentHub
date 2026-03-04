@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import OTPInput from './OTPInput';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
 import '../App.css';
 
 const SignupRecruiter = () => {
@@ -26,6 +27,7 @@ const SignupRecruiter = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -198,10 +200,10 @@ const SignupRecruiter = () => {
             </div>
           )}
 
-          <div className="form-group">
+          <div className="form-group" style={{ position: 'relative' }}>
             <label className="form-label">Password *</label>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               name="password"
               className="form-input"
               value={formData.password}
@@ -209,7 +211,29 @@ const SignupRecruiter = () => {
               required
               placeholder="Create a password"
               minLength="6"
+              style={{ paddingRight: '40px' }}
             />
+            <button
+              type="button"
+              className="password-toggle-btn"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: '40px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px',
+                zIndex: 10
+              }}
+            >
+              {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+            </button>
           </div>
 
           <div className="form-group">

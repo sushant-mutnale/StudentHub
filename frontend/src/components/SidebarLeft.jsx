@@ -16,13 +16,24 @@ const SidebarLeft = () => {
   const { user, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
 
-  // State for expanded groups
-  const [expanded, setExpanded] = useState({
-    learning: true,
-    career: true,
-    assessment: true,
-    communication: true
+  // Load expanded state from localStorage or use defaults
+  const [expanded, setExpanded] = useState(() => {
+    const saved = localStorage.getItem('sidebar_expanded');
+    if (saved) return JSON.parse(saved);
+    return {
+      learning: true,
+      career: true,
+      assessment: true,
+      communication: true,
+      hiring: true,
+      sourcing: true
+    };
   });
+
+  // Save expanded state
+  useEffect(() => {
+    localStorage.setItem('sidebar_expanded', JSON.stringify(expanded));
+  }, [expanded]);
 
   const toggleGroup = (key) => {
     setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
@@ -46,7 +57,7 @@ const SidebarLeft = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navStructure = [
+  const studentNavStructure = [
     { type: 'link', label: 'Dashboard', icon: FiHome, path: '/dashboard/student' },
     { type: 'link', label: 'Analytics', icon: FiTrendingUp, path: '/analytics' },
     {
@@ -59,7 +70,6 @@ const SidebarLeft = () => {
         { label: 'Resume', path: '/resume' }
       ]
     },
-
     {
       type: 'group',
       label: 'Evaluation & Matching',
@@ -70,7 +80,6 @@ const SidebarLeft = () => {
         { label: 'All Assessments', path: '/assessment' }
       ]
     },
-
     {
       type: 'group',
       label: 'Learning & Feedback',
@@ -80,7 +89,6 @@ const SidebarLeft = () => {
         { label: 'Learning Paths', path: '/learning' }
       ]
     },
-
     {
       type: 'group',
       label: 'Recommendations & Alerts',
@@ -92,7 +100,6 @@ const SidebarLeft = () => {
         { label: 'Research', path: '/research' }
       ]
     },
-
     {
       type: 'group',
       label: 'Communication & Tracking',
@@ -107,6 +114,43 @@ const SidebarLeft = () => {
       ]
     }
   ];
+
+  const recruiterNavStructure = [
+    { type: 'link', label: 'Dashboard', icon: FiHome, path: '/dashboard/recruiter' },
+    {
+      type: 'group',
+      label: 'Jobs & Hiring',
+      key: 'hiring',
+      icon: FiBriefcase,
+      children: [
+        { label: 'Post a Job', path: '/recruiter/post-job' },
+        { label: 'My Jobs', path: '/recruiter/jobs' }
+      ]
+    },
+    {
+      type: 'group',
+      label: 'Applicants',
+      key: 'sourcing',
+      icon: FiLayers,
+      children: [
+        { label: 'Pipeline', path: '/recruiter/pipeline' },
+        { label: 'Find Candidates', path: '/recruiter/search' },
+        { label: 'Smart Matches', path: '/recruiter/matches' }
+      ]
+    },
+    {
+      type: 'group',
+      label: 'Communication',
+      key: 'communication',
+      icon: FiMessageSquare,
+      children: [
+        { label: 'Messages', path: '/messages' },
+        { label: 'Interviews', path: '/interviews' }
+      ]
+    }
+  ];
+
+  const currentNavStructure = user?.role === 'recruiter' ? recruiterNavStructure : studentNavStructure;
 
   const renderNavItem = (item, isNested = false) => {
     const active = isActive(item.path);
@@ -253,7 +297,7 @@ const SidebarLeft = () => {
         overflowY: 'auto',
         padding: '0 0.75rem 2rem 0.75rem'
       }}>
-        {navStructure.map((item) => {
+        {currentNavStructure.map((item) => {
           if (item.type === 'link') {
             return renderNavItem(item);
           }

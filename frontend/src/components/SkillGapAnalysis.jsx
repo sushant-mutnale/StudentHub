@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { gapService } from '../services/gapService';
@@ -10,9 +11,9 @@ import '../App.css';
 const SkillGapAnalysis = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [gaps, setGaps] = useState([]);
+    const [gaps, setGaps] = usePersistedState('gap_results', []);
     const [loading, setLoading] = useState(true);
-    const [targetRole, setTargetRole] = useState('');
+    const [targetRole, setTargetRole] = usePersistedState('gap_targetRole', '');
     const [generating, setGenerating] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
 
@@ -21,8 +22,13 @@ const SkillGapAnalysis = () => {
             navigate('/');
             return;
         }
-        loadGaps();
-    }, [user, navigate]);
+        // Only fetch from network if we don't have cached gaps
+        if (!gaps || gaps.length === 0) {
+            loadGaps();
+        } else {
+            setLoading(false);
+        }
+    }, [user, navigate, gaps]);
 
     const loadGaps = async () => {
         try {
@@ -53,8 +59,10 @@ const SkillGapAnalysis = () => {
     const handleGeneratePath = async (skill) => {
         setGenerating(skill);
         try {
-            await learningService.generatePath(skill);
-            navigate('/learning');
+            const newPath = await learningService.generatePath(skill);
+            navigate('/learning', {
+                state: { newPathId: newPath?.id || newPath?._id }
+            });
         } catch (err) {
             console.error('Failed to generate path:', err);
         } finally {

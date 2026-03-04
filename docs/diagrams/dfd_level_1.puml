@@ -1,0 +1,42 @@
+@startuml DFD Level 1
+!theme plain
+
+title Level 1 DFD (Core System Modules)
+
+actor "Student" as Student
+actor "Recruiter" as Recruiter
+
+rectangle "1. User & Profile\nManagement" as UPM
+rectangle "2. Evaluation\n& Matching" as EM
+rectangle "3. Learning\n& Feedback" as LF
+rectangle "4. Recommendation\n& Notification" as RN
+rectangle "5. Communication\n& Tracking" as CT
+
+database "D1: Users DB" as DB_User
+database "D2: Opportunities DB" as DB_Job
+database "D3: Assessments DB" as DB_Assess
+
+Student --> UPM : Resume, Skills, Data
+UPM --> DB_User : Store Profile
+
+Recruiter --> CT : Target Job Requirements
+CT --> DB_Job : Store Job Posting
+
+DB_User --> EM : Fetch Student Profiles
+DB_Job --> EM : Fetch Open Jobs
+EM --> EM : AI Matching/Scoring
+EM --> RN : Generate Match Scores
+
+RN --> Student : Notify Recommended Jobs
+RN --> Recruiter : Alert High-Match Candidates
+
+Student --> EM : Submit Assessment Code
+EM --> LF : Provide Test Results
+LF --> DB_Assess : Lookup Resources
+LF --> Student : Send Personalized Learning Path
+
+Student <--> CT : Chat/Apply interactions
+Recruiter <--> CT : Interview Scheduling & Tracking
+CT --> DB_User : Update Application Status
+
+@enduml

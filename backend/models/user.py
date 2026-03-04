@@ -126,10 +126,19 @@ async def update_user(user_id: str, updates: dict):
 
 async def list_students_by_skill_matches(skills: list[str]):
     # Normalize input skills for searching
-    normalized_skills = [s.lower().strip() for s in skills]
+    from bson.regex import Regex
+    normalized_skills = [s.lower().strip() for s in skills if s.strip()]
+    if not normalized_skills:
+        return []
+        
+    # Match students who have ANY of the skills listed OR mention it in their bio
+    regex_pattern = "|".join([f".*{s}.*" for s in normalized_skills])
     cursor = users_collection().find({
-        "role": "student", 
-        "skills.name": {"$in": normalized_skills}
+        "role": "student",
+        "$or": [
+            {"skills.name": {"$in": normalized_skills}},
+            {"bio": Regex(regex_pattern, "i")}
+        ]
     })
     students = await cursor.to_list(length=None)
     return [migrate_user_skills(s) for s in students]

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { recommendationService } from '../services/recommendationService';
 import SidebarLeft from './SidebarLeft';
@@ -8,19 +8,37 @@ import '../App.css';
 
 const Opportunities = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState('jobs');
     const [jobs, setJobs] = useState([]);
     const [hackathons, setHackathons] = useState([]);
     const [content, setContent] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filters, setFilters] = useState({ skill: '', location: '' });
+    const [filters, setFilters] = useState({
+        skill: '',
+        location: '',
+        experience: '',
+        jobType: '',
+        company: ''
+    });
 
     useEffect(() => {
         if (!user) {
             navigate('/');
             return;
         }
+
+        // Handle redirect states from other pages
+        if (location.state?.filterCompany) {
+            setFilters(prev => ({ ...prev, company: location.state.filterCompany }));
+            setActiveTab('jobs');
+            // Clear history state to avoid loops on refresh
+            window.history.replaceState({}, document.title)
+        } else if (location.search.includes('tab=jobs')) {
+            setActiveTab('jobs');
+        }
+
         loadOpportunities();
     }, [user, navigate, activeTab]);
 
@@ -136,7 +154,42 @@ const Opportunities = () => {
                                         style={{ marginBottom: 0, paddingLeft: '2.5rem' }}
                                     />
                                 </div>
-                                <button onClick={loadOpportunities} className="form-button hover-scale" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+                                    <select
+                                        value={filters.experience}
+                                        onChange={(e) => setFilters({ ...filters, experience: e.target.value })}
+                                        className="form-input"
+                                        style={{ marginBottom: 0, padding: '0.5rem' }}
+                                    >
+                                        <option value="">Any Experience</option>
+                                        <option value="entry">Entry Level</option>
+                                        <option value="mid">Mid Level</option>
+                                        <option value="senior">Senior Level</option>
+                                    </select>
+
+                                    <select
+                                        value={filters.jobType}
+                                        onChange={(e) => setFilters({ ...filters, jobType: e.target.value })}
+                                        className="form-input"
+                                        style={{ marginBottom: 0, padding: '0.5rem' }}
+                                    >
+                                        <option value="">Any Type</option>
+                                        <option value="full-time">Full-time</option>
+                                        <option value="part-time">Part-time</option>
+                                        <option value="internship">Internship</option>
+                                        <option value="contract">Contract</option>
+                                    </select>
+
+                                    <input
+                                        type="text"
+                                        placeholder="Company..."
+                                        value={filters.company}
+                                        onChange={(e) => setFilters({ ...filters, company: e.target.value })}
+                                        className="form-input"
+                                        style={{ marginBottom: 0, padding: '0.5rem' }}
+                                    />
+                                </div>
+                                <button onClick={loadOpportunities} className="form-button hover-scale" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
                                     <FiFilter /> Apply Filters
                                 </button>
                             </div>
@@ -199,6 +252,16 @@ const Opportunities = () => {
                                                     <FiMapPin size={14} /> {job.location}
                                                 </span>
                                             )}
+                                            {job.work_mode && (
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#64748b', background: '#f8fafc', padding: '0.25rem 0.5rem', borderRadius: '6px', textTransform: 'capitalize' }}>
+                                                    💼 {job.work_mode}
+                                                </span>
+                                            )}
+                                            {job.experience_required && (
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#64748b', background: '#f8fafc', padding: '0.25rem 0.5rem', borderRadius: '6px', textTransform: 'capitalize' }}>
+                                                    📈 {job.experience_required}
+                                                </span>
+                                            )}
                                             {job.stipend && (
                                                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem', color: '#64748b', background: '#f8fafc', padding: '0.25rem 0.5rem', borderRadius: '6px' }}>
                                                     <FiDollarSign size={14} /> {job.stipend}
@@ -251,21 +314,29 @@ const Opportunities = () => {
                                                 View
                                             </button>
 
-                                            <a
-                                                href={job.source_url || job.url || job.external_url || job.apply_url || '#'}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="form-button hover-scale"
-                                                style={{ margin: 0, flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textDecoration: 'none', padding: '0.5rem' }}
-                                                onClick={(e) => {
-                                                    if (!(job.source_url || job.url || job.external_url || job.apply_url)) {
-                                                        e.preventDefault();
-                                                        alert("No external application link provided for this job.");
-                                                    }
-                                                }}
-                                            >
-                                                Apply <FiExternalLink />
-                                            </a>
+                                            {(() => {
+                                                let applyUrl = job.job_url || job.source_url || job.url || job.external_url || job.apply_url || '#';
+                                                if (applyUrl !== '#' && !applyUrl.startsWith('http://') && !applyUrl.startsWith('https://')) {
+                                                    applyUrl = 'https://' + applyUrl;
+                                                }
+                                                return (
+                                                    <a
+                                                        href={applyUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="form-button hover-scale"
+                                                        style={{ margin: 0, flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textDecoration: 'none', padding: '0.5rem' }}
+                                                        onClick={(e) => {
+                                                            if (applyUrl === '#') {
+                                                                e.preventDefault();
+                                                                alert("No external application link provided for this job.");
+                                                            }
+                                                        }}
+                                                    >
+                                                        Apply <FiExternalLink />
+                                                    </a>
+                                                );
+                                            })()}
                                         </div>
 
                                     </div>
@@ -316,9 +387,9 @@ const Opportunities = () => {
                                         )}
                                     </div>
 
-                                    {hack.url && (
+                                    {(hack.event_url || hack.url) && (
                                         <a
-                                            href={hack.url}
+                                            href={hack.event_url || hack.url}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="form-button hover-scale"
@@ -383,7 +454,7 @@ const Opportunities = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
