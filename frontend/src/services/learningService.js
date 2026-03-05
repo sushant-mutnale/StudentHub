@@ -35,6 +35,9 @@ export const learningService = {
         if (data.learning_paths && data.learning_paths.length > 0) {
             return data.learning_paths[0];
         }
+        if (data.paths && data.paths.length > 0) {
+            return data.paths[0];
+        }
         return data;
     },
 

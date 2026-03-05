@@ -21,17 +21,19 @@ const CompanyResearch = () => {
         }
     }, [user, navigate]);
 
-    const handleSearch = async () => {
-        if (!company.trim()) return;
+    const handleSearch = async (searchTarget = null) => {
+        const target = typeof searchTarget === 'string' ? searchTarget : company;
+        if (!target.trim()) return;
+        setCompany(target);
         setLoading(true);
         setResearch(null);
 
         try {
-            const data = await researchService.deepResearch(company, ['culture', 'interview', 'tech', 'salary']);
+            const data = await researchService.deepResearch(target, ['culture', 'interview', 'tech', 'salary']);
             setResearch(data);
 
-            // Update recent searches
-            const updated = [company, ...recentSearches.filter(c => c.toLowerCase() !== company.toLowerCase())].slice(0, 5);
+            // Update recent searches (keep last 10)
+            const updated = [target, ...recentSearches.filter(c => c.toLowerCase() !== target.toLowerCase())].slice(0, 10);
             setRecentSearches(updated);
         } catch (err) {
             console.error('Research failed:', err);
@@ -90,27 +92,32 @@ const CompanyResearch = () => {
                             </button>
                         </div>
 
-                        {/* Recent searches */}
+                        {/* Recent searches history */}
                         {recentSearches.length > 0 && (
-                            <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.875rem', color: '#64748b' }}>Recent:</span>
-                                {recentSearches.map((c, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => { setCompany(c); }}
-                                        style={{
-                                            padding: '0.25rem 0.75rem',
-                                            background: '#f1f5f9',
-                                            border: '1px solid #e2e8f0',
-                                            borderRadius: '9999px',
-                                            fontSize: '0.875rem',
-                                            cursor: 'pointer',
-                                            color: '#475569'
-                                        }}
-                                    >
-                                        {c}
-                                    </button>
-                                ))}
+                            <div style={{ marginTop: '1.5rem' }}>
+                                <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: '600', marginBottom: '0.5rem', display: 'block' }}>Research History:</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    {recentSearches.map((c, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => handleSearch(c)}
+                                            className="hover-scale"
+                                            style={{
+                                                padding: '0.5rem 1rem',
+                                                background: company.toLowerCase() === c.toLowerCase() ? 'var(--gradient-primary)' : 'var(--color-bg-alt)',
+                                                border: `1px solid ${company.toLowerCase() === c.toLowerCase() ? 'transparent' : 'var(--color-border)'}`,
+                                                color: company.toLowerCase() === c.toLowerCase() ? 'white' : 'var(--color-text)',
+                                                borderRadius: 'var(--radius-full)',
+                                                fontSize: '0.85rem',
+                                                fontWeight: '500',
+                                                cursor: 'pointer',
+                                                transition: 'var(--transition-normal)'
+                                            }}
+                                        >
+                                            {c}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>

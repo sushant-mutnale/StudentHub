@@ -115,6 +115,7 @@ def db_user_to_match_result(db_user: dict, explanation: MatchExplanation) -> Mat
         bio=db_user.get("bio"),
         skills=db_user.get("skills") or [],
         ai_profile=db_user.get("ai_profile"),
+        connections=db_user.get("connections") or [],
         created_at=db_user.get("created_at"),
         updated_at=db_user.get("updated_at"),
     )

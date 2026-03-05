@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
-import { FiCalendar, FiUsers, FiBookOpen, FiCode, FiLayers, FiTrendingUp, FiBriefcase } from 'react-icons/fi';
+import { Link } from 'react-router-dom';
+import { FiCalendar, FiUsers, FiBookOpen, FiCode, FiLayers, FiTrendingUp, FiBriefcase, FiUserPlus } from 'react-icons/fi';
 import { api } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
+import { userService } from '../services/userService';
+import Avatar from './Avatar';
 import '../App.css';
 
 const formatDate = (dateString) => {
@@ -20,10 +24,13 @@ const getCategoryIcon = (category) => {
 };
 
 const SidebarRight = () => {
+  const { user } = useAuth();
   const [contests, setContests] = useState([]);
   const [resources, setResources] = useState([]);
+  const [connections, setConnections] = useState([]);
   const [loadingContests, setLoadingContests] = useState(true);
   const [loadingResources, setLoadingResources] = useState(true);
+  const [loadingConnections, setLoadingConnections] = useState(true);
 
   useEffect(() => {
     const fetchSidebarData = async () => {
@@ -51,8 +58,97 @@ const SidebarRight = () => {
     fetchSidebarData();
   }, []);
 
+  useEffect(() => {
+    const fetchConnections = async () => {
+      if (!user) return;
+      try {
+        setLoadingConnections(true);
+        const users = await userService.searchUsers();
+        const existingIds = user.connections || [];
+        const suggested = users.filter(u => u.id !== user.id && !existingIds.includes(u.id)).slice(0, 3);
+        setConnections(suggested);
+      } catch (err) {
+        console.error('Failed to fetch connections:', err);
+      } finally {
+        setLoadingConnections(false);
+      }
+    };
+    fetchConnections();
+  }, [user]);
+
+  const handleConnect = async (targetId) => {
+    try {
+      await userService.addConnection(targetId);
+      setConnections(prev => prev.filter(c => c.id !== targetId));
+    } catch (err) {
+      console.error('Failed to connect:', err);
+    }
+  };
+
   return (
     <div className="sidebar-right animate-fade-in-left">
+      {/* Suggested Connections Section */}
+      {user && user.role === 'student' && (
+        <div className="glass-card" style={{
+          padding: '1.5rem',
+          borderRadius: 'var(--radius-lg)',
+          marginBottom: '1.5rem',
+          border: '1px solid rgba(255,255,255,0.6)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text)', margin: 0 }}>
+              Suggested Connections
+            </h3>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)', fontWeight: '600', cursor: 'pointer' }}>View All</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {loadingConnections ? (
+              Array(3).fill(0).map((_, i) => (
+                <div key={`sk-cn-${i}`} className="skeleton" style={{ height: '50px', borderRadius: '10px' }}></div>
+              ))
+            ) : connections.length === 0 ? (
+              <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', textAlign: 'center', padding: '1rem 0' }}>No new suggestions.</div>
+            ) : (
+              connections.map((conn) => (
+                <div key={conn.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Link to={`/profile/${conn.id}`}>
+                    <Avatar src={conn.avatar_url} alt={conn.full_name || conn.username} size={40} />
+                  </Link>
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <Link to={`/profile/${conn.id}`} style={{ textDecoration: 'none', color: 'var(--color-text)', fontWeight: '600', fontSize: '0.9rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {conn.full_name || conn.username}
+                    </Link>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {conn.location || 'Student'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleConnect(conn.id)}
+                    className="btn-icon hover-scale"
+                    title="Connect"
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      background: 'rgba(102, 126, 234, 0.1)',
+                      color: 'var(--color-primary)',
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <FiUserPlus size={16} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Contests Section */}
       <div className="glass-card" style={{
         padding: '1.5rem',

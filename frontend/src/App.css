@@ -11,9 +11,27 @@ body {
 a,
 button,
 [role="button"],
+[onclick],
 input[type="submit"],
+input[type="checkbox"],
+input[type="radio"],
 select,
-.interactive-card {
+label[for],
+summary,
+.interactive-card,
+.hover-lift,
+.hover-scale,
+.btn-glow,
+.btn-icon,
+.form-button,
+.nav-link,
+.sidebar-item,
+.sidebar-nav-item,
+.tab-button,
+.skill-tag,
+.notification-item,
+.delete-button,
+.close-button {
   cursor: pointer;
 }
 

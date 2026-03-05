@@ -26,9 +26,10 @@ const SmartNotifications = () => {
     }, [user, navigate, filter]);
 
     const loadNotifications = async () => {
+        setLoading(true);
         try {
-            const type = filter === 'all' ? null : filter;
-            const data = await smartNotificationService.getNotifications(false, 30, type);
+            // Fetch all and filter locally to support composite categories
+            const data = await smartNotificationService.getNotifications(false, 50, null);
             setNotifications(data.notifications || data || []);
         } catch (err) {
             console.error('Failed to load notifications:', err);
@@ -111,12 +112,17 @@ const SmartNotifications = () => {
         }
     };
 
-    const getIcon = (type) => {
+    const getIcon = (type, category) => {
+        if (type === 'recruiter_activity') {
+            if (category === 'message') return FiMessageSquare;
+            if (category === 'interview') return FiCalendar;
+            if (category === 'offer') return FiAward;
+            return FiUsers;
+        }
         switch (type) {
             case 'opportunity_match': return FiBriefcase;
             case 'deadline_reminder': return FiClock;
             case 'learning_reminder': return FiBook;
-            case 'recruiter_activity': return FiUsers;
             case 'achievement': return FiAward;
             default: return FiBell;
         }
@@ -133,11 +139,26 @@ const SmartNotifications = () => {
 
     const filterOptions = [
         { value: 'all', label: 'All' },
-        { value: 'opportunity_match', label: 'Job Matches' },
-        { value: 'deadline_reminder', label: 'Deadlines' },
-        { value: 'learning_reminder', label: 'Learning' },
-        { value: 'achievement', label: 'Achievements' },
+        { value: 'messages', label: 'Messages' },
+        { value: 'interviews', label: 'Interviews' },
+        { value: 'jobs', label: 'Job Matches' },
+        { value: 'learning', label: 'Learning' },
+        { value: 'applications', label: 'Applications' },
+        { value: 'recruiters', label: 'Recruiters' },
     ];
+
+    const getFilteredNotifications = () => {
+        if (filter === 'all') return notifications;
+        return notifications.filter(n => {
+            if (filter === 'messages') return n.type === 'recruiter_activity' && n.category === 'message';
+            if (filter === 'interviews') return n.type === 'recruiter_activity' && n.category === 'interview';
+            if (filter === 'jobs') return n.type === 'opportunity_match';
+            if (filter === 'learning') return n.type === 'learning_reminder';
+            if (filter === 'applications') return n.type === 'deadline_reminder' || (n.type === 'recruiter_activity' && n.category === 'offer');
+            if (filter === 'recruiters') return n.type === 'recruiter_activity' && n.category !== 'message' && n.category !== 'interview';
+            return true;
+        });
+    };
 
     if (!user) return null;
 
@@ -223,15 +244,15 @@ const SmartNotifications = () => {
                             <div className="loading-spinner" style={{ margin: '0 auto 1rem' }} />
                             <p style={{ color: '#64748b' }}>Loading notifications...</p>
                         </div>
-                    ) : notifications.length === 0 ? (
+                    ) : getFilteredNotifications().length === 0 ? (
                         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
                             <FiBell size={48} style={{ color: '#94a3b8', marginBottom: '1rem' }} />
-                            <p style={{ color: '#64748b' }}>No notifications yet. Check back later!</p>
+                            <p style={{ color: '#64748b' }}>No notifications found for this category.</p>
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            {notifications.map((notif, idx) => {
-                                const Icon = getIcon(notif.type);
+                            {getFilteredNotifications().map((notif, idx) => {
+                                const Icon = getIcon(notif.type, notif.category);
                                 const priority = getPriorityStyle(notif.priority);
                                 const isUnread = !notif.read && !notif.is_read;
 

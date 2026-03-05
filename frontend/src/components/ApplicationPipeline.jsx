@@ -86,40 +86,83 @@ const ApplicationPipeline = () => {
         }
     };
 
-    // Color helpers
-    const getStageColor = (name) => {
+    // Stage style helpers — returns inline styles + metadata since project uses vanilla CSS
+    const getStageStyle = (name) => {
         const lower = name.toLowerCase();
-        if (lower.includes('screen') || lower.includes('applied')) return 'border-t-4 border-blue-500';
-        if (lower.includes('interview')) return 'border-t-4 border-purple-500';
-        if (lower.includes('pending')) return 'border-t-4 border-yellow-500';
-        if (lower.includes('offer')) return 'border-t-4 border-green-500';
-        if (lower.includes('reject')) return 'border-t-4 border-red-500';
-        return 'border-t-4 border-gray-500';
+        if (lower.includes('applied')) return {
+            color: '#3b82f6', bgColor: 'rgba(59,130,246,0.08)', borderColor: '#3b82f6',
+            emoji: '📥', description: 'New applications land here'
+        };
+        if (lower.includes('screen')) return {
+            color: '#8b5cf6', bgColor: 'rgba(139,92,246,0.08)', borderColor: '#8b5cf6',
+            emoji: '🔍', description: 'Resume screening & initial assessment'
+        };
+        if (lower.includes('interview')) return {
+            color: '#f59e0b', bgColor: 'rgba(245,158,11,0.08)', borderColor: '#f59e0b',
+            emoji: '🎙️', description: 'In-person or AI mock interviews'
+        };
+        if (lower.includes('offer')) return {
+            color: '#10b981', bgColor: 'rgba(16,185,129,0.08)', borderColor: '#10b981',
+            emoji: '📝', description: 'Offer extended to candidate'
+        };
+        if (lower.includes('hired')) return {
+            color: '#059669', bgColor: 'rgba(5,150,105,0.10)', borderColor: '#059669',
+            emoji: '🎉', description: 'Candidate accepted & onboarded'
+        };
+        if (lower.includes('reject')) return {
+            color: '#ef4444', bgColor: 'rgba(239,68,68,0.08)', borderColor: '#ef4444',
+            emoji: '❌', description: 'Application declined'
+        };
+        if (lower.includes('withdraw')) return {
+            color: '#6b7280', bgColor: 'rgba(107,114,128,0.08)', borderColor: '#6b7280',
+            emoji: '🚪', description: 'Candidate withdrew'
+        };
+        return {
+            color: '#6b7280', bgColor: 'rgba(107,114,128,0.06)', borderColor: '#9ca3af',
+            emoji: '📋', description: ''
+        };
     };
 
     if (loading && !pipeline) return (
-        <div className="flex items-center justify-center h-full">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <div className="animate-spin" style={{ borderRadius: '50%', height: '48px', width: '48px', borderBottom: '2px solid #3b82f6' }}></div>
         </div>
     );
-    if (!pipeline) return <div className="p-8 text-center text-gray-500">No active pipeline found.</div>;
-    if (jobs.length === 0) return <div className="p-8 text-center text-gray-500">No jobs found. Post a job to see the candidate pipeline.</div>;
+    if (!pipeline) return <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No active pipeline found.</div>;
+    if (jobs.length === 0) return <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No jobs found. Post a job to see the candidate pipeline.</div>;
 
     return (
         <div className="dashboard-container">
             <SidebarLeft />
-            <div className="dashboard-main h-full flex flex-col bg-gray-50 overflow-hidden animate-fade-in" style={{ padding: 0 }}>
+            <div className="dashboard-main animate-fade-in" style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', background: '#f9fafb', overflow: 'hidden' }}>
                 {/* Header */}
-                <div className="p-4 border-b bg-white shadow-sm flex justify-between items-center z-10 relative">
-                    <div className="flex items-center gap-6">
-                        <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">
+                <div style={{
+                    padding: '1rem',
+                    borderBottom: '1px solid #e5e7eb',
+                    background: 'white',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    zIndex: 10,
+                    position: 'relative'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                        <h2 style={{
+                            fontSize: '1.25rem',
+                            fontWeight: '700',
+                            background: 'var(--gradient-primary)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            backgroundClip: 'text'
+                        }}>
                             {pipeline.name}
                         </h2>
 
-                        <div className="flex items-center bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 transition-all hover:border-blue-300">
-                            <FaBriefcase className="text-blue-500 mr-2" />
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '6px 12px', transition: 'border-color 0.2s' }}>
+                            <FaBriefcase style={{ color: '#3b82f6', marginRight: '8px' }} />
                             <select
-                                className="bg-transparent border-none text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer outline-none"
+                                style={{ background: 'transparent', border: 'none', fontSize: '0.875rem', fontWeight: '500', color: '#374151', cursor: 'pointer', outline: 'none' }}
                                 value={selectedJobId}
                                 onChange={(e) => setSelectedJobId(e.target.value)}
                             >
@@ -129,109 +172,177 @@ const ApplicationPipeline = () => {
                             </select>
                         </div>
                     </div>
-                    <div className="text-sm text-gray-500 flex items-center gap-2">
-                        <span className="flex h-2 w-2 rounded-full bg-green-500"></span>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ display: 'flex', height: '8px', width: '8px', borderRadius: '50%', background: '#10b981' }}></span>
                         Live Pipeline
                     </div>
                 </div>
 
                 {/* Kanban Board */}
-                <div className="flex-1 overflow-x-auto p-6 bg-gradient-to-br from-gray-50 to-blue-50">
+                <div style={{ flex: 1, overflowX: 'auto', padding: '1.5rem', background: 'linear-gradient(135deg, #f9fafb 0%, #eef2ff 100%)' }}>
                     <DragDropContext onDragEnd={onDragEnd}>
-                        <div className="flex h-full gap-6">
-                            {stages.map((stage, index) => (
-                                <Droppable key={stage.id} droppableId={stage.id}>
-                                    {(provided, snapshot) => (
-                                        <div
-                                            ref={provided.innerRef}
-                                            {...provided.droppableProps}
-                                            className={`w-80 flex-shrink-0 flex flex-col bg-gray-100/50 rounded-xl max-h-full transition-colors ${snapshot.isDraggingOver ? 'bg-blue-50ring-2 ring-blue-200' : ''
-                                                }`}
-                                            style={{
-                                                animation: `fadeIn 0.5s ease-out ${index * 0.1}s backwards`
-                                            }}
-                                        >
-                                            {/* Column Header */}
-                                            <div className={`p-4 font-semibold text-gray-700 bg-white rounded-t-xl shadow-sm flex justify-between items-center ${getStageColor(stage.name)}`}>
-                                                <span className="uppercase text-xs tracking-wider text-gray-500">{stage.name}</span>
-                                                <span className="bg-gray-100 px-2.5 py-0.5 rounded-full text-xs font-bold text-gray-600 shadow-inner">
-                                                    {stage.candidates.length}
-                                                </span>
-                                            </div>
-
-                                            {/* Column Content */}
-                                            <div className="p-3 flex-1 overflow-y-auto custom-scrollbar">
-                                                {stages.length > 0 && stage.candidates.map((candidate, index) => (
-                                                    <Draggable
-                                                        key={candidate.id}
-                                                        draggableId={candidate.id}
-                                                        index={index}
-                                                    >
-                                                        {(provided, snapshot) => (
-                                                            <div
-                                                                ref={provided.innerRef}
-                                                                {...provided.draggableProps}
-                                                                {...provided.dragHandleProps}
-                                                                className={`bg-white p-4 mb-3 rounded-lg border border-gray-100 group hover:border-blue-200 transition-all ${snapshot.isDragging
-                                                                    ? 'shadow-lg ring-2 ring-blue-400 rotate-2'
-                                                                    : 'shadow-sm hover:shadow-md hover:-translate-y-1'
-                                                                    }`}
-                                                                style={{
-                                                                    ...provided.draggableProps.style,
-                                                                }}
-                                                            >
-                                                                <div className="flex justify-between items-start mb-3">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 flex items-center justify-center font-bold text-xs">
-                                                                            {candidate.student_name.charAt(0)}
-                                                                        </div>
-                                                                        <div>
-                                                                            <h4 className="font-semibold text-gray-800 text-sm">{candidate.student_name}</h4>
-                                                                            {candidate.email && <div className="text-xs text-gray-400 flex items-center gap-1"><FaEnvelope size={10} />{candidate.email}</div>}
-                                                                        </div>
-                                                                    </div>
-                                                                    <button className="text-gray-300 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                        <FaEllipsisV size={12} />
-                                                                    </button>
-                                                                </div>
-
-                                                                <div className="flex flex-col gap-2 mb-3">
-                                                                    <div className="text-xs text-gray-500 bg-gray-50 p-1.5 rounded flex items-center gap-2">
-                                                                        <FaCalendarAlt className="text-gray-400" />
-                                                                        Applied: {new Date(candidate.applied_at).toLocaleDateString()}
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="border-t border-gray-50 pt-3 flex justify-between items-center">
-                                                                    {candidate.overall_score ? (
-                                                                        <div className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full ${candidate.overall_score >= 80 ? 'bg-green-100 text-green-700' :
-                                                                            candidate.overall_score >= 60 ? 'bg-yellow-100 text-yellow-700' :
-                                                                                'bg-red-100 text-red-700'
-                                                                            }`}>
-                                                                            <FaUser className="mr-1.5" size={10} />
-                                                                            {candidate.overall_score}% Match
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="text-xs text-gray-400 italic">Pending Score</span>
-                                                                    )}
-
-                                                                    <div
-                                                                        className="text-xs text-blue-600 font-medium cursor-pointer hover:underline"
-                                                                        onClick={() => navigate(`/profile/${candidate.student_id}`)}
-                                                                    >
-                                                                        View Profile
-                                                                    </div>
-                                                                </div>
-                                                            </div>
+                        <div style={{ display: 'flex', height: '100%', gap: '1.5rem' }}>
+                            {stages.map((stage, index) => {
+                                const stStyle = getStageStyle(stage.name);
+                                return (
+                                    <Droppable key={stage.id} droppableId={stage.id}>
+                                        {(provided, snapshot) => (
+                                            <div
+                                                ref={provided.innerRef}
+                                                {...provided.droppableProps}
+                                                style={{
+                                                    width: '300px',
+                                                    flexShrink: 0,
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    background: snapshot.isDraggingOver ? stStyle.bgColor : 'rgba(249,250,251,0.7)',
+                                                    borderRadius: '12px',
+                                                    maxHeight: '100%',
+                                                    transition: 'background 0.2s ease',
+                                                    boxShadow: snapshot.isDraggingOver ? `0 0 0 2px ${stStyle.borderColor}40` : 'none',
+                                                    animation: `fadeIn 0.5s ease-out ${index * 0.1}s backwards`
+                                                }}
+                                            >
+                                                {/* Column Header */}
+                                                <div
+                                                    title={stStyle.description}
+                                                    style={{
+                                                        padding: '1rem',
+                                                        fontWeight: '600',
+                                                        background: 'white',
+                                                        borderRadius: '12px 12px 0 0',
+                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        borderTop: `4px solid ${stStyle.borderColor}`
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                        <span style={{
+                                                            textTransform: 'uppercase',
+                                                            fontSize: '0.7rem',
+                                                            letterSpacing: '0.05em',
+                                                            color: stStyle.color,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px'
+                                                        }}>
+                                                            <span>{stStyle.emoji}</span> {stage.name}
+                                                        </span>
+                                                        {stStyle.description && (
+                                                            <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: '400' }}>
+                                                                {stStyle.description}
+                                                            </span>
                                                         )}
-                                                    </Draggable>
-                                                ))}
-                                                {provided.placeholder}
+                                                    </div>
+                                                    <span style={{
+                                                        background: `${stStyle.color}15`,
+                                                        color: stStyle.color,
+                                                        padding: '2px 10px',
+                                                        borderRadius: '20px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: '700'
+                                                    }}>
+                                                        {stage.candidates.length}
+                                                    </span>
+                                                </div>
+
+                                                {/* Column Content */}
+                                                <div className="custom-scrollbar" style={{ padding: '0.75rem', flex: 1, overflowY: 'auto' }}>
+                                                    {stages.length > 0 && stage.candidates.map((candidate, index) => (
+                                                        <Draggable
+                                                            key={candidate.id}
+                                                            draggableId={candidate.id}
+                                                            index={index}
+                                                        >
+                                                            {(provided, snapshot) => (
+                                                                <div
+                                                                    ref={provided.innerRef}
+                                                                    {...provided.draggableProps}
+                                                                    {...provided.dragHandleProps}
+                                                                    style={{
+                                                                        ...provided.draggableProps.style,
+                                                                        background: 'white',
+                                                                        padding: '1rem',
+                                                                        marginBottom: '0.75rem',
+                                                                        borderRadius: '10px',
+                                                                        border: snapshot.isDragging ? '2px solid #3b82f6' : '1px solid #f0f0f0',
+                                                                        boxShadow: snapshot.isDragging ? '0 8px 25px rgba(59,130,246,0.2)' : '0 1px 3px rgba(0,0,0,0.05)',
+                                                                        transform: snapshot.isDragging ? 'rotate(2deg)' : 'none',
+                                                                        transition: 'box-shadow 0.2s, border 0.2s'
+                                                                    }}
+                                                                >
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                                            <div style={{
+                                                                                height: '32px',
+                                                                                width: '32px',
+                                                                                borderRadius: '50%',
+                                                                                background: 'linear-gradient(135deg, #dbeafe, #e0e7ff)',
+                                                                                color: '#3b82f6',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'center',
+                                                                                fontWeight: '700',
+                                                                                fontSize: '0.75rem'
+                                                                            }}>
+                                                                                {candidate.student_name.charAt(0)}
+                                                                            </div>
+                                                                            <div>
+                                                                                <h4 style={{ fontWeight: '600', color: '#1f2937', fontSize: '0.875rem', margin: 0 }}>{candidate.student_name}</h4>
+                                                                                {candidate.email && <div style={{ fontSize: '0.7rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '4px' }}><FaEnvelope size={10} />{candidate.email}</div>}
+                                                                            </div>
+                                                                        </div>
+                                                                        <button style={{ background: 'none', border: 'none', color: '#d1d5db', cursor: 'pointer' }}>
+                                                                            <FaEllipsisV size={12} />
+                                                                        </button>
+                                                                    </div>
+
+                                                                    <div style={{ marginBottom: '0.75rem' }}>
+                                                                        <div style={{ fontSize: '0.75rem', color: '#6b7280', background: '#f9fafb', padding: '6px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <FaCalendarAlt style={{ color: '#9ca3af' }} />
+                                                                            Applied: {new Date(candidate.applied_at).toLocaleDateString()}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                        {candidate.overall_score ? (
+                                                                            <div style={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                fontSize: '0.75rem',
+                                                                                fontWeight: '600',
+                                                                                padding: '3px 8px',
+                                                                                borderRadius: '20px',
+                                                                                background: candidate.overall_score >= 80 ? 'rgba(16,185,129,0.1)' : candidate.overall_score >= 60 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                                                                                color: candidate.overall_score >= 80 ? '#059669' : candidate.overall_score >= 60 ? '#d97706' : '#dc2626'
+                                                                            }}>
+                                                                                <FaUser style={{ marginRight: '4px' }} size={10} />
+                                                                                {candidate.overall_score}% Match
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>Pending Score</span>
+                                                                        )}
+
+                                                                        <div
+                                                                            style={{ fontSize: '0.75rem', color: '#3b82f6', fontWeight: '500', cursor: 'pointer' }}
+                                                                            onClick={() => navigate(`/profile/${candidate.student_id}`)}
+                                                                        >
+                                                                            View Profile
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </Draggable>
+                                                    ))}
+                                                    {provided.placeholder}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </Droppable>
-                            ))}
+                                        )}
+                                    </Droppable>
+                                )
+                            })
                         </div>
                     </DragDropContext>
                 </div>

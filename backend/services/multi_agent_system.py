@@ -477,11 +477,17 @@ Be encouraging but honest. Focus on helping candidates improve."""
         """LLM-powered evaluation."""
         llm = self._get_llm()
         
+        is_dsa = context.interview_type == "dsa"
+        dsa_instructions = ""
+        if is_dsa:
+            dsa_instructions = "\nSPECIAL INSTRUCTIONS FOR DSA:\nEvaluate the code's time and space complexity, correctness, and edge case handling (e.g., empty inputs, negative numbers). Highlight any specific test cases where this code might fail."
+
         prompt = f"""Evaluate this interview answer:
 
 QUESTION: {question.get('content', question.get('title', 'Unknown'))}
-ANSWER: {answer[:1500]}
+ANSWER: {answer[:2000]}
 CONTEXT: {context.role} at {context.company}
+{dsa_instructions}
 
 Return JSON with this exact format:
 {{

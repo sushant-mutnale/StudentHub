@@ -136,11 +136,41 @@ const Profile = () => {
     const scores = user.ai_profile;
 
     const scoreItems = [
-      { label: 'Overall Score', value: scores.overall_score, color: '#667eea', icon: <FiAward /> },
-      { label: 'Skill Match', value: scores.skill_score, color: '#10b981', icon: <FiCheckCircle /> },
-      { label: 'Activity', value: scores.activity_score, color: '#f59e0b', icon: <FiActivity /> },
-      { label: 'Interviews', value: scores.interview_score, color: '#8b5cf6', icon: <FiTrendingUp /> },
-      { label: 'Completeness', value: scores.profile_completeness, color: '#ec4899', icon: <FiUser /> }
+      {
+        label: 'Overall Score',
+        value: scores.overall_score,
+        color: '#667eea',
+        icon: <FiAward />,
+        description: 'Weighted combination: Skills (35%), Activity (30%), Interviews (25%), Profile (10%)'
+      },
+      {
+        label: 'Skill Match',
+        value: scores.skill_score,
+        color: '#10b981',
+        icon: <FiCheckCircle />,
+        description: 'Based on self-assessed proficiency, verified via resume parsing.'
+      },
+      {
+        label: 'Activity',
+        value: scores.activity_score,
+        color: '#f59e0b',
+        icon: <FiActivity />,
+        description: 'Based on recent learning progress and platform engagement.'
+      },
+      {
+        label: 'Interviews',
+        value: scores.interview_score,
+        color: '#8b5cf6',
+        icon: <FiTrendingUp />,
+        description: 'Calculated from AI Mock Assessment ratings & feedback.'
+      },
+      {
+        label: 'Completeness',
+        value: scores.profile_completeness,
+        color: '#ec4899',
+        icon: <FiUser />,
+        description: 'Measures how completely you have filled out your profile.'
+      }
     ];
 
     return (
@@ -151,7 +181,7 @@ const Profile = () => {
         borderRadius: 'var(--radius-lg)',
         border: '1px solid rgba(102, 126, 234, 0.15)',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'visible'
       }}>
         {/* Decorative background elements */}
         <div style={{
@@ -201,7 +231,7 @@ const Profile = () => {
           {scoreItems.map((item, idx) => (
             <div
               key={idx}
-              className="interactive-card glass-card animate-scale-in"
+              className="interactive-card glass-card animate-scale-in tooltip-trigger"
               style={{
                 textAlign: 'center',
                 padding: '1.25rem 1rem',
@@ -209,6 +239,7 @@ const Profile = () => {
                 animationDelay: `${idx * 100}ms`,
                 position: 'relative'
               }}
+              title={item.description}
             >
               <div style={{
                 position: 'relative',
@@ -240,6 +271,15 @@ const Profile = () => {
               }}>
                 <span style={{ color: item.color }}>{item.icon}</span>
                 {item.label}
+              </div>
+
+              <div style={{
+                fontSize: '0.7rem',
+                color: 'var(--color-text-muted)',
+                marginTop: '0.5rem',
+                lineHeight: '1.4'
+              }}>
+                {item.description}
               </div>
             </div>
           ))}
@@ -451,7 +491,8 @@ const Profile = () => {
                       {user.skills.map((skill, index) => (
                         <div
                           key={index}
-                          className="interactive-card"
+                          className="interactive-card tooltip-trigger"
+                          title={`Self-Assessed Level: ${skill.level}%\nVerification Confidence: ${skill.confidence || 30}%\n\nComplete mock assessments and learning modules to increase your verified confidence and boost your overall Skill Match score!`}
                           style={{
                             padding: '0.75rem 1.25rem',
                             background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.08) 100%)',
@@ -459,7 +500,8 @@ const Profile = () => {
                             borderRadius: 'var(--radius-full)',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '0.75rem'
+                            gap: '0.75rem',
+                            cursor: 'help'
                           }}
                         >
                           <span style={{ fontWeight: '600', color: 'var(--color-text)' }}>{skill.name}</span>

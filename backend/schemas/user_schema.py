@@ -30,6 +30,7 @@ class UserBase(MongoModel):
     bio: Optional[str] = None
     skills: List[SkillSchema] = Field(default_factory=list)
     ai_profile: Optional[AIProfileSchema] = None
+    connections: List[str] = Field(default_factory=list)
 
 
 class StudentCreate(UserBase):
@@ -78,6 +79,7 @@ class UserPublic(BaseModel):
     bio: Optional[str] = None
     skills: List[SkillSchema] = Field(default_factory=list)
     ai_profile: Optional[AIProfileSchema] = None
+    connections: List[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -105,6 +107,7 @@ class UserUpdate(MongoModel):
     bio: Optional[str] = None
     skills: Optional[List[SkillSchema]] = None
     ai_profile: Optional[AIProfileSchema] = None
+    connections: Optional[List[str]] = None
     full_name: Optional[str] = None
     college: Optional[str] = None
     branch: Optional[str] = None

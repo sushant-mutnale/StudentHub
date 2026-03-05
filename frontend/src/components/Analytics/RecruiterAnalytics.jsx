@@ -38,28 +38,31 @@ const RecruiterAnalytics = ({ data }) => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Top Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
-                <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', border: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div title="Number of job listings currently published and accepting applications" style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', border: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                         <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Active Jobs</p>
                         <h3 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>{active_jobs}</h3>
+                        <p style={{ color: '#9ca3af', fontSize: '0.7rem', margin: '4px 0 0' }}>Currently accepting applications</p>
                     </div>
                     <div style={{ backgroundColor: '#eff6ff', padding: '0.75rem', borderRadius: '9999px', color: '#2563eb' }}>
                         <FiBriefcase size={24} />
                     </div>
                 </div>
-                <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', border: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div title="Total unique students who have applied across all your job listings" style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', border: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                         <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Total Applicants</p>
                         <h3 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>{total_applicants}</h3>
+                        <p style={{ color: '#9ca3af', fontSize: '0.7rem', margin: '4px 0 0' }}>Across all job postings</p>
                     </div>
                     <div style={{ backgroundColor: '#faf5ff', padding: '0.75rem', borderRadius: '9999px', color: '#9333ea' }}>
                         <FiUsers size={24} />
                     </div>
                 </div>
-                <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', border: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div title="Active mock and real interviews scheduled or in progress" style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)', border: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                         <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Interviews</p>
                         <h3 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>{active_interviews}</h3>
+                        <p style={{ color: '#9ca3af', fontSize: '0.7rem', margin: '4px 0 0' }}>Active or scheduled</p>
                     </div>
                     <div style={{ backgroundColor: '#fff7ed', padding: '0.75rem', borderRadius: '9999px', color: '#ea580c' }}>
                         <FiTrendingUp size={24} />
@@ -119,21 +122,25 @@ const RecruiterAnalytics = ({ data }) => {
                     </div>
                     {selectedJob && (
                         <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', textAlign: 'center', fontSize: '0.875rem' }}>
-                            <div>
-                                <span style={{ display: 'block', color: '#6b7280' }}>View to Apply</span>
-                                <span style={{ fontWeight: 600 }}>{selectedJob.conversion_rates.view_to_apply || 0}%</span>
+                            <div title="Percentage of viewers who submit an application">
+                                <span style={{ display: 'block', color: '#6b7280' }}>View → Apply</span>
+                                <span style={{ fontWeight: 600, fontSize: '1.1rem' }}>{selectedJob.conversion_rates.view_to_apply || 0}%</span>
+                                <span style={{ display: 'block', color: '#9ca3af', fontSize: '0.7rem' }}>Viewers converting</span>
                             </div>
-                            <div>
-                                <span style={{ display: 'block', color: '#6b7280' }}>Apply to Interview</span>
-                                <span style={{ fontWeight: 600 }}>{selectedJob.conversion_rates.apply_to_interview || 0}%</span>
+                            <div title="Percentage of applicants advanced to interview stage">
+                                <span style={{ display: 'block', color: '#6b7280' }}>Apply → Interview</span>
+                                <span style={{ fontWeight: 600, fontSize: '1.1rem' }}>{selectedJob.conversion_rates.apply_to_interview || 0}%</span>
+                                <span style={{ display: 'block', color: '#9ca3af', fontSize: '0.7rem' }}>Screened through</span>
                             </div>
-                            <div>
-                                <span style={{ display: 'block', color: '#6b7280' }}>Interview to Offer</span>
-                                <span style={{ fontWeight: 600 }}>{selectedJob.conversion_rates.interview_to_offer || 0}%</span>
+                            <div title="Percentage of interviewed candidates who receive an offer">
+                                <span style={{ display: 'block', color: '#6b7280' }}>Interview → Offer</span>
+                                <span style={{ fontWeight: 600, fontSize: '1.1rem' }}>{selectedJob.conversion_rates.interview_to_offer || 0}%</span>
+                                <span style={{ display: 'block', color: '#9ca3af', fontSize: '0.7rem' }}>Successful interviews</span>
                             </div>
-                            <div>
-                                <span style={{ display: 'block', color: '#6b7280' }}>Offer to Hire</span>
-                                <span style={{ fontWeight: 600 }}>{selectedJob.conversion_rates.offer_to_hire || 0}%</span>
+                            <div title="Percentage of offers accepted by candidates">
+                                <span style={{ display: 'block', color: '#6b7280' }}>Offer → Hire</span>
+                                <span style={{ fontWeight: 600, fontSize: '1.1rem' }}>{selectedJob.conversion_rates.offer_to_hire || 0}%</span>
+                                <span style={{ display: 'block', color: '#9ca3af', fontSize: '0.7rem' }}>Offers accepted</span>
                             </div>
                         </div>
                     )}

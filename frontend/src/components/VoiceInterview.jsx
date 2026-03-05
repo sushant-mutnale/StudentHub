@@ -248,7 +248,7 @@ const VoiceInterview = () => {
         new Promise((resolve) => {
             synthRef.current.cancel();
             const utt = new SpeechSynthesisUtterance(text);
-            utt.rate = 0.92;
+            utt.rate = 1.05;
             utt.pitch = 1.0;
             utt.volume = 1.0;
 
@@ -342,7 +342,7 @@ const VoiceInterview = () => {
     const speakFiller = useCallback((phrase) => {
         // Queue a filler utterance without cancelling the current synthesis
         const utt = new SpeechSynthesisUtterance(phrase);
-        utt.rate = 0.9;
+        utt.rate = 1.05;
         utt.pitch = 1.05;
         utt.volume = 0.85;
         const voices = synthRef.current.getVoices();

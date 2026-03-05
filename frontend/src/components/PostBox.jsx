@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { postService } from '../services/postService';
-import { FiEdit2, FiTag, FiSend, FiLoader } from 'react-icons/fi';
+import { FiEdit2, FiTag, FiSend, FiLoader, FiAward } from 'react-icons/fi';
 import Avatar from './Avatar';
 import '../App.css';
 
@@ -125,6 +125,33 @@ const PostBox = ({ onPostCreated }) => {
                     color: 'var(--color-text)'
                   }}
                 />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setContent("I'm thrilled to share that I've just completed a new milestone on StudentHub! 🚀\n\nI've been working hard on improving my skills and I'm proud of the progress I've made. Check out my updated profile! #achievement #learning #growth");
+                    setTags("achievement, learning, growth");
+                  }}
+                  className="interactive-card"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.5rem 1rem',
+                    background: 'rgba(139, 92, 246, 0.1)',
+                    color: 'var(--color-primary)',
+                    border: '1px solid rgba(139, 92, 246, 0.2)',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <FiAward size={16} /> Share Achievement
+                </button>
               </div>
 
               {error && (

@@ -29,27 +29,34 @@ const Opportunities = () => {
             return;
         }
 
+        let currentFilters = filters;
+        let currentTab = activeTab;
+
         // Handle redirect states from other pages
         if (location.state?.filterCompany) {
-            setFilters(prev => ({ ...prev, company: location.state.filterCompany }));
+            currentFilters = { ...filters, company: location.state.filterCompany };
+            setFilters(currentFilters);
+            currentTab = 'jobs';
             setActiveTab('jobs');
             // Clear history state to avoid loops on refresh
-            window.history.replaceState({}, document.title)
+            window.history.replaceState({}, document.title);
         } else if (location.search.includes('tab=jobs')) {
+            currentTab = 'jobs';
             setActiveTab('jobs');
         }
 
-        loadOpportunities();
-    }, [user, navigate, activeTab]);
+        loadOpportunities(currentFilters, currentTab);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, navigate, activeTab, location.state, location.search]);
 
-    const loadOpportunities = async () => {
+    const loadOpportunities = async (currentFilters = filters, currentTab = activeTab) => {
         setLoading(true);
         try {
-            if (activeTab === 'jobs') {
-                const data = await recommendationService.getJobRecommendations(20, filters);
+            if (currentTab === 'jobs') {
+                const data = await recommendationService.getJobRecommendations(20, currentFilters);
                 const raw = data.recommendations || data.jobs || data || [];
                 setJobs(raw.map(item => item.job ? { ...item.job, score: item.score, match_details: item.match_details } : item));
-            } else if (activeTab === 'hackathons') {
+            } else if (currentTab === 'hackathons') {
                 const data = await recommendationService.getHackathonRecommendations(15);
                 const raw = data.recommendations || data.hackathons || data || [];
                 setHackathons(raw.map(item => item.hackathon ? { ...item.hackathon, score: item.score, match_details: item.match_details } : item));

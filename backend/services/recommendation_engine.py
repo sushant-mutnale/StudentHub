@@ -470,19 +470,19 @@ class ScoringEngine:
     ) -> str:
         """Generate actionable recommendation based on score."""
         if total_score >= 85:
-            rec = "Excellent match! Apply soon."
+            rec = "Highly recommended because you match most of the required skills and your profile is an excellent fit."
         elif total_score >= 70:
-            rec = "Good match. Worth applying."
+            rec = "Recommended because your skills and experience are a solid match for this role."
         elif total_score >= 55:
-            rec = "Moderate match. Consider carefully."
+            rec = "Suggested for you because it aligns with your interests, though you may need to upskill slightly."
         else:
-            rec = "Low match. Keep improving your profile."
+            rec = "Suggested as a stretch goal to help guide your long-term learning path."
         
         if missing_skills:
-            rec += f" Consider learning: {', '.join(missing_skills[:3])}."
+            rec += f" You can improve your chances by learning: {', '.join(missing_skills[:3])}."
         
         if gaps_covered:
-            rec += f" This job helps build: {', '.join(gaps_covered[:2])}."
+            rec += f" This is a great opportunity to build your skills in: {', '.join(gaps_covered[:2])}."
         
         return rec
     

@@ -13,4 +13,16 @@ export const userService = {
     const { data } = await api.get(`/users/${userId}`);
     return data;
   },
+  addConnection: async (userId) => {
+    const { data } = await api.post(`/users/connections/${userId}`);
+    return data;
+  },
+  removeConnection: async (userId) => {
+    const { data } = await api.delete(`/users/connections/${userId}`);
+    return data;
+  },
+  searchUsers: async (params = {}) => {
+    const { data } = await api.get('/users/search', { params });
+    return data;
+  },
 };

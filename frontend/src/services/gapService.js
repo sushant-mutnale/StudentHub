@@ -19,6 +19,12 @@ export const gapService = {
         return data;
     },
 
+    // Get gap analysis history
+    getGapHistory: async () => {
+        const { data } = await api.get('/learning/my-gaps/history');
+        return data;
+    },
+
     // Get gap analysis with recommendations
     getGapWithRecommendations: async (targetRole = null) => {
         try {

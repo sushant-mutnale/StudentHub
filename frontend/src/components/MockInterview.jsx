@@ -17,6 +17,7 @@ const MockInterview = () => {
     const [currentQuestion, setCurrentQuestion] = useState(null);
     const [answer, setAnswer] = useState('');
     const [code, setCode] = useState('');
+    const [language, setLanguage] = useState('python');
     const [loading, setLoading] = useState(false);
     const [feedback, setFeedback] = useState(null);
     const [messages, setMessages] = usePersistedState('interview_messages', [], { useSession: true });
@@ -50,6 +51,25 @@ const MockInterview = () => {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    const CODE_TEMPLATES = {
+        python: "def solution():\n    # Write your code here\n    pass",
+        javascript: "function solution() {\n    // Write your code here\n}",
+        java: "class Solution {\n    public void solution() {\n        // Write your code here\n    }\n}\n"
+    };
+
+    const handleLanguageChange = (newLang) => {
+        if (!code.trim() || Object.values(CODE_TEMPLATES).some(t => t.trim() === code.trim())) {
+            setCode(CODE_TEMPLATES[newLang]);
+        }
+        setLanguage(newLang);
+    };
+
+    useEffect(() => {
+        if (config.type === 'dsa' && !code.trim()) {
+            setCode(CODE_TEMPLATES[language]);
+        }
+    }, [config.type, language, showConfig]);
 
     const formatTime = (seconds) => {
         const mins = Math.floor(seconds / 60);
@@ -93,7 +113,7 @@ const MockInterview = () => {
         if (!answer.trim() && !code.trim()) return;
 
         const userMessage = config.type === 'dsa' && code
-            ? `${answer.trim()}\n\n\`\`\`python\n${code.trim()}\n\`\`\``
+            ? `${answer.trim()}\n\n\`\`\`${language}\n${code.trim()}\n\`\`\``
             : answer;
 
         setMessages(prev => [...prev, { role: 'candidate', content: userMessage }]);
@@ -407,12 +427,24 @@ const MockInterview = () => {
                                 {config.type === 'dsa' && (
                                     <div style={{ marginBottom: '1rem' }} className="animate-slide-up">
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                            <label style={{ fontWeight: 500, color: '#374151' }}>Code (Python)</label>
+                                            <label style={{ fontWeight: 500, color: '#374151', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <FiCode size={16} className="text-blue-500" />
+                                                Code Solution
+                                            </label>
+                                            <select
+                                                value={language}
+                                                onChange={(e) => handleLanguageChange(e.target.value)}
+                                                style={{ padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.875rem', color: '#475569', outline: 'none', cursor: 'pointer' }}
+                                            >
+                                                <option value="python">Python</option>
+                                                <option value="javascript">JavaScript</option>
+                                                <option value="java">Java</option>
+                                            </select>
                                         </div>
                                         <textarea
                                             value={code}
                                             onChange={(e) => setCode(e.target.value)}
-                                            placeholder="def solution():\n    # Write your code here\n    pass"
+                                            placeholder="Write your code here..."
                                             style={{
                                                 width: '100%',
                                                 minHeight: '150px',

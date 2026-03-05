@@ -237,6 +237,26 @@ async def get_my_gaps(current_user=Depends(get_current_user)):
     return doc
 
 
+@router.get("/my-gaps/history")
+async def get_my_gaps_history(current_user=Depends(get_current_user)):
+    """Get history of gap analyses for current user"""
+    student_id = str(current_user["_id"])
+    cursor = gap_analyses_collection().find(
+        {"student_id": ObjectId(student_id)},
+        sort=[("created_at", -1)]
+    ).limit(10)
+    
+    docs = await cursor.to_list(length=10)
+    formatted = []
+    for doc in docs:
+        doc["id"] = str(doc["_id"])
+        doc.pop("_id")
+        doc["student_id"] = str(doc["student_id"])
+        formatted.append(doc)
+        
+    return {"status": "success", "history": formatted}
+
+
 @router.get("/gap-analysis/{job_id}")
 async def get_gap_analysis_for_job(job_id: str, current_user=Depends(get_current_user)):
     """Get gap analysis for specific job"""

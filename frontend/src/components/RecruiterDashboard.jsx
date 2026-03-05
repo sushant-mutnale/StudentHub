@@ -4,6 +4,7 @@ import { FiMapPin, FiTrash2, FiUsers, FiLogOut, FiPlus, FiMessageSquare, FiCalen
 import { useAuth } from '../contexts/AuthContext';
 import { jobService } from '../services/jobService';
 import InterviewModal from './interviews/InterviewModal';
+import SidebarLeft from './SidebarLeft';
 import '../App.css';
 
 const RecruiterDashboard = () => {
@@ -133,39 +134,7 @@ const RecruiterDashboard = () => {
 
   return (
     <div className="dashboard-container recruiter-only">
-      <div className="sidebar-left" style={{ width: '220px' }}>
-        <div className="sidebar-logo">Student Hub</div>
-        <nav className="sidebar-nav">
-          <div className="nav-item active">
-            <FiUsers />
-            <span>Matches</span>
-          </div>
-          <div className="nav-item" onClick={() => navigate('/analytics')}>
-            <FiTrendingUp />
-            <span>Analytics</span>
-          </div>
-          <div className="nav-item" onClick={() => navigate('/pipeline')}>
-            <FiTrello />
-            <span>Pipeline</span>
-          </div>
-          <div className="nav-item" onClick={() => navigate('/verify')}>
-            <FiShield />
-            <span>Verification</span>
-          </div>
-          <div className="nav-item" onClick={() => navigate('/messages')}>
-            <FiMessageSquare />
-            <span>Messages</span>
-          </div>
-          <div className="nav-item" onClick={() => navigate('/interviews')}>
-            <FiCalendar />
-            <span>Interviews</span>
-          </div>
-          <div className="nav-item logout" onClick={handleLogout}>
-            <FiLogOut />
-            <span>Logout</span>
-          </div>
-        </nav>
-      </div>
+      <SidebarLeft />
       <div className="dashboard-main">
         <div className="dashboard-header">
           <h1 className="dashboard-title">Recruiter Workspace</h1>

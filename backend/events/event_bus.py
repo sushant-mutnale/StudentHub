@@ -42,6 +42,7 @@ class EventTypes:
     JOB_FLAGGED = "job.flagged"
     JOB_ESCALATED = "job.escalated" # Added for audit log
     ADMIN_ACTION_TAKEN = "admin.action_taken" # Added for audit log
+    OPPORTUNITY_CREATED = "opportunity.created" # Added for RAG vectorization and notifications
     
     # Application Events
     APPLICATION_CREATED = "application.created" # Added for analytics

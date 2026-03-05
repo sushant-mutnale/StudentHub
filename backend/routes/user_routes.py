@@ -32,6 +32,7 @@ def db_user_to_public(db_user: dict) -> UserPublic:
         bio=db_user.get("bio"),
         skills=db_user.get("skills") or [],
         ai_profile=db_user.get("ai_profile"),
+        connections=db_user.get("connections") or [],
         created_at=db_user.get("created_at"),
         updated_at=db_user.get("updated_at"),
     )
@@ -54,9 +55,6 @@ async def update_me(payload: UserUpdate, current_user=Depends(get_current_user))
         # Fetch again to get updated scores
         updated = await user_model.get_user_by_id(user_id)
         
-    return db_user_to_public(updated)
-
-
     return db_user_to_public(updated)
 
 
@@ -146,3 +144,32 @@ async def get_user_posts(user_id: str):
     posts = await post_model.list_posts_by_user(user_id)
     return [serialize_post(post) for post in posts]
 
+
+@router.post("/connections/{target_id}")
+async def add_connection(target_id: str, current_user=Depends(get_current_user)):
+    user_id = str(current_user["_id"])
+    if user_id == target_id:
+        raise HTTPException(status_code=400, detail="Cannot connect to yourself")
+    
+    target_user = await user_model.get_user_by_id(target_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Target user not found")
+        
+    connections = current_user.get("connections", [])
+    if target_id not in connections:
+        connections.append(target_id)
+        await user_model.update_user(user_id, {"connections": connections})
+        
+    return {"message": "Connection added successfully", "connections": connections}
+
+
+@router.delete("/connections/{target_id}")
+async def remove_connection(target_id: str, current_user=Depends(get_current_user)):
+    user_id = str(current_user["_id"])
+    
+    connections = current_user.get("connections", [])
+    if target_id in connections:
+        connections.remove(target_id)
+        await user_model.update_user(user_id, {"connections": connections})
+        
+    return {"message": "Connection removed successfully", "connections": connections}

@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { gapService } from '../services/gapService';
 import { learningService } from '../services/learningService';
 import SidebarLeft from './SidebarLeft';
-import { FiTarget, FiTrendingUp, FiZap, FiArrowRight, FiBook, FiAlertTriangle, FiCheckCircle, FiLoader, FiSearch, FiAward } from 'react-icons/fi';
+import { FiTarget, FiTrendingUp, FiZap, FiArrowRight, FiBook, FiAlertTriangle, FiCheckCircle, FiLoader, FiSearch, FiAward, FiClock } from 'react-icons/fi';
 import '../App.css';
 
 const SkillGapAnalysis = () => {
@@ -14,8 +14,8 @@ const SkillGapAnalysis = () => {
     const [gaps, setGaps] = usePersistedState('gap_results', []);
     const [loading, setLoading] = useState(true);
     const [targetRole, setTargetRole] = usePersistedState('gap_targetRole', '');
-    const [generating, setGenerating] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
+    const [historyGroups, setHistoryGroups] = useState([]);
 
     useEffect(() => {
         if (!user) {
@@ -34,10 +34,22 @@ const SkillGapAnalysis = () => {
         try {
             const data = await gapService.getMyGaps();
             setGaps(data.gaps || data || []);
+            loadHistory();
         } catch (err) {
             console.error('Failed to load gaps:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const loadHistory = async () => {
+        try {
+            const histData = await gapService.getGapHistory();
+            if (histData.history) {
+                setHistoryGroups(histData.history);
+            }
+        } catch (err) {
+            console.error('Failed to load history:', err);
         }
     };
 
@@ -48,6 +60,7 @@ const SkillGapAnalysis = () => {
         try {
             const data = await gapService.getGapWithRecommendations(targetRole);
             setGaps(data.gaps || data || []);
+            loadHistory(); // refresh history after new analysis
         } catch (err) {
             console.error('Failed to analyze:', err);
         } finally {
@@ -539,6 +552,72 @@ const SkillGapAnalysis = () => {
                             </div>
                         )}
                     </div>
+
+                    {/* Past Analyses History */}
+                    {historyGroups.length > 0 && (
+                        <div className="glass-card animate-fade-in-up delay-300" style={{
+                            padding: '2rem',
+                            borderRadius: 'var(--radius-lg)',
+                            marginTop: '2rem'
+                        }}>
+                            <h3 style={{
+                                marginBottom: '1.5rem',
+                                color: 'var(--color-text)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.75rem',
+                                fontSize: '1.15rem'
+                            }}>
+                                <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '36px',
+                                    height: '36px',
+                                    background: 'linear-gradient(135deg, rgba(100, 116, 139, 0.15) 0%, rgba(71, 85, 105, 0.15) 100%)',
+                                    borderRadius: 'var(--radius-md)',
+                                    color: 'var(--color-text-secondary)'
+                                }}>
+                                    <FiClock size={18} />
+                                </span>
+                                Previous Analyses
+                            </h3>
+                            <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+                                {historyGroups.map((group, idx) => {
+                                    const date = new Date(group.created_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+                                    const score = group.match_percentage || Math.round(group.gap_score * 100) || 0;
+                                    return (
+                                        <div key={idx} className="interactive-card" style={{
+                                            padding: '1.25rem',
+                                            background: 'var(--color-bg-alt)',
+                                            border: '1px solid var(--color-border)',
+                                            borderRadius: 'var(--radius-md)',
+                                            cursor: 'pointer'
+                                        }} onClick={() => {
+                                            if (group.target_role) setTargetRole(group.target_role);
+                                            setGaps(group.gaps || []);
+                                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--color-text)' }}>
+                                                    {group.target_role || group.job_id || 'General Analysis'}
+                                                </h4>
+                                                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                                                    {date}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>
+                                                <span>{group.gaps?.length || 0} gaps found</span>
+                                                <span style={{ fontWeight: '600', color: score > 70 ? 'var(--color-success)' : score > 40 ? 'var(--color-warning)' : 'var(--color-error)' }}>
+                                                    Match: {score}%
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
