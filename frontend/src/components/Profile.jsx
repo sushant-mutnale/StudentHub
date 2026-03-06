@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { userService } from '../services/userService';
-import SidebarLeft from './SidebarLeft';
 import Avatar from './Avatar';
 import { FiEdit3, FiSave, FiX, FiPlus, FiTrash2, FiAward, FiTrendingUp, FiActivity, FiUser, FiCheckCircle } from 'react-icons/fi';
 import '../App.css';
@@ -289,8 +288,8 @@ const Profile = () => {
   };
 
   return (
-    <div className="dashboard-container">
-      <SidebarLeft />
+    <>
+      
       <div className="dashboard-main">
         <div className="dashboard-header animate-fade-in">
           <h1 className="dashboard-title" style={{
@@ -873,7 +872,7 @@ const Profile = () => {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

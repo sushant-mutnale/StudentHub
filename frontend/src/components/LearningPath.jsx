@@ -3,7 +3,6 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { learningService } from '../services/learningService';
-import SidebarLeft from './SidebarLeft';
 import {
     FiBook, FiCheckCircle, FiCircle, FiPlay, FiAward, FiClock,
     FiExternalLink, FiMessageCircle, FiSend, FiLoader, FiZap,
@@ -286,15 +285,23 @@ const LearningPath = () => {
         setCorrectedSkill('');
     };
 
-    const handleGeneratePath = async () => {
-        if (!newSkill.trim()) return;
+    const handleGeneratePath = async (skillToGenerate = newSkill) => {
+        const targetSkill = typeof skillToGenerate === 'string' ? skillToGenerate : newSkill;
+        if (!targetSkill.trim()) return;
+        
         setGenerating(true);
+        // Force the input to show what we are generating (useful if triggered via Router state)
+        if (targetSkill !== newSkill) {
+            setNewSkill(targetSkill);
+            setCorrectedSkill('');
+        }
+
         try {
             // Step 1: Normalize skill
             setNormalizing(true);
-            const normalized = await learningService.normalizeSkill(newSkill.trim());
+            const normalized = await learningService.normalizeSkill(targetSkill.trim());
             setNormalizing(false);
-            if (normalized.toLowerCase() !== newSkill.trim().toLowerCase()) {
+            if (normalized.toLowerCase() !== targetSkill.trim().toLowerCase()) {
                 setCorrectedSkill(normalized);
             }
 
@@ -313,6 +320,18 @@ const LearningPath = () => {
             setNormalizing(false);
         }
     };
+
+    useEffect(() => {
+        if (location.state?.autoGenerateSkill && !loading && !generating) {
+            const skill = location.state.autoGenerateSkill;
+            // Clear the state so refreshing doesn't re-trigger
+            window.history.replaceState({}, document.title);
+            
+            setTimeout(() => {
+                handleGeneratePath(skill);
+            }, 0);
+        }
+    }, [location.state, loading]);
 
     // "Take Quiz" button clicked for a stage
     const handleTakeQuiz = async (stageIdx) => {
@@ -403,8 +422,8 @@ const LearningPath = () => {
     if (!user) return null;
 
     return (
-        <div className="dashboard-container">
-            <SidebarLeft />
+        <>
+            
             <div className="dashboard-main">
                 <div className="dashboard-header animate-fade-in">
                     <h1 className="dashboard-title" style={{
@@ -741,7 +760,7 @@ const LearningPath = () => {
 
             {/* Toast */}
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-        </div>
+        </>
     );
 };
 

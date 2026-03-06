@@ -4,7 +4,6 @@ import { FiMapPin, FiTrash2, FiUsers, FiLogOut, FiPlus, FiMessageSquare, FiCalen
 import { useAuth } from '../contexts/AuthContext';
 import { jobService } from '../services/jobService';
 import InterviewModal from './interviews/InterviewModal';
-import SidebarLeft from './SidebarLeft';
 import '../App.css';
 
 const RecruiterDashboard = () => {
@@ -134,7 +133,7 @@ const RecruiterDashboard = () => {
 
   return (
     <div className="dashboard-container recruiter-only">
-      <SidebarLeft />
+      
       <div className="dashboard-main">
         <div className="dashboard-header">
           <h1 className="dashboard-title">Recruiter Workspace</h1>

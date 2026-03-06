@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import SidebarLeft from './SidebarLeft';
 import SidebarRight from './SidebarRight';
 import PostBox from './PostBox';
 import PostFeed from './PostFeed';
@@ -31,8 +30,8 @@ const StudentDashboard = () => {
   }
 
   return (
-    <div className="dashboard-container" style={{ background: 'var(--color-bg)' }}>
-      <SidebarLeft />
+    <>
+      
 
       <div className="dashboard-main custom-scrollbar">
         <div className="dashboard-header glass-panel" style={{
@@ -111,7 +110,7 @@ const StudentDashboard = () => {
       </div>
 
       <SidebarRight />
-    </div>
+    </>
   );
 };
 

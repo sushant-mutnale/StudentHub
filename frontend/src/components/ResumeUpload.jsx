@@ -3,7 +3,6 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { resumeService } from '../services/resumeService';
-import SidebarLeft from './SidebarLeft';
 import { FiUpload, FiFile, FiCheck, FiAlertCircle, FiRefreshCw, FiLoader, FiArrowRight, FiTarget, FiBook, FiBriefcase, FiStar, FiAward } from 'react-icons/fi';
 import '../App.css';
 
@@ -106,8 +105,8 @@ const ResumeUpload = () => {
     if (!user) return null;
 
     return (
-        <div className="dashboard-container">
-            <SidebarLeft />
+        <>
+            
             <div className="dashboard-main">
                 <div className="dashboard-header animate-fade-in">
                     <h1 className="dashboard-title" style={{
@@ -902,7 +901,7 @@ const ResumeUpload = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

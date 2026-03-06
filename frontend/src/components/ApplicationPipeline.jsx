@@ -5,7 +5,6 @@ import { pipelineService } from '../services/pipelineService';
 import { applicationService } from '../services/applicationService';
 import { jobService } from '../services/jobService';
 import { FaUser, FaEllipsisV, FaBriefcase, FaCalendarAlt, FaEnvelope } from 'react-icons/fa';
-import SidebarLeft from './SidebarLeft';
 import '../App.css';
 
 const ApplicationPipeline = () => {
@@ -107,8 +106,8 @@ const ApplicationPipeline = () => {
     if (jobs.length === 0) return <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No jobs found. Post a job to see the candidate pipeline.</div>;
 
     return (
-        <div className="dashboard-container">
-            <SidebarLeft />
+        <>
+            
             <div className="dashboard-main animate-fade-in" style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', background: '#f9fafb', overflow: 'hidden' }}>
                 {/* Header */}
                 <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', background: 'white', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10, position: 'relative' }}>
@@ -247,7 +246,7 @@ const ApplicationPipeline = () => {
                     </DragDropContext>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

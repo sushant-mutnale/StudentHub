@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationService } from '../services/notificationService';
-import SidebarLeft from './SidebarLeft';
 import { FiBell, FiAward, FiBriefcase, FiUsers, FiCalendar, FiMessageSquare, FiCheckCircle } from 'react-icons/fi';
 import '../App.css';
 
@@ -90,8 +89,8 @@ const Notifications = () => {
   if (!user) return null;
 
   return (
-    <div className="dashboard-container">
-      <SidebarLeft />
+    <>
+      
       <div className="dashboard-main">
         <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 className="dashboard-title">Notifications</h1>
@@ -155,7 +154,7 @@ const Notifications = () => {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

@@ -3,7 +3,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { analyticsService } from '../../services/analyticsService';
 import StudentAnalytics from './StudentAnalytics';
 import RecruiterAnalytics from './RecruiterAnalytics';
-import SidebarLeft from '../SidebarLeft';
 import { FiLoader } from 'react-icons/fi';
 
 const AnalyticsDashboard = () => {
@@ -38,18 +37,18 @@ const AnalyticsDashboard = () => {
 
     if (loading) {
         return (
-            <div className="dashboard-container">
-                <SidebarLeft />
+            <>
+                
                 <div className="dashboard-main" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
                     <FiLoader className="loading-spinner" size={32} />
                 </div>
-            </div>
+            </>
         );
     }
 
     return (
-        <div className="dashboard-container">
-            <SidebarLeft />
+        <>
+            
             <div className="dashboard-main">
                 <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h1 className="dashboard-title">Analytics Dashboard</h1>
@@ -71,7 +70,7 @@ const AnalyticsDashboard = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

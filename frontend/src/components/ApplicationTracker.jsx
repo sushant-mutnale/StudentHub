@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { applicationService } from '../services/applicationService';
 import { FaCheckCircle, FaCircle, FaSpinner, FaTimesCircle } from 'react-icons/fa';
-import SidebarLeft from './SidebarLeft';
-
 const ApplicationTracker = () => {
     const [applications, setApplications] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -26,8 +24,8 @@ const ApplicationTracker = () => {
 
     if (applications.length === 0) {
         return (
-            <div className="dashboard-container">
-                <SidebarLeft />
+            <>
+                
                 <div className="dashboard-main custom-scrollbar">
                     <div className="dashboard-header animate-fade-in-down">
                         <h1 className="dashboard-title text-2xl font-bold text-gray-800 m-0">My Applications</h1>
@@ -39,13 +37,13 @@ const ApplicationTracker = () => {
                         </div>
                     </div>
                 </div>
-            </div>
+            </>
         );
     }
 
     return (
-        <div className="dashboard-container">
-            <SidebarLeft />
+        <>
+            
             <div className="dashboard-main custom-scrollbar">
                 <div className="dashboard-header animate-fade-in-down">
                     <h1 className="dashboard-title text-2xl font-bold text-gray-800 m-0">My Applications</h1>
@@ -100,7 +98,7 @@ const ApplicationTracker = () => {
                     </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

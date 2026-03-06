@@ -597,6 +597,49 @@ class NotificationService:
             trigger_info={"rule": f"achievement_{achievement_type}"}
         )
     
+    async def create_application_update_notification(
+        self,
+        student_id: str,
+        job_title: str,
+        company_name: str,
+        new_stage_name: str,
+        stage_type: str = "custom",
+        application_id: str = None
+    ):
+        """
+        Create a notification when a recruiter updates an application's stage.
+        """
+        # Determine priority based on stage type
+        priority = NotificationPriority.MEDIUM
+        title = f"Application Update: {job_title}"
+        message = f"{company_name} moved your application to: {new_stage_name}"
+        
+        lower_stage = new_stage_name.lower()
+        if stage_type == "rejected" or "reject" in lower_stage:
+            title = f"Application Status: {job_title}"
+            message = f"{company_name} has decided not to move forward with your application."
+            priority = NotificationPriority.MEDIUM
+        elif stage_type == "hired" or "offer" in lower_stage:
+            title = f"🎉 Offer Received: {job_title}"
+            message = f"Congratulations! {company_name} wants to hire you."
+            priority = NotificationPriority.URGENT
+        elif "interview" in lower_stage:
+            title = f"Interview Invite: {job_title}"
+            priority = NotificationPriority.HIGH
+            
+        return await self.create_notification(
+            user_id=student_id,
+            notification_type=NotificationType.RECRUITER_ACTIVITY,
+            category="application_update",
+            priority=priority,
+            title=title,
+            message=message,
+            action_url="/applications",
+            action_text="View Application",
+            related_entity={"entity_type": "application", "entity_id": application_id} if application_id else None,
+            trigger_info={"rule": f"application_stage_update", "new_stage": new_stage_name}
+        )
+    
     # ============ Batching Logic ============
     
     async def batch_pending_notifications(self, user_id: str):

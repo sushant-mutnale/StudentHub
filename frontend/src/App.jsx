@@ -18,6 +18,7 @@ import InterviewDetail from './components/interviews/InterviewDetail';
 import InterviewAgent from './components/interviews/InterviewAgent';
 import VoiceInterview from './components/VoiceInterview'; // Imported VoiceInterview
 import './components/VoiceInterview.css'; // Imported VoiceInterview styles
+import DashboardLayout from './components/DashboardLayout';
 import JobDetail from './components/JobDetail';
 // Module 1-4 Components
 import ResumeUpload from './components/ResumeUpload';
@@ -72,6 +73,9 @@ function App() {
 
             <Route path="/signup/student" element={<SignupStudent />} />
             <Route path="/signup/recruiter" element={<SignupRecruiter />} />
+
+            {/* Dashboard Layout Wrapper */}
+            <Route element={<DashboardLayout />}>
 
             <Route
               path="/dashboard/student"
@@ -220,23 +224,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/interviews/agent/:jobId"
-              element={
-                <ProtectedRoute allowedType="student">
-                  <InterviewAgent />
-                </ProtectedRoute>
-              }
-            />
 
-            <Route
-              path="/interview/voice"
-              element={
-                <ProtectedRoute allowedType="student">
-                  <VoiceInterview />
-                </ProtectedRoute>
-              }
-            />
+
 
             <Route
               path="/jobs/:jobId"
@@ -331,6 +320,28 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AnalyticsDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            </Route>
+            {/* End Dashboard Layout Wrapper */}
+
+            {/* Standalone immersive routes (No Sidebar) */}
+            <Route
+              path="/interviews/agent/:jobId"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <InterviewAgent />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/interview/voice"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <VoiceInterview />
                 </ProtectedRoute>
               }
             />

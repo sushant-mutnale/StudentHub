@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { recommendationService } from '../services/recommendationService';
-import SidebarLeft from './SidebarLeft';
 import { FiBriefcase, FiZap, FiBookOpen, FiStar, FiClock, FiMapPin, FiDollarSign, FiExternalLink, FiHeart, FiX, FiFilter, FiSearch } from 'react-icons/fi';
 import '../App.css';
 
@@ -10,7 +9,10 @@ const Opportunities = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState('jobs');
+    const [activeTab, setActiveTab] = useState(() => {
+        if (location.state?.filterCompany || location.search.includes('tab=jobs')) return 'jobs';
+        return 'jobs';
+    });
     const [jobs, setJobs] = useState([]);
     const [hackathons, setHackathons] = useState([]);
     const [content, setContent] = useState([]);
@@ -20,8 +22,15 @@ const Opportunities = () => {
         location: '',
         experience: '',
         jobType: '',
-        company: ''
+        company: location.state?.filterCompany || ''
     });
+    // useRef keeps the current filters accessible inside closures (avoids stale closure bug)
+    const filtersRef = useRef(filters);
+    const activeTabRef = useRef(activeTab);
+    
+    // Keep refs in sync with state
+    useEffect(() => { filtersRef.current = filters; }, [filters]);
+    useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
     useEffect(() => {
         if (!user) {
@@ -29,34 +38,74 @@ const Opportunities = () => {
             return;
         }
 
-        let currentFilters = filters;
-        let currentTab = activeTab;
-
-        // Handle redirect states from other pages
+        loadOpportunities(filters, activeTab);
+        
         if (location.state?.filterCompany) {
-            currentFilters = { ...filters, company: location.state.filterCompany };
-            setFilters(currentFilters);
-            currentTab = 'jobs';
-            setActiveTab('jobs');
-            // Clear history state to avoid loops on refresh
-            window.history.replaceState({}, document.title);
-        } else if (location.search.includes('tab=jobs')) {
-            currentTab = 'jobs';
-            setActiveTab('jobs');
+            navigate(location.pathname, { replace: true, state: {} });
         }
-
-        loadOpportunities(currentFilters, currentTab);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user, navigate, activeTab, location.state, location.search]);
+    }, [user, navigate, activeTab]);
 
-    const loadOpportunities = async (currentFilters = filters, currentTab = activeTab) => {
+    const loadOpportunities = async (currentFilters, currentTab) => {
+        // Always read from refs if no explicit args (fixes React stale closure bug)
+        const resolvedFilters = currentFilters ?? filtersRef.current;
+        const resolvedTab = currentTab ?? activeTabRef.current;
         setLoading(true);
         try {
-            if (currentTab === 'jobs') {
-                const data = await recommendationService.getJobRecommendations(20, currentFilters);
-                const raw = data.recommendations || data.jobs || data || [];
+            if (resolvedTab === 'jobs') {
+                const data = await recommendationService.getJobRecommendations(50, resolvedFilters);
+                let raw = data.recommendations || data.jobs || data || [];
+
+                // Strict Frontend Filtering 
+                if (resolvedFilters.company) {
+                    const term = resolvedFilters.company.toLowerCase();
+                    raw = raw.filter(i => {
+                        const job = i.job || i;
+                        const compName = job.company || job.company_name || '';
+                        return compName.toLowerCase().includes(term);
+                    });
+                }
+                
+                if (resolvedFilters.skill) {
+                    const term = resolvedFilters.skill.toLowerCase();
+                    raw = raw.filter(i => {
+                        const job = i.job || i;
+                        const skills = job.skills_required || job.requirements || [];
+                        const titleMatch = job.title?.toLowerCase().includes(term);
+                        const descMatch = job.description_snippet?.toLowerCase().includes(term);
+                        const reqMatch = skills.some(r => r.toLowerCase().includes(term));
+                        return titleMatch || descMatch || reqMatch;
+                    });
+                }
+                
+                if (resolvedFilters.location) {
+                    const term = resolvedFilters.location.toLowerCase();
+                    raw = raw.filter(i => {
+                        const job = i.job || i;
+                        return job.location?.toLowerCase().includes(term);
+                    });
+                }
+                
+                if (resolvedFilters.jobType) {
+                    const term = resolvedFilters.jobType.toLowerCase();
+                    raw = raw.filter(i => {
+                        const job = i.job || i;
+                        const wm = job.work_mode?.toLowerCase() || '';
+                        return wm.includes(term);
+                    });
+                }
+                
+                if (resolvedFilters.experience) {
+                    const term = resolvedFilters.experience.toLowerCase();
+                    raw = raw.filter(i => {
+                        const job = i.job || i;
+                        return job.experience_level?.toLowerCase().includes(term) ||
+                               job.experience_required?.toLowerCase().includes(term);
+                    });
+                }
+
                 setJobs(raw.map(item => item.job ? { ...item.job, score: item.score, match_details: item.match_details } : item));
-            } else if (currentTab === 'hackathons') {
+            } else if (resolvedTab === 'hackathons') {
                 const data = await recommendationService.getHackathonRecommendations(15);
                 const raw = data.recommendations || data.hackathons || data || [];
                 setHackathons(raw.map(item => item.hackathon ? { ...item.hackathon, score: item.score, match_details: item.match_details } : item));
@@ -100,12 +149,13 @@ const Opportunities = () => {
     if (!user) return null;
 
     return (
-        <div className="dashboard-container">
-            <SidebarLeft />
+        <>
+            
             <div className="dashboard-main">
                 <div className="dashboard-header">
                     <h1 className="dashboard-title animate-fade-in">Opportunities</h1>
                 </div>
+
                 <div className="dashboard-content">
                     {/* Tabs */}
                     <div className="animate-slide-up" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
@@ -196,7 +246,7 @@ const Opportunities = () => {
                                         style={{ marginBottom: 0, padding: '0.5rem' }}
                                     />
                                 </div>
-                                <button onClick={loadOpportunities} className="form-button hover-scale" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
+                                <button onClick={() => loadOpportunities()} className="form-button hover-scale" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
                                     <FiFilter /> Apply Filters
                                 </button>
                             </div>
@@ -461,7 +511,7 @@ const Opportunities = () => {
                     )}
                 </div>
             </div>
-        </div >
+        </>
     );
 };
 

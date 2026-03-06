@@ -268,6 +268,18 @@ async def move_application_stage(
     job = await job_model.get_job(str(app["job_id"]))
     student = await user_model.get_user_by_id(str(app["student_id"]))
     
+    # Send smart notification to the student
+    from ..services.notification_service import notification_service
+    company_name = job.get("company_name") or recruiter.get("company_name", "Company")
+    await notification_service.create_application_update_notification(
+        student_id=str(app["student_id"]),
+        job_title=job.get("title", "Job"),
+        company_name=company_name,
+        new_stage_name=new_stage["name"],
+        stage_type=new_stage.get("type", "custom"),
+        application_id=application_id
+    )
+    
     return serialize_application(updated, job, student)
 
 

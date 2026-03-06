@@ -103,7 +103,7 @@ const JobDetail = () => {
 
   if (error && !job) {
     return (
-      <div className="dashboard-container" style={{ display: 'block' }}>
+      <>
         <div className="dashboard-main" style={{ minHeight: '100vh' }}>
           <div style={{ padding: '2rem' }}>
             <button onClick={() => navigate(-1)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -112,7 +112,7 @@ const JobDetail = () => {
             <div className="error-message">{error}</div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -122,7 +122,7 @@ const JobDetail = () => {
   const isRecruiter = user?.role === 'recruiter';
 
   return (
-    <div className="dashboard-container" style={{ display: 'block' }}>
+    <>
       <div className="dashboard-main custom-scrollbar" style={{ minHeight: '100vh', padding: '0 2rem' }}>
         <div className="dashboard-header animate-fade-in-down">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -546,7 +546,7 @@ const JobDetail = () => {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

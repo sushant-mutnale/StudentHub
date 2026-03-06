@@ -52,7 +52,7 @@ const CompanyResearch = () => {
     if (!user) return null;
 
     return (
-        <div className="dashboard-container" style={{ display: 'block' }}>
+        <>
             <div className="dashboard-main" style={{ minHeight: '100vh', padding: '0 2rem' }}>
                 <div className="dashboard-header" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     <button
@@ -342,7 +342,7 @@ const CompanyResearch = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

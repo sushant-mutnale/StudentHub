@@ -248,6 +248,7 @@ summary,
 /* Left Sidebar */
 .sidebar-left {
   width: 260px;
+  flex-shrink: 0;
   height: calc(100vh - 2rem);
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(20px);
@@ -257,6 +258,7 @@ summary,
   border-radius: 20px;
   position: sticky;
   top: 1rem;
+  align-self: flex-start;
   margin: 1rem 1rem 1rem 1rem;
   padding: 1.5rem 0;
   z-index: 40;

@@ -1,7 +1,6 @@
 import { useState, useEffect, Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import SidebarLeft from './SidebarLeft';
 import '../App.css';
 
 // Quiz data defined outside component to avoid re-creation on every render
@@ -164,8 +163,8 @@ const AssessmentInner = () => {
   }
 
   return (
-    <div className="dashboard-container">
-      <SidebarLeft />
+    <>
+      
       <div className="dashboard-main">
         <div className="dashboard-header">
           <h1 className="dashboard-title">Skill Assessment</h1>
@@ -313,7 +312,7 @@ const AssessmentInner = () => {
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

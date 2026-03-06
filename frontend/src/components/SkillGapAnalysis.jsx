@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { gapService } from '../services/gapService';
 import { learningService } from '../services/learningService';
-import SidebarLeft from './SidebarLeft';
 import { FiTarget, FiTrendingUp, FiZap, FiArrowRight, FiBook, FiAlertTriangle, FiCheckCircle, FiLoader, FiSearch, FiAward, FiClock } from 'react-icons/fi';
 import '../App.css';
 
@@ -70,18 +69,10 @@ const SkillGapAnalysis = () => {
         }
     };
 
-    const handleGeneratePath = async (skill) => {
-        setGenerating(skill);
-        try {
-            const newPath = await learningService.generatePath(skill);
-            navigate('/learning', {
-                state: { newPathId: newPath?.id || newPath?._id }
-            });
-        } catch (err) {
-            console.error('Failed to generate path:', err);
-        } finally {
-            setGenerating(null);
-        }
+    const handleGeneratePath = (skill) => {
+        navigate('/learning', {
+            state: { autoGenerateSkill: skill }
+        });
     };
 
     const handleKeyPress = (e) => {
@@ -134,8 +125,8 @@ const SkillGapAnalysis = () => {
     if (!user) return null;
 
     return (
-        <div className="dashboard-container">
-            <SidebarLeft />
+        <>
+            
             <div className="dashboard-main">
                 <div className="dashboard-header animate-fade-in">
                     <h1 className="dashboard-title" style={{
@@ -621,7 +612,7 @@ const SkillGapAnalysis = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

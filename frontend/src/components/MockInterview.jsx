@@ -3,7 +3,6 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
-import SidebarLeft from './SidebarLeft';
 import { FiMic, FiPlay, FiSend, FiClock, FiTarget, FiAward, FiCode, FiMessageSquare, FiHelpCircle, FiCheck, FiCpu, FiVideo } from 'react-icons/fi';
 import '../App.css';
 
@@ -201,8 +200,8 @@ const MockInterview = () => {
     if (!user) return null;
 
     return (
-        <div className="dashboard-container">
-            <SidebarLeft />
+        <>
+            
             <div className="dashboard-main">
                 <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h1 className="dashboard-title animate-fade-in">Mock Interview</h1>
@@ -502,7 +501,7 @@ const MockInterview = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 
