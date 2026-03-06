@@ -37,7 +37,9 @@ const SidebarRight = () => {
       try {
         setLoadingContests(true);
         const { data: eventsData } = await api.get('/events/upcoming?limit=3');
-        setContests(eventsData || []);
+        // Handle case where eventsData is an object wrapping the array or just an object
+        const finalEvents = Array.isArray(eventsData) ? eventsData : (eventsData?.data || []);
+        setContests(finalEvents);
       } catch (err) {
         console.error('Failed to fetch events:', err);
       } finally {
@@ -47,7 +49,9 @@ const SidebarRight = () => {
       try {
         setLoadingResources(true);
         const { data: resourcesData } = await api.get('/resources/recommended?limit=3');
-        setResources(resourcesData || []);
+        // Handle case where resourcesData is an object wrapping the array or just an object
+        const finalResources = Array.isArray(resourcesData) ? resourcesData : (resourcesData?.data || []);
+        setResources(finalResources);
       } catch (err) {
         console.error('Failed to fetch resources:', err);
       } finally {

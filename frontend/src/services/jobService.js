@@ -2,7 +2,7 @@ import { api } from '../api/client';
 
 export const jobService = {
   createJob: async (payload) => {
-    const { data } = await api.post('/jobs', payload);
+    const { data } = await api.post('/jobs/', payload);
     return data;
   },
   getJob: async (jobId) => {
@@ -14,7 +14,7 @@ export const jobService = {
     if (q) params.q = q;
     if (skills) params.skills = skills;
     if (location) params.location = location;
-    const { data } = await api.get('/jobs', { params });
+    const { data } = await api.get('/jobs/', { params });
     return data;
   },
   getMyJobs: async () => {

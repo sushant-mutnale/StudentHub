@@ -1,57 +1,46 @@
-import axios from 'axios';
-
-import { mockApplications } from './mockData';
-
-import API_URL from '../config/api';
-
-const getAuthHeader = () => {
-    const token = localStorage.getItem('token');
-    return { headers: { Authorization: `Bearer ${token}` } };
-};
+import { api } from '../api/client';
 
 export const applicationService = {
     // Get application details
     getApplication: async (applicationId) => {
-        const response = await axios.get(`${API_URL}/applications/${applicationId}`, getAuthHeader());
+        const response = await api.get(`/applications/${applicationId}`);
         return response.data;
     },
 
     // Get recruiter's applications (optional filters)
     getRecruiterApplications: async (filters = {}) => {
         const params = new URLSearchParams(filters).toString();
-        const response = await axios.get(`${API_URL}/applications/recruiter?${params}`, getAuthHeader());
+        const response = await api.get(`/applications/recruiter?${params}`);
         return response.data;
     },
 
     // Get student's applications
     getStudentApplications: async () => {
-        const response = await axios.get(`${API_URL}/applications/my`, getAuthHeader());
+        const response = await api.get(`/applications/my`);
         return response.data;
     },
 
     // Move application stage
     moveStage: async (applicationId, stageId, note = "") => {
-        const response = await axios.put(
-            `${API_URL}/applications/${applicationId}/stage`,
-            { new_stage_id: stageId, note },
-            getAuthHeader()
+        const response = await api.put(
+            `/applications/${applicationId}/stage`,
+            { new_stage_id: stageId, note }
         );
         return response.data;
     },
 
     // Add note
     addNote: async (applicationId, content, visibility = "internal") => {
-        const response = await axios.post(
-            `${API_URL}/applications/${applicationId}/notes`,
-            { content, visibility },
-            getAuthHeader()
+        const response = await api.post(
+            `/applications/${applicationId}/notes`,
+            { content, visibility }
         );
         return response.data;
     },
 
     // Get activity timeline
     getTimeline: async (applicationId) => {
-        const response = await axios.get(`${API_URL}/applications/${applicationId}/timeline`, getAuthHeader());
+        const response = await api.get(`/applications/${applicationId}/timeline`);
         return response.data;
     }
 };

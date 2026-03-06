@@ -3,13 +3,14 @@ import { Link } from 'react-router-dom';
 import { FiEdit3, FiHeart, FiMoreVertical, FiTrash2, FiMessageSquare, FiSend, FiLoader, FiTag } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import { postService } from '../services/postService';
+import { jobService } from '../services/jobService';
 import Avatar from './Avatar';
-import '../App.css';
 import './PostFeed.css';
 
 const PostFeed = ({ refreshTrigger = 0 }) => {
   const { user } = useAuth();
   const [posts, setPosts] = useState([]);
+  const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingPostId, setEditingPostId] = useState(null);
@@ -20,6 +21,8 @@ const PostFeed = ({ refreshTrigger = 0 }) => {
   const [activeCommentPostId, setActiveCommentPostId] = useState(null);
   const menuRef = useRef(null);
 
+  const [activeTab, setActiveTab] = useState('student');
+
   useEffect(() => {
     loadPosts();
   }, [refreshTrigger]);
@@ -27,11 +30,15 @@ const PostFeed = ({ refreshTrigger = 0 }) => {
   const loadPosts = async () => {
     setLoading(true);
     try {
-      const data = await postService.fetchPosts();
-      setPosts(data);
+      const [postData, jobData] = await Promise.all([
+        postService.fetchPosts(),
+        jobService.getJobs({ limit: 50, skip: 0 }) // Fetch latest opportunities
+      ]);
+      setPosts(postData);
+      setJobs(jobData || []);
       setError('');
     } catch (err) {
-      setError(err.message || 'Unable to load posts');
+      setError(err.message || 'Unable to load feed');
     } finally {
       setLoading(false);
     }
@@ -187,9 +194,91 @@ const PostFeed = ({ refreshTrigger = 0 }) => {
     );
   }
 
+  // Filter and mix posts based on active tab
+  const getFeedItems = () => {
+    if (activeTab === 'student') {
+      return posts.filter(post => post.author_role === 'student');
+    }
+
+    if (activeTab === 'recruiter') {
+      const recruiterPosts = posts.filter(post => post.author_role === 'recruiter');
+      // Format jobs to be compatible with the mapping loop (they act as a 'post')
+      const formattedJobs = jobs.map(job => ({
+        ...job,
+        isJobType: true,
+        id: job.id, // Ensure id matches loop key paradigm
+        created_at: job.created_at || new Date().toISOString()
+      }));
+
+      // Merge and sort combined stream chronologically
+      return [...recruiterPosts, ...formattedJobs].sort((a, b) => {
+        const dateA = new Date(a.created_at || a.updated_at);
+        const dateB = new Date(b.created_at || b.updated_at);
+        return dateB - dateA;
+      });
+    }
+
+    return posts; // Fallback
+  };
+
+  const feedItems = getFeedItems();
+
   return (
     <div className="post-feed" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {posts.length === 0 ? (
+
+      {/* Feed Tabs Container */}
+      <div style={{
+        display: 'flex',
+        background: 'rgba(255, 255, 255, 0.4)',
+        backdropFilter: 'blur(10px)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '0.5rem',
+        border: '1px solid rgba(255, 255, 255, 0.5)',
+        boxShadow: 'var(--shadow-sm)',
+        position: 'sticky',
+        top: '72px',
+        zIndex: 5,
+        marginBottom: '0.5rem'
+      }}>
+        <button
+          onClick={() => setActiveTab('student')}
+          style={{
+            flex: 1,
+            padding: '0.75rem',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            background: activeTab === 'student' ? 'white' : 'transparent',
+            boxShadow: activeTab === 'student' ? 'var(--shadow-sm)' : 'none',
+            color: activeTab === 'student' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+            fontWeight: activeTab === 'student' ? '600' : '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            fontSize: '0.95rem'
+          }}
+        >
+          Student Posts
+        </button>
+        <button
+          onClick={() => setActiveTab('recruiter')}
+          style={{
+            flex: 1,
+            padding: '0.75rem',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            background: activeTab === 'recruiter' ? 'white' : 'transparent',
+            boxShadow: activeTab === 'recruiter' ? 'var(--shadow-sm)' : 'none',
+            color: activeTab === 'recruiter' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+            fontWeight: activeTab === 'recruiter' ? '600' : '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            fontSize: '0.95rem'
+          }}
+        >
+          Recruiter Posts
+        </button>
+      </div>
+
+      {feedItems.length === 0 ? (
         <div style={{
           textAlign: 'center',
           padding: '4rem 2rem',
@@ -210,11 +299,108 @@ const PostFeed = ({ refreshTrigger = 0 }) => {
           }}>
             <FiMessageSquare size={32} style={{ opacity: 0.5 }} />
           </div>
-          <h3>No posts yet</h3>
-          <p>Be the first to share something with the community!</p>
+          <h3>No activity yet</h3>
+          <p>Be the first to share something with the community or check back for new opportunities!</p>
         </div>
       ) : (
-        posts.map((post, idx) => {
+        feedItems.map((item, idx) => {
+
+          // --- JOB RENDERER ---
+          if (item.isJobType) {
+            return (
+              <div
+                key={`job-${item.id}`}
+                className="glass-card animate-fade-in-up"
+                style={{
+                  padding: '1.5rem',
+                  borderRadius: 'var(--radius-lg)',
+                  animationDelay: `${idx * 100}ms`,
+                  borderLeft: '4px solid var(--color-primary)' // Accent to distinguish jobs
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      background: 'linear-gradient(135deg, #f0f4ff 0%, #e0e7ff 100%)',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--color-primary)',
+                      fontSize: '1.2rem',
+                      fontWeight: '700',
+                      flexShrink: 0
+                    }}>
+                      {item.company_name ? item.company_name[0].toUpperCase() : <FiBriefcase />}
+                    </div>
+                    <div>
+                      <Link
+                        to={`/jobs/${item.id}`}
+                        style={{
+                          textDecoration: 'none',
+                          color: 'var(--color-text)',
+                          fontWeight: '700',
+                          fontSize: '1.05rem',
+                          display: 'block'
+                        }}
+                      >
+                        {item.title}
+                      </Link>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--color-primary)', fontWeight: '500' }}>
+                        <span>{item.company_name || 'Hidden Company'}</span>
+                        <span style={{ color: 'var(--color-text-muted)' }}>•</span>
+                        <span style={{ color: 'var(--color-text-muted)' }}>{formatTimestamp(item.created_at)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    background: 'var(--color-bg-alt)',
+                    color: 'var(--color-primary)',
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '4px',
+                    letterSpacing: '0.5px'
+                  }}>Opportunity</span>
+                </div>
+
+                <div className="post-content" style={{ fontSize: '0.95rem', lineHeight: '1.6', color: 'var(--color-text)', marginBottom: '1rem' }}>
+                  {item.description ? (item.description.length > 200 ? item.description.substring(0, 200) + '...' : item.description) : 'No description provided.'}
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                  {item.skills && item.skills.slice(0, 4).map(skill => (
+                    <span key={skill} style={{
+                      fontSize: '0.8rem',
+                      background: 'rgba(99, 102, 241, 0.1)',
+                      color: 'var(--color-primary)',
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: 'var(--radius-full)'
+                    }}>
+                      {skill}
+                    </span>
+                  ))}
+                  {item.skills && item.skills.length > 4 && (
+                    <span style={{ fontSize: '0.8rem', padding: '0.25rem 0.75rem', color: 'var(--color-text-muted)' }}>
+                      +{item.skills.length - 4} more
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '1rem' }}>
+                  <Link to={`/jobs/${item.id}`} className="btn-primary" style={{ flex: 1, textAlign: 'center', padding: '0.5rem', borderRadius: 'var(--radius-md)', textDecoration: 'none' }}>
+                    View Details
+                  </Link>
+                </div>
+              </div>
+            );
+          }
+
+          // --- STANDARD POST RENDERER ---
+          const post = item;
           const liked = user ? post.likes?.includes(user.id) : false;
           const isMenuOpen = openMenuId === post.id;
 
