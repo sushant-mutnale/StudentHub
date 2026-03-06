@@ -125,16 +125,7 @@ const JobDetail = () => {
     <>
       <div className="dashboard-main custom-scrollbar" style={{ minHeight: '100vh', padding: '0 2rem' }}>
         <div className="dashboard-header animate-fade-in-down">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button
-              onClick={() => navigate(-1)}
-              className="btn-icon hover-scale"
-              style={{ color: 'var(--color-text)' }}
-            >
-              <FiArrowLeft size={20} />
-            </button>
-            <h1 className="dashboard-title" style={{ fontSize: '1.25rem', margin: 0 }}>Job Details</h1>
-          </div>
+          <h1 className="dashboard-title" style={{ fontSize: '1.25rem', margin: 0 }}>Job Details</h1>
         </div>
 
         <div className="dashboard-content" style={{ maxWidth: '900px', margin: '0 auto' }}>

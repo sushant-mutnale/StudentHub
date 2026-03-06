@@ -54,14 +54,7 @@ const CompanyResearch = () => {
     return (
         <>
             <div className="dashboard-main" style={{ minHeight: '100vh', padding: '0 2rem' }}>
-                <div className="dashboard-header" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <button
-                        onClick={() => navigate(-1)}
-                        className="btn-icon hover-scale"
-                        style={{ color: 'var(--color-text)' }}
-                    >
-                        <FiArrowLeft size={20} />
-                    </button>
+                <div className="dashboard-header">
                     <h1 className="dashboard-title" style={{ margin: 0 }}>Company Research</h1>
                 </div>
                 <div className="dashboard-content">

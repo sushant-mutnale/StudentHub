@@ -11,7 +11,7 @@ class TimeSlot(BaseModel):
 
 
 class LocationInfo(BaseModel):
-    type: str = Field(pattern="^(online|onsite)$")
+    type: str = Field(pattern="^(online|onsite|video|in-person|in_person|remote)$")
     url: Optional[str] = None
     address: Optional[str] = None
 

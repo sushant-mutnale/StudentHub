@@ -528,7 +528,6 @@ const VoiceInterview = () => {
             <div className="vi-unsupported">
                 <h3>⚠️ Browser Not Supported</h3>
                 <p>Voice Interview requires the Web Speech API.<br />Please use Chrome or Edge.</p>
-                <button onClick={() => navigate(-1)}>← Go Back</button>
             </div>
         );
     }
@@ -629,7 +628,6 @@ const VoiceInterview = () => {
                         🎙️ Start Interview
                     </button>
 
-                    <button className="vi-back-btn" onClick={() => navigate(-1)}>← Back</button>
                 </div>
             </div>
         );

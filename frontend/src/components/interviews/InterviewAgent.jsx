@@ -82,16 +82,13 @@ const InterviewAgent = () => {
                                              {/* Header */}
                                              <div className="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm">
                                                             <div className="flex items-center gap-4">
-                                                                           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-full">
-                                                                                          <ArrowLeft className="h-5 w-5 text-gray-600" />
-                                                                           </button>
-                                                                           <div>
-                                                                                          <h1 className="text-lg font-bold text-gray-800">AI Technical Interview</h1>
-                                                                                          <p className="text-xs text-green-600 flex items-center gap-1">
-                                                                                                         <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                                                                                                         Live Session
-                                                                                          </p>
-                                                                           </div>
+                                                                            <div>
+                                                                                           <h1 className="text-lg font-bold text-gray-800">AI Technical Interview</h1>
+                                                                                           <p className="text-xs text-green-600 flex items-center gap-1">
+                                                                                                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                                                                                          Live Session
+                                                                                           </p>
+                                                                            </div>
                                                             </div>
                                                             <div className="text-sm text-gray-500">
                                                                            Job ID: {jobId}
