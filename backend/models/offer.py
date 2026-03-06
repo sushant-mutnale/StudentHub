@@ -1,0 +1,28 @@
+from datetime import datetime
+from typing import Any, Dict
+
+from bson import ObjectId
+
+from ..database import get_database
+
+
+def offers_collection():
+    return get_database()["offers"]
+
+
+async def ensure_offer_indexes():
+    collection = offers_collection()
+    await collection.create_index("candidate_id")
+    await collection.create_index("recruiter_id")
+    await collection.create_index("job_id")
+
+
+def default_history_entry(action: str, actor_id: str, meta: Dict[str, Any] | None = None):
+    return {
+        "action": action,
+        "by": ObjectId(actor_id),
+        "at": datetime.utcnow(),
+        "meta": meta or {},
+    }
+
+

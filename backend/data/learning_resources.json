@@ -1,0 +1,626 @@
+{
+               "python": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Python Tutorial for Beginners",
+                                                            "url": "https://www.youtube.com/watch?v=rfscVS0vtbw",
+                                                            "duration_minutes": 267,
+                                                            "source": "FreeCodeCamp"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "Python Getting Started",
+                                                            "url": "https://www.w3schools.com/python/python_getstarted.asp",
+                                                            "duration_minutes": 30,
+                                                            "source": "W3Schools"
+                                             },
+                                             {
+                                                            "type": "practice",
+                                                            "title": "Python Exercises",
+                                                            "url": "https://www.hackerrank.com/domains/python",
+                                                            "duration_minutes": 120,
+                                                            "source": "HackerRank"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Intermediate Python Programming",
+                                                            "url": "https://www.youtube.com/watch?v=HGOBQPFzWKo",
+                                                            "duration_minutes": 360,
+                                                            "source": "FreeCodeCamp"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "Python OOP Guide",
+                                                            "url": "https://realpython.com/python3-object-oriented-programming/",
+                                                            "duration_minutes": 45,
+                                                            "source": "RealPython"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Advanced Python Concepts",
+                                                            "url": "https://www.youtube.com/watch?v=Yrtm7d3TJbs",
+                                                            "duration_minutes": 180,
+                                                            "source": "YouTube"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "Python Design Patterns",
+                                                            "url": "https://refactoring.guru/design-patterns/python",
+                                                            "duration_minutes": 60,
+                                                            "source": "Refactoring Guru"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Variables",
+                                                            "Data Types",
+                                                            "Control Flow",
+                                                            "Functions",
+                                                            "Basic I/O"
+                                             ],
+                                             "intermediate": [
+                                                            "OOP",
+                                                            "File Handling",
+                                                            "Error Handling",
+                                                            "Modules",
+                                                            "List Comprehensions"
+                                             ],
+                                             "advanced": [
+                                                            "Decorators",
+                                                            "Generators",
+                                                            "Metaclasses",
+                                                            "Async/Await",
+                                                            "Design Patterns"
+                                             ]
+                              }
+               },
+               "javascript": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "JavaScript Full Course for Beginners",
+                                                            "url": "https://www.youtube.com/watch?v=PkZNo7MFNFg",
+                                                            "duration_minutes": 200,
+                                                            "source": "FreeCodeCamp"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "JavaScript Guide",
+                                                            "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide",
+                                                            "duration_minutes": 60,
+                                                            "source": "MDN"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "JavaScript ES6+ Features",
+                                                            "url": "https://www.youtube.com/watch?v=NCwa_xi0Uuc",
+                                                            "duration_minutes": 120,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "JavaScript Design Patterns",
+                                                            "url": "https://www.youtube.com/watch?v=tv-_1er1mWI",
+                                                            "duration_minutes": 60,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Variables",
+                                                            "Functions",
+                                                            "DOM Manipulation",
+                                                            "Events",
+                                                            "Arrays"
+                                             ],
+                                             "intermediate": [
+                                                            "ES6",
+                                                            "Promises",
+                                                            "Async/Await",
+                                                            "Modules",
+                                                            "Closures"
+                                             ],
+                                             "advanced": [
+                                                            "Design Patterns",
+                                                            "Performance",
+                                                            "Testing",
+                                                            "Build Tools",
+                                                            "TypeScript Intro"
+                                             ]
+                              }
+               },
+               "react": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "React JS Full Course",
+                                                            "url": "https://www.youtube.com/watch?v=bMknfKXIFA8",
+                                                            "duration_minutes": 720,
+                                                            "source": "FreeCodeCamp"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "React Official Tutorial",
+                                                            "url": "https://react.dev/learn",
+                                                            "duration_minutes": 120,
+                                                            "source": "React.dev"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "React Hooks Complete Guide",
+                                                            "url": "https://www.youtube.com/watch?v=O6P86uwfdR0",
+                                                            "duration_minutes": 90,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "React Performance Optimization",
+                                                            "url": "https://www.youtube.com/watch?v=0ZJgIjIuY7U",
+                                                            "duration_minutes": 45,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Components",
+                                                            "JSX",
+                                                            "Props",
+                                                            "State",
+                                                            "Event Handling"
+                                             ],
+                                             "intermediate": [
+                                                            "Hooks",
+                                                            "Context API",
+                                                            "React Router",
+                                                            "Forms",
+                                                            "API Integration"
+                                             ],
+                                             "advanced": [
+                                                            "Performance",
+                                                            "Testing",
+                                                            "State Management",
+                                                            "SSR",
+                                                            "Custom Hooks"
+                                             ]
+                              }
+               },
+               "node": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Node.js Tutorial for Beginners",
+                                                            "url": "https://www.youtube.com/watch?v=TlB_eWDSMt4",
+                                                            "duration_minutes": 180,
+                                                            "source": "YouTube"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "Node.js Getting Started",
+                                                            "url": "https://nodejs.org/en/learn/getting-started/introduction-to-nodejs",
+                                                            "duration_minutes": 30,
+                                                            "source": "Node.js"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Express.js Crash Course",
+                                                            "url": "https://www.youtube.com/watch?v=L72fhGm1tfE",
+                                                            "duration_minutes": 90,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Node.js Microservices",
+                                                            "url": "https://www.youtube.com/watch?v=XUSHH0E-7zk",
+                                                            "duration_minutes": 120,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "NPM",
+                                                            "Modules",
+                                                            "File System",
+                                                            "HTTP Server",
+                                                            "Callbacks"
+                                             ],
+                                             "intermediate": [
+                                                            "Express",
+                                                            "Middleware",
+                                                            "REST APIs",
+                                                            "MongoDB",
+                                                            "Authentication"
+                                             ],
+                                             "advanced": [
+                                                            "Microservices",
+                                                            "WebSockets",
+                                                            "Worker Threads",
+                                                            "Testing",
+                                                            "Deployment"
+                                             ]
+                              }
+               },
+               "aws": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "AWS Tutorial for Beginners",
+                                                            "url": "https://www.youtube.com/watch?v=ulprqHHWlng",
+                                                            "duration_minutes": 240,
+                                                            "source": "FreeCodeCamp"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "AWS Overview",
+                                                            "url": "https://aws.amazon.com/getting-started/",
+                                                            "duration_minutes": 45,
+                                                            "source": "AWS"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "AWS EC2, S3, RDS Tutorial",
+                                                            "url": "https://www.youtube.com/watch?v=k1RI5locZE4",
+                                                            "duration_minutes": 120,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "AWS Solutions Architect",
+                                                            "url": "https://www.youtube.com/watch?v=Ia-UEYYR44s",
+                                                            "duration_minutes": 600,
+                                                            "source": "FreeCodeCamp"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Cloud Computing Basics",
+                                                            "AWS Console",
+                                                            "IAM",
+                                                            "S3 Basics",
+                                                            "EC2 Basics"
+                                             ],
+                                             "intermediate": [
+                                                            "VPC",
+                                                            "RDS",
+                                                            "Lambda",
+                                                            "CloudFormation",
+                                                            "Load Balancing"
+                                             ],
+                                             "advanced": [
+                                                            "Auto Scaling",
+                                                            "ECS/EKS",
+                                                            "CloudWatch",
+                                                            "Security",
+                                                            "Cost Optimization"
+                                             ]
+                              }
+               },
+               "docker": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Docker Tutorial for Beginners",
+                                                            "url": "https://www.youtube.com/watch?v=pTFZFxd4hOI",
+                                                            "duration_minutes": 120,
+                                                            "source": "YouTube"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "Docker Getting Started",
+                                                            "url": "https://docs.docker.com/get-started/",
+                                                            "duration_minutes": 60,
+                                                            "source": "Docker Docs"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Docker Compose Tutorial",
+                                                            "url": "https://www.youtube.com/watch?v=HG6yIjZapSA",
+                                                            "duration_minutes": 60,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Docker in Production",
+                                                            "url": "https://www.youtube.com/watch?v=3c-iBn73dDE",
+                                                            "duration_minutes": 180,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Containers vs VMs",
+                                                            "Docker Images",
+                                                            "Dockerfile",
+                                                            "Docker CLI",
+                                                            "Volumes"
+                                             ],
+                                             "intermediate": [
+                                                            "Docker Compose",
+                                                            "Networking",
+                                                            "Multi-stage Builds",
+                                                            "Registry"
+                                             ],
+                                             "advanced": [
+                                                            "Docker Swarm",
+                                                            "Security",
+                                                            "Optimization",
+                                                            "CI/CD Integration",
+                                                            "Kubernetes Prep"
+                                             ]
+                              }
+               },
+               "system-design": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "System Design Primer",
+                                                            "url": "https://www.youtube.com/watch?v=0163cssUxLA",
+                                                            "duration_minutes": 60,
+                                                            "source": "YouTube"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "System Design Primer GitHub",
+                                                            "url": "https://github.com/donnemartin/system-design-primer",
+                                                            "duration_minutes": 120,
+                                                            "source": "GitHub"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "System Design Interview Guide",
+                                                            "url": "https://www.youtube.com/watch?v=UzLMhqg3_Wc",
+                                                            "duration_minutes": 90,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Designing Data-Intensive Applications",
+                                                            "url": "https://www.youtube.com/watch?v=W2Z7fbCLSTw",
+                                                            "duration_minutes": 180,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Scalability",
+                                                            "Load Balancers",
+                                                            "Caching",
+                                                            "CDN",
+                                                            "Database Basics"
+                                             ],
+                                             "intermediate": [
+                                                            "Sharding",
+                                                            "Replication",
+                                                            "CAP Theorem",
+                                                            "Microservices",
+                                                            "Message Queues"
+                                             ],
+                                             "advanced": [
+                                                            "Distributed Systems",
+                                                            "Consistency Models",
+                                                            "Event Sourcing",
+                                                            "Real-time Systems"
+                                             ]
+                              }
+               },
+               "mongodb": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "MongoDB Crash Course",
+                                                            "url": "https://www.youtube.com/watch?v=-56x56UppqQ",
+                                                            "duration_minutes": 60,
+                                                            "source": "YouTube"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "MongoDB Introduction",
+                                                            "url": "https://www.mongodb.com/docs/manual/introduction/",
+                                                            "duration_minutes": 30,
+                                                            "source": "MongoDB"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "MongoDB Aggregation",
+                                                            "url": "https://www.youtube.com/watch?v=Kk6Er0c7srU",
+                                                            "duration_minutes": 45,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "MongoDB Performance",
+                                                            "url": "https://www.youtube.com/watch?v=xXqN6yXwrL0",
+                                                            "duration_minutes": 60,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Documents",
+                                                            "Collections",
+                                                            "CRUD Operations",
+                                                            "Queries",
+                                                            "Indexes Basics"
+                                             ],
+                                             "intermediate": [
+                                                            "Aggregation Pipeline",
+                                                            "Schema Design",
+                                                            "Relationships",
+                                                            "Indexing"
+                                             ],
+                                             "advanced": [
+                                                            "Sharding",
+                                                            "Replication",
+                                                            "Transactions",
+                                                            "Performance Tuning"
+                                             ]
+                              }
+               },
+               "dsa": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Data Structures Easy to Advanced",
+                                                            "url": "https://www.youtube.com/watch?v=RBSGKlAvoiM",
+                                                            "duration_minutes": 480,
+                                                            "source": "FreeCodeCamp"
+                                             },
+                                             {
+                                                            "type": "practice",
+                                                            "title": "LeetCode Easy Problems",
+                                                            "url": "https://leetcode.com/problemset/all/?difficulty=EASY",
+                                                            "duration_minutes": 300,
+                                                            "source": "LeetCode"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Algorithms Course",
+                                                            "url": "https://www.youtube.com/watch?v=8hly31xKli0",
+                                                            "duration_minutes": 300,
+                                                            "source": "FreeCodeCamp"
+                                             },
+                                             {
+                                                            "type": "practice",
+                                                            "title": "LeetCode Medium Problems",
+                                                            "url": "https://leetcode.com/problemset/all/?difficulty=MEDIUM",
+                                                            "duration_minutes": 600,
+                                                            "source": "LeetCode"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Advanced Algorithms",
+                                                            "url": "https://www.youtube.com/watch?v=09_LlHjoEiY",
+                                                            "duration_minutes": 360,
+                                                            "source": "YouTube"
+                                             },
+                                             {
+                                                            "type": "practice",
+                                                            "title": "LeetCode Hard Problems",
+                                                            "url": "https://leetcode.com/problemset/all/?difficulty=HARD",
+                                                            "duration_minutes": 900,
+                                                            "source": "LeetCode"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Arrays",
+                                                            "Strings",
+                                                            "Linked Lists",
+                                                            "Stacks",
+                                                            "Queues",
+                                                            "Hash Tables"
+                                             ],
+                                             "intermediate": [
+                                                            "Trees",
+                                                            "Graphs",
+                                                            "Sorting",
+                                                            "Searching",
+                                                            "Recursion",
+                                                            "DP Basics"
+                                             ],
+                                             "advanced": [
+                                                            "Advanced DP",
+                                                            "Graph Algorithms",
+                                                            "Greedy",
+                                                            "Backtracking",
+                                                            "Segment Trees"
+                                             ]
+                              }
+               },
+               "git": {
+                              "beginner": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Git and GitHub for Beginners",
+                                                            "url": "https://www.youtube.com/watch?v=RGOj5yH7evk",
+                                                            "duration_minutes": 60,
+                                                            "source": "FreeCodeCamp"
+                                             },
+                                             {
+                                                            "type": "article",
+                                                            "title": "Git Handbook",
+                                                            "url": "https://guides.github.com/introduction/git-handbook/",
+                                                            "duration_minutes": 20,
+                                                            "source": "GitHub"
+                                             }
+                              ],
+                              "intermediate": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Git Branching Strategies",
+                                                            "url": "https://www.youtube.com/watch?v=aJnFGMclhU8",
+                                                            "duration_minutes": 30,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "advanced": [
+                                             {
+                                                            "type": "video",
+                                                            "title": "Git Internals",
+                                                            "url": "https://www.youtube.com/watch?v=lG90LZotrpo",
+                                                            "duration_minutes": 45,
+                                                            "source": "YouTube"
+                                             }
+                              ],
+                              "topics": {
+                                             "beginner": [
+                                                            "Init",
+                                                            "Clone",
+                                                            "Add",
+                                                            "Commit",
+                                                            "Push",
+                                                            "Pull"
+                                             ],
+                                             "intermediate": [
+                                                            "Branching",
+                                                            "Merging",
+                                                            "Rebasing",
+                                                            "Stashing",
+                                                            "Remote Repos"
+                                             ],
+                                             "advanced": [
+                                                            "Git Internals",
+                                                            "Hooks",
+                                                            "Submodules",
+                                                            "Worktrees",
+                                                            "Advanced Rebasing"
+                                             ]
+                              }
+               }
+}

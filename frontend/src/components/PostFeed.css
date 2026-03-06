@@ -1,0 +1,10 @@
+/* PostFeed specific responsive styles */
+.hide-on-mobile {
+    display: none;
+}
+
+@media (min-width: 600px) {
+    .hide-on-mobile {
+        display: inline;
+    }
+}

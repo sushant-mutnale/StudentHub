@@ -1,0 +1,25 @@
+[
+  {
+    "id": "1",
+    "title": "Weekly Coding Challenge",
+    "description": "Solve 5 algorithmic problems",
+    "date": "2024-01-20",
+    "participants": 150
+  },
+  {
+    "id": "2",
+    "title": "Data Science Competition",
+    "description": "Build a predictive model",
+    "date": "2024-01-25",
+    "participants": 75
+  },
+  {
+    "id": "3",
+    "title": "Frontend Development Contest",
+    "description": "Create a responsive web app",
+    "date": "2024-02-01",
+    "participants": 200
+  }
+]
+
+

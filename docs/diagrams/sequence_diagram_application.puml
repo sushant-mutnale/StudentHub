@@ -1,0 +1,52 @@
+@startuml Sequence Diagram - Job Application
+!theme plain
+
+title Sequence Diagram: Matching & Application Tracking
+
+actor Student
+participant "Frontend Client" as UI
+participant "Backend Gateway" as API
+participant "Evaluation & Matching" as EM
+participant "Communication & Tracking" as CT
+participant "AI Agent" as AI
+database "MongoDB" as DB
+actor Recruiter
+
+== 1. Profile Matching & Recommendation ==
+Student -> UI: Logs into platform
+UI -> API: GET /api/recommendations/jobs
+API -> EM: Request best matches for Student ID
+
+EM -> DB: Fetch Student Skills & Preferences
+DB --> EM: User Profile Data
+EM -> DB: Fetch Active Job Postings
+DB --> EM: Job Postings List
+
+EM -> AI: Compute match scores (Profile vs Jobs)
+AI --> EM: Ranked Recommendations & Reasons
+EM --> API: Return top matches
+API --> UI: Render Job Feed
+
+== 2. Application & Tracking ==
+Student -> UI: Clicks "Apply" to a match
+UI -> API: POST /api/applications/apply
+API -> CT: Initialize application timeline
+
+CT -> DB: Create Application Record (Status: Applied)
+CT -> Recruiter: Send Notification (New Candidate)
+CT --> API: Success Response
+API --> UI: Show Applcation Confirmation
+
+== 3. Recruiter Review ==
+Recruiter -> UI: Reviews matched candidate list
+UI -> API: GET /api/applications/candidates
+API -> DB: Fetch candidate profiles
+DB --> API: Return candidates
+API --> UI: Display to Recruiter
+
+Recruiter -> UI: Moves candidate to "Interview"
+UI -> API: PUT /api/applications/status
+API -> CT: Update tracking timeline
+CT -> DB: Save new status
+CT -> Student: Send Interview Notification
+@enduml

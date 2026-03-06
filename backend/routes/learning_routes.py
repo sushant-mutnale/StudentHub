@@ -1,0 +1,713 @@
+"""
+Learning Routes
+APIs for Gap Analysis, Learning Path Generation, and Progress Tracking
+"""
+
+from datetime import datetime
+from typing import List
+
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException
+
+from ..database import get_database
+from ..services.gap_analyzer import skill_gap_analyzer
+from ..services.learning_path_builder import learning_path_builder
+from ..schemas.learning_schema import (
+    GapAnalysisRequest,
+    GapAnalysisResponse,
+    GeneratePathRequest,
+    GeneratePathResponse,
+    MarkProgressRequest,
+    MarkProgressResponse,
+    MyPathsResponse,
+    LearningPath,
+    LearningPathProgress,
+    SkillGap,
+)
+from ..utils.dependencies import get_current_user
+
+
+router = APIRouter(prefix="/learning", tags=["learning"])
+
+
+def learning_paths_collection():
+    return get_database()["learning_paths"]
+
+
+def gap_analyses_collection():
+    return get_database()["gap_analyses"]
+
+
+# ============ Gap Analysis Endpoints ============
+
+@router.post("/analyze-gap", response_model=GapAnalysisResponse)
+async def analyze_gap(
+    payload: GapAnalysisRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Analyze skill gaps between student skills and job requirements.
+    Returns gaps with priorities and recommendations.
+    """
+    student_id = payload.student_id or str(current_user["_id"])
+    
+    # Get student skills from profile if not provided
+    student_skills = payload.student_skills
+    if not student_skills:
+        user_skills = current_user.get("skills", [])
+        if isinstance(user_skills, list):
+            student_skills = [
+                s.get("name") if isinstance(s, dict) else str(s) 
+                for s in user_skills
+            ]
+    
+    # Perform gap analysis (async for AI recommendations)
+    analysis = await skill_gap_analyzer.analyze_gap(
+        student_skills=student_skills,
+        job_required_skills=payload.job_required_skills,
+        job_nice_to_have_skills=payload.job_nice_to_have_skills,
+        student_id=student_id,
+        job_id=payload.job_id,
+        use_ai_recommendations=True
+    )
+    
+    # Store in MongoDB
+    doc = {
+        **analysis,
+        "student_id": ObjectId(student_id) if ObjectId.is_valid(student_id) else student_id,
+        "created_at": datetime.utcnow()
+    }
+    await gap_analyses_collection().insert_one(doc)
+    
+    # Convert gaps to SkillGap objects for response
+    gaps = [SkillGap(**g) for g in analysis["gaps"]]
+    
+    return GapAnalysisResponse(
+        status="success",
+        student_id=student_id,
+        job_id=payload.job_id,
+        analyzed_at=analysis["analyzed_at"],
+        student_skills=analysis["student_skills"],
+        job_required_skills=analysis["job_required_skills"],
+        job_nice_to_have=analysis["job_nice_to_have"],
+        gaps=gaps,
+        match_percentage=analysis["match_percentage"],
+        gap_score=analysis["gap_score"],
+        recommendations=analysis["recommendations"],
+        high_priority_count=analysis["high_priority_count"],
+        total_gaps=analysis["total_gaps"]
+    )
+
+
+
+
+
+@router.post("/agent/gap-analysis")
+async def agent_gap_analysis(
+    payload: GapAnalysisRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Advanced AI Agent for Gap Analysis.
+    Uses RAG to find specific resources for missing skills.
+    """
+    from ..services.gap_analysis_agent import gap_analysis_agent
+    
+    student_skills = payload.student_skills
+    if not student_skills:
+        user_skills = current_user.get("skills", [])
+        student_skills = [
+            s.get("name") if isinstance(s, dict) else str(s)
+            for s in user_skills
+        ]
+        
+    # For now, we assume the frontend sends the job description text or we mock it
+    # We will use the 'job_required_skills' as text proxy if desc missing
+    jd_text = " ".join(payload.job_required_skills or []) + " " + " ".join(payload.job_nice_to_have_skills or [])
+    
+    analysis = await gap_analysis_agent.analyze(
+        student_skills=student_skills,
+        job_description=jd_text
+    )
+    
+    return {
+        "status": "success",
+        "agent_analysis": analysis
+    }
+
+
+@router.get("/gap-recommendations")
+async def get_gap_recommendations(
+    target_role: str = "",
+    current_user=Depends(get_current_user)
+):
+    """
+    Get AI-driven skill gap recommendations based on target role.
+    Dynamically generates required skills using LLM and analyzes gaps.
+    """
+    if not target_role.strip():
+        raise HTTPException(status_code=400, detail="target_role is required")
+
+    student_id = str(current_user["_id"])
+    
+    # 1. Get student's current skills
+    user_skills = current_user.get("skills", [])
+    student_skills = [
+        s.get("name") if isinstance(s, dict) else str(s) 
+        for s in user_skills
+    ]
+    
+    # 2. Use LLM to dynamically define required and nice-to-have skills for this role
+    from ..services.llm_service import llm_service
+    import json
+    
+    prompt = f"""
+    You are an expert technical recruiter and hiring manager.
+    Identify the key skills required for a "{target_role}" role.
+    
+    Return EXACTLY a JSON object with two lists of strings: 'required' (10-15 core skills) and 'nice_to_have' (3-5 bonus skills).
+    Do not include any markdown formatting, backticks, or other text. Just the raw JSON.
+    Example format:
+    {{"required": ["Python", "SQL", "AWS"], "nice_to_have": ["Docker", "GraphQL"]}}
+    """
+    
+    try:
+        response_text = await llm_service.generate(prompt, "You are an expert technical recruiter. Output raw JSON only.")
+        # Clean up in case LLM added markdown backticks
+        response_text = response_text.replace("```json", "").replace("```", "").strip()
+        skills_data = json.loads(response_text)
+        required_skills = skills_data.get("required", [])
+        nice_to_have = skills_data.get("nice_to_have", [])
+    except Exception as e:
+        print(f"Error parsing LLM skills response: {e}")
+        # Very basic fallback if LLM totally fails
+        required_skills = ["Communication", "Problem Solving", "Adaptability"]
+        nice_to_have = []
+        
+    # 3. Perform the full AI gap analysis
+    analysis = await skill_gap_analyzer.analyze_gap(
+        student_skills=student_skills,
+        job_required_skills=required_skills,
+        job_nice_to_have_skills=nice_to_have,
+        student_id=student_id,
+        use_ai_recommendations=True
+    )
+    
+    # 4. Save to DB so it persists on the dashboard
+    doc = {
+        **analysis,
+        "student_id": ObjectId(student_id),
+        "target_role": target_role,
+        "created_at": datetime.utcnow()
+    }
+    await gap_analyses_collection().insert_one(doc)
+    
+    # Return it in the same structure as /analyze-gap for consistency
+    gaps = [SkillGap(**g) for g in analysis["gaps"]]
+    
+    return {
+        "status": "success",
+        "target_role": target_role,
+        "analyzed_at": analysis["analyzed_at"],
+        "student_skills": analysis["student_skills"],
+        "job_required_skills": analysis["job_required_skills"],
+        "job_nice_to_have": analysis["job_nice_to_have"],
+        "gaps": gaps,
+        "match_percentage": analysis["match_percentage"],
+        "gap_score": analysis["gap_score"],
+        "recommendations": analysis["recommendations"],
+        "high_priority_count": analysis["high_priority_count"],
+        "total_gaps": analysis["total_gaps"]
+    }
+
+@router.get("/my-gaps")
+async def get_my_gaps(current_user=Depends(get_current_user)):
+    """Get latest gap analysis for current user"""
+    student_id = str(current_user["_id"])
+    doc = await gap_analyses_collection().find_one(
+        {"student_id": ObjectId(student_id)},
+        sort=[("created_at", -1)]
+    )
+    if not doc:
+        return {"status": "success", "gaps": [], "message": "No gap analysis found"}
+    
+    doc["id"] = str(doc["_id"])
+    doc["student_id"] = str(doc["student_id"])
+    doc.pop("_id")
+    return doc
+
+
+@router.get("/my-gaps/history")
+async def get_my_gaps_history(current_user=Depends(get_current_user)):
+    """Get history of gap analyses for current user"""
+    student_id = str(current_user["_id"])
+    cursor = gap_analyses_collection().find(
+        {"student_id": ObjectId(student_id)},
+        sort=[("created_at", -1)]
+    ).limit(10)
+    
+    docs = await cursor.to_list(length=10)
+    formatted = []
+    for doc in docs:
+        doc["id"] = str(doc["_id"])
+        doc.pop("_id")
+        doc["student_id"] = str(doc["student_id"])
+        formatted.append(doc)
+        
+    return {"status": "success", "history": formatted}
+
+
+@router.get("/gap-analysis/{job_id}")
+async def get_gap_analysis_for_job(job_id: str, current_user=Depends(get_current_user)):
+    """Get gap analysis for specific job"""
+    student_id = str(current_user["_id"])
+    doc = await gap_analyses_collection().find_one(
+        {"student_id": ObjectId(student_id), "job_id": job_id},
+        sort=[("created_at", -1)]
+    )
+    if not doc:
+        # Return empty or specific status
+        return {"status": "success", "gaps": [], "message": "No analysis found for this job"}
+    
+    doc["id"] = str(doc["_id"])
+    doc["student_id"] = str(doc["student_id"])
+    doc.pop("_id")
+    return doc
+
+
+
+# ============ Learning Path Endpoints ============
+
+@router.post("/generate-path", response_model=GeneratePathResponse)
+async def generate_learning_paths(
+    payload: GeneratePathRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Generate personalized learning paths from skill gaps.
+    Now with AI-powered personalization!
+    """
+    student_id = payload.student_id or str(current_user["_id"])
+    
+    # Get student's current skills for AI context
+    user_skills = current_user.get("skills", [])
+    current_skills = [
+        s.get("name") if isinstance(s, dict) else str(s)
+        for s in user_skills
+        if s
+    ]
+    
+    # Convert gaps to dicts
+    gaps_dicts = [g.dict() for g in payload.gaps]
+    
+    # Build learning paths with AI personalization (async)
+    paths = await learning_path_builder.build_paths_from_gaps(
+        gaps=gaps_dicts,
+        student_id=student_id,
+        current_skills=current_skills,
+        use_ai=True,
+        available_time=payload.available_time,
+        goal_level=payload.goal_level
+    )
+    
+    # Store each path in MongoDB
+    stored_paths = []
+    total_weeks = 0
+    ai_powered_count = 0
+    
+    for path in paths:
+        path["student_id"] = ObjectId(student_id) if ObjectId.is_valid(student_id) else student_id
+        result = await learning_paths_collection().insert_one(path)
+        path["_id"] = result.inserted_id
+        path["id"] = str(result.inserted_id)
+        total_weeks += path.get("estimated_completion_weeks", 0)
+        if path.get("ai_powered", False):
+            ai_powered_count += 1
+        stored_paths.append(path)
+    
+    # Convert to response model
+    response_paths = []
+    for p in stored_paths:
+        response_paths.append(LearningPath(
+            id=str(p.get("_id") or p.get("id")),
+            student_id=str(p["student_id"]),
+            skill=p["skill"],
+            current_level=p["current_level"],
+            target_level=p["target_level"],
+            gap_priority=p["gap_priority"],
+            stages=p["stages"],
+            progress=LearningPathProgress(**p["progress"]),
+            estimated_completion_weeks=p["estimated_completion_weeks"],
+            available_time=p.get("available_time"),
+            goal_level=p.get("goal_level", "Job-ready"),
+            ai_advice=p.get("ai_advice", ""),
+            ai_powered=p.get("ai_powered", False),
+            created_at=p.get("created_at"),
+            updated_at=p.get("updated_at")
+        ))
+    
+    return GeneratePathResponse(
+        status="success",
+        learning_paths=response_paths,
+        total_estimated_weeks=total_weeks,
+        ai_powered_paths=ai_powered_count
+    )
+
+
+@router.get("/my-paths", response_model=MyPathsResponse)
+@router.get("/paths/my", response_model=MyPathsResponse)  # Alias for frontend compatibility
+async def get_my_learning_paths(current_user=Depends(get_current_user)):
+    """
+    Get all active learning paths for the current user.
+    """
+    student_id = str(current_user["_id"])
+    
+    cursor = learning_paths_collection().find({
+        "student_id": ObjectId(student_id)
+    }).sort("created_at", -1)
+    
+    docs = await cursor.to_list(length=None)
+    
+    paths = []
+    total_progress = 0.0
+    
+    for doc in docs:
+        progress = doc.get("progress", {})
+        total_progress += progress.get("completion_percentage", 0)
+        
+        paths.append(LearningPath(
+            id=str(doc["_id"]),
+            student_id=str(doc["student_id"]),
+            skill=doc["skill"],
+            current_level=doc["current_level"],
+            target_level=doc["target_level"],
+            gap_priority=doc["gap_priority"],
+            stages=doc["stages"],
+            progress=LearningPathProgress(**progress),
+            estimated_completion_weeks=doc.get("estimated_completion_weeks", 0),
+            available_time=doc.get("available_time"),
+            goal_level=doc.get("goal_level", "Job-ready"),
+            ai_advice=doc.get("ai_advice", ""),
+            ai_powered=doc.get("ai_powered", False),
+            created_at=doc.get("created_at"),
+            updated_at=doc.get("updated_at")
+        ))
+    
+    overall = (total_progress / len(docs)) if docs else 0.0
+    
+    return MyPathsResponse(
+        status="success",
+        learning_paths=paths,
+        total_paths=len(paths),
+        overall_progress=round(overall, 1)
+    )
+
+
+@router.post("/mark-progress", response_model=MarkProgressResponse)
+async def mark_progress(
+    payload: MarkProgressRequest,
+    current_user=Depends(get_current_user)
+):
+    """
+    Mark a learning resource as completed and update progress.
+    """
+    student_id = str(current_user["_id"])
+    
+    if not ObjectId.is_valid(payload.learning_path_id):
+        raise HTTPException(status_code=400, detail="Invalid learning path ID")
+    
+    # Find the learning path
+    path = await learning_paths_collection().find_one({
+        "_id": ObjectId(payload.learning_path_id),
+        "student_id": ObjectId(student_id)
+    })
+    
+    if not path:
+        raise HTTPException(status_code=404, detail="Learning path not found")
+    
+    stages = path.get("stages", [])
+    
+    # Find the stage
+    stage_idx = None
+    for i, stage in enumerate(stages):
+        if stage.get("stage_number") == payload.stage_number:
+            stage_idx = i
+            break
+    
+    if stage_idx is None:
+        raise HTTPException(status_code=404, detail="Stage not found")
+    
+    stage = stages[stage_idx]
+    
+    if payload.subtopic_index is not None:
+        subtopics = stage.get("subtopics", [])
+        if payload.subtopic_index < 0 or payload.subtopic_index >= len(subtopics):
+            raise HTTPException(status_code=404, detail="Subtopic not found")
+        resources = subtopics[payload.subtopic_index].get("resources", [])
+    else:
+        resources = stage.get("resources", [])
+    
+    if payload.resource_index < 0 or payload.resource_index >= len(resources):
+        raise HTTPException(status_code=404, detail="Resource not found")
+    
+    # Mark resource as completed
+    resources[payload.resource_index]["completed"] = True
+    resources[payload.resource_index]["completed_at"] = datetime.utcnow().isoformat()
+    
+    # Check subtopic completion
+    if payload.subtopic_index is not None:
+        all_res_completed = all(r.get("completed", False) for r in resources)
+        subtopics[payload.subtopic_index]["completed"] = all_res_completed
+        subtopics[payload.subtopic_index]["completed_at"] = datetime.utcnow().isoformat() if all_res_completed else None
+    
+    # Check if all resources in stage are completed
+    all_subs_completed = all(sub.get("completed", False) for sub in stage.get("subtopics", []))
+    if not stage.get("subtopics", []):
+        all_subs_completed = True
+        
+    all_global_res_completed = all(r.get("completed", False) for r in stage.get("resources", []))
+    if not stage.get("resources", []):
+         all_global_res_completed = True
+         
+    all_completed = all_subs_completed and all_global_res_completed
+    
+    if all_completed:
+        stages[stage_idx]["status"] = "completed"
+        stages[stage_idx]["completed_at"] = datetime.utcnow().isoformat()
+    else:
+        stages[stage_idx]["status"] = "in_progress"
+    
+    # Calculate overall progress
+    total_resources = sum(
+        len(s.get("resources", [])) + sum(len(sub.get("resources", [])) for sub in s.get("subtopics", []))
+        for s in stages
+    )
+    completed_resources = sum(
+        sum(1 for r in s.get("resources", []) if r.get("completed", False)) +
+        sum(1 for sub in s.get("subtopics", []) for r in sub.get("resources", []) if r.get("completed", False))
+        for s in stages
+    )
+    
+    completion_percentage = round(
+        (completed_resources / total_resources * 100) if total_resources > 0 else 0,
+        1
+    )
+    
+    # Find current stage (first incomplete)
+    current_stage = 0
+    for i, s in enumerate(stages):
+        if s.get("status") != "completed":
+            current_stage = i
+            break
+        current_stage = i + 1
+    
+    # Update in MongoDB
+    progress = {
+        "current_stage": current_stage,
+        "completion_percentage": completion_percentage,
+        "time_spent_minutes": path.get("progress", {}).get("time_spent_minutes", 0),
+        "estimated_completion_date": path.get("progress", {}).get("estimated_completion_date")
+    }
+    
+    await learning_paths_collection().update_one(
+        {"_id": ObjectId(payload.learning_path_id)},
+        {
+            "$set": {
+                "stages": stages,
+                "progress": progress,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    return MarkProgressResponse(
+        status="success",
+        learning_path_id=payload.learning_path_id,
+        new_completion_percentage=completion_percentage,
+        stage_status=stages[stage_idx]["status"],
+        message=f"Progress updated! {completion_percentage}% complete."
+    )
+
+
+@router.get("/path/{path_id}")
+async def get_learning_path(path_id: str, current_user=Depends(get_current_user)):
+    """
+    Get a specific learning path by ID.
+    """
+    if not ObjectId.is_valid(path_id):
+        raise HTTPException(status_code=400, detail="Invalid path ID")
+    
+    path = await learning_paths_collection().find_one({
+        "_id": ObjectId(path_id)
+    })
+    
+    if not path:
+        raise HTTPException(status_code=404, detail="Learning path not found")
+    
+    # Verify ownership or admin
+    if str(path["student_id"]) != str(current_user["_id"]):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    return LearningPath(
+        id=str(path["_id"]),
+        student_id=str(path["student_id"]),
+        skill=path["skill"],
+        current_level=path["current_level"],
+        target_level=path["target_level"],
+        gap_priority=path["gap_priority"],
+        stages=path["stages"],
+        progress=LearningPathProgress(**path.get("progress", {})),
+        estimated_completion_weeks=path.get("estimated_completion_weeks", 0),
+        available_time=path.get("available_time"),
+        goal_level=path.get("goal_level", "Job-ready"),
+        ai_advice=path.get("ai_advice", ""),
+        ai_powered=path.get("ai_powered", False),
+        created_at=path.get("created_at"),
+        updated_at=path.get("updated_at")
+    )
+
+
+@router.post("/ask", response_model=dict)
+async def ask_learning_coach(
+    request: dict,
+    current_user=Depends(get_current_user)
+):
+    """
+    Ask the AI Learning Coach a question about a specific topic/context.
+    Payload: {"context": "Week 1: Python Basics", "question": "What is a list comprehension?"}
+    """
+    context = request.get("context", "General Learning")
+    question = request.get("question", "")
+    
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+        
+    try:
+        # Lazy import to avoid circular dep if any
+        from ..services.llm_service import llm_service
+        
+        prompt = f"""
+        You are a helpful AI Tutor.
+        Context: {context}
+        Student Question: {question}
+        
+        Answer properly, concisely, and encouragingly.
+        """
+        
+        response = await llm_service.generate(prompt, "You are a friendly technical tutor.")
+        return {"answer": response}
+        
+    except Exception as e:
+        print(f"Chatbot Error: {e}")
+        return {"answer": "I'm having trouble connecting to the knowledge base right now. Please try again later."}
+
+
+# ============ Skill Normalization Endpoint ============
+
+@router.post('/normalize-skill')
+async def normalize_skill(
+    request: dict,
+    current_user=Depends(get_current_user)
+):
+    raw = request.get('skill', '').strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail='Skill is required')
+    normalized = await learning_path_builder.normalize_skill_input(raw)
+    return {'original': raw, 'normalized': normalized}
+
+
+# ============ MCQ Endpoints ============
+
+@router.post('/mcq/generate')
+async def generate_mcq(
+    request: dict,
+    current_user=Depends(get_current_user)
+):
+    from ..services.mcq_generator import mcq_generator
+    path_id = request.get('learning_path_id', '')
+    stage_num = request.get('stage_number', 1)
+    if not path_id or not ObjectId.is_valid(path_id):
+        raise HTTPException(status_code=400, detail='Valid learning_path_id required')
+    path = await learning_paths_collection().find_one({'_id': ObjectId(path_id), 'student_id': ObjectId(str(current_user['_id']))})
+    if not path:
+        raise HTTPException(status_code=404, detail='Learning path not found')
+    stages = path.get('stages', [])
+    stage = next((s for s in stages if s.get('stage_number') == stage_num), None)
+    if not stage:
+        raise HTTPException(status_code=404, detail='Stage not found')
+    questions = await mcq_generator.generate_mcqs(
+        skill=path.get('skill', ''),
+        stage_name=stage.get('stage_name', ''),
+        subtopics=stage.get('subtopics', []),
+        difficulty=stage.get('level', 'intermediate'),
+        goal_level=path.get('goal_level', 'Job-ready')
+    )
+    return {'status': 'success', 'stage_name': stage.get('stage_name', ''), 'skill': path.get('skill', ''), 'questions': questions}
+
+
+@router.post('/mcq/submit')
+async def submit_mcq(
+    request: dict,
+    current_user=Depends(get_current_user)
+):
+    from ..services.mcq_generator import mcq_generator
+    path_id = request.get('learning_path_id', '')
+    stage_num = request.get('stage_number', 1)
+    questions = request.get('questions', [])
+    answers = request.get('answers', [])
+    if not path_id or not ObjectId.is_valid(path_id):
+        raise HTTPException(status_code=400, detail='Valid learning_path_id required')
+    if len(questions) != 5 or len(answers) != 5:
+        raise HTTPException(status_code=400, detail='Exactly 5 questions and 5 answers required')
+    result = mcq_generator.evaluate_answers(questions, answers)
+    if result['passed']:
+        path = await learning_paths_collection().find_one({'_id': ObjectId(path_id), 'student_id': ObjectId(str(current_user['_id']))})
+        if path:
+            stages = path.get('stages', [])
+            stage_idx = next((i for i, s in enumerate(stages) if s.get('stage_number') == stage_num), None)
+            if stage_idx is not None:
+                stages[stage_idx]['status'] = 'completed'
+                stages[stage_idx]['completed_at'] = datetime.utcnow().isoformat()
+                stages[stage_idx]['mcq_score'] = result['score']
+                total_stages = len(stages)
+                completed_stages = sum(1 for s in stages if s.get('status') == 'completed')
+                completion_pct = round(completed_stages / total_stages * 100, 1) if total_stages > 0 else 0
+                current_stage = next((i for i, s in enumerate(stages) if s.get('status') != 'completed'), total_stages)
+                progress = {
+                    'current_stage': current_stage,
+                    'completion_percentage': completion_pct,
+                    'time_spent_minutes': path.get('progress', {}).get('time_spent_minutes', 0),
+                    'estimated_completion_date': path.get('progress', {}).get('estimated_completion_date')
+                }
+                await learning_paths_collection().update_one(
+                    {'_id': ObjectId(path_id)},
+                    {'$set': {'stages': stages, 'progress': progress, 'updated_at': datetime.utcnow()}}
+                )
+                result['new_completion_percentage'] = completion_pct
+                result['stage_completed'] = True
+    return {'status': 'success', 'evaluation': result}
+
+
+# ============ Path Completion Endpoint ============
+
+@router.post('/path/{path_id}/complete')
+async def complete_learning_path(
+    path_id: str,
+    current_user=Depends(get_current_user)
+):
+    from ..services.profile_evaluator import profile_evaluator
+    if not ObjectId.is_valid(path_id):
+        raise HTTPException(status_code=400, detail='Invalid path ID')
+    student_id = str(current_user['_id'])
+    path = await learning_paths_collection().find_one({'_id': ObjectId(path_id), 'student_id': ObjectId(student_id)})
+    if not path:
+        raise HTTPException(status_code=404, detail='Learning path not found')
+    stages = path.get('stages', [])
+    mcq_scores = [s.get('mcq_score', 0) for s in stages if 'mcq_score' in s]
+    result = await profile_evaluator.evaluate_on_completion(
+        student_id=student_id,
+        skill=path.get('skill', ''),
+        stages=stages,
+        mcq_scores=mcq_scores if mcq_scores else None
+    )
+    return {'status': 'success', 'profile_update': result}

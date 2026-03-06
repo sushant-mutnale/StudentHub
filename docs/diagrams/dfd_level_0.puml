@@ -1,0 +1,20 @@
+@startuml DFD Level 0 Context
+!theme plain
+skinparam rectangle {
+  BackgroundColor White
+}
+
+title Level 0 DFD (Context Diagram)
+
+actor "Student" as Student
+actor "Recruiter" as Recruiter
+
+rectangle "StudentHub\nCore System" as System #lightblue
+
+Student --> System : Registration Info, Profile Data,\nAssessment Answers, Applications
+System --> Student : Learning Paths, Job Recommendations,\nInterview Invites, Skill Feedback
+
+Recruiter --> System : Job Requirements, Interview Schedules,\nCandidate Feedback, Company Data
+System --> Recruiter : Ranked Candidates, Analytics,\nMatched Profiles, Application Status
+
+@enduml

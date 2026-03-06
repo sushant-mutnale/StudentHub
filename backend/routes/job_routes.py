@@ -1,0 +1,329 @@
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from ..models import job as job_model
+from ..models import application as application_model
+from ..models import pipeline as pipeline_model
+from ..schemas.job_schema import (
+    JobApplicationCreate,
+    JobApplicationResponse,
+    JobCreate,
+    JobResponse,
+)
+from ..utils.dependencies import get_current_recruiter, get_current_student, get_current_user
+from ..utils.activity_logger import log_activity
+
+router = APIRouter()
+
+
+def db_job_to_public(db_job: dict) -> JobResponse:
+    """Convert MongoDB job document to JobResponse with string IDs."""
+    return JobResponse(
+        id=str(db_job.get("_id") or db_job.get("id") or db_job.get("source_id")),
+        recruiter_id=str(db_job.get("recruiter_id", "external")),
+        title=db_job.get("title", ""),
+        description=db_job.get("description") or db_job.get("description_snippet", ""),
+        skills_required=db_job.get("skills_required", []),
+        location=db_job.get("location", ""),
+        created_at=db_job.get("created_at") or db_job.get("posted_at") or db_job.get("scraped_at"),
+        visibility=db_job.get("visibility", "public"),
+        company_name=db_job.get("company_name") or db_job.get("company"),
+        salary_range=db_job.get("salary_range") or db_job.get("stipend"),
+        type=db_job.get("type") or db_job.get("work_mode"),
+        source_url=db_job.get("source_url"),
+    )
+
+
+def db_application_to_public(doc: dict) -> JobApplicationResponse:
+    return JobApplicationResponse(
+        id=str(doc.get("_id") or doc.get("id")),
+        job_id=str(doc.get("job_id")),
+        student_id=str(doc.get("student_id")),
+        student_name=doc.get("student_name"),
+        student_username=doc.get("student_username"),
+        message=doc.get("message", ""),
+        resume_url=doc.get("resume_url"),
+        created_at=doc.get("created_at"),
+    )
+
+
+@router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+async def create_job(payload: JobCreate, recruiter=Depends(get_current_recruiter)):
+    doc = await job_model.create_job(recruiter, payload.dict())
+    await log_activity(
+        str(recruiter["_id"]), 
+        "JOB_CREATED", 
+        {"job_id": str(doc["_id"]), "title": doc.get("title")}
+    )
+    
+    # [NEW] Publish Event for RAG Vectorization
+    try:
+        from ..events.event_bus import event_bus, Events
+        await event_bus.publish(Events.JOB_POSTED, {
+            "id": str(doc["_id"]),
+            "title": doc.get("title", ""),
+            "description": doc.get("description", ""),
+            "company_name": doc.get("company_name", ""),
+            "location": doc.get("location", "")
+        })
+    except Exception as e:
+        # Don't fail the request if event publishing fails
+        print(f"Failed to publish JOB_POSTED event: {e}")
+
+    return db_job_to_public(doc)
+
+
+@router.get("/", response_model=list[JobResponse])
+async def list_jobs(
+    q: str | None = Query(default=None, description="Search in job title and description"),
+    skills: str | None = Query(
+        default=None,
+        description="Comma-separated skills to match (e.g. React,Node,SQL)",
+    ),
+    location: str | None = Query(
+        default=None, description="Location filter (partial, case-insensitive)"
+    ),
+    limit: int = Query(default=20, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
+    current_user=Depends(get_current_user),
+):
+    skills_list = (
+        [s.strip() for s in skills.split(",") if s.strip()] if skills is not None else None
+    )
+    jobs = await job_model.list_jobs_for_user(
+        current_user,
+        q=q,
+        skills=skills_list,
+        location=location,
+        limit=limit,
+        skip=skip,
+    )
+    return [db_job_to_public(job) for job in jobs]
+
+
+@router.post("/search/semantic", response_model=list[JobResponse])
+async def search_jobs_semantic(
+    query: str, 
+    limit: int = 20, 
+    current_user=Depends(get_current_user)
+):
+    """
+    AI-Powered Semantic Search using RAG.
+    Finds jobs based on meaning interaction, not just keywords.
+    """
+    try:
+        from ..services.rag_manager import rag_manager
+        from bson import ObjectId
+        
+        # 1. Search Pinecone for vectors
+        matches = await rag_manager.search_public(query, limit=limit)
+        
+        if not matches:
+            return []
+            
+        # 2. Extract Job IDs form metadata
+        job_ids = []
+        for match in matches:
+             # Our ID format in Pinecone is "job_{id}"
+             if match.id.startswith("job_"):
+                 job_ids.append(match.id.replace("job_", ""))
+        
+        # 3. Fetch full job details from MongoDB preserving rank order
+        valid_ids = []
+        for jid in job_ids:
+            try:
+                valid_ids.append(ObjectId(jid))
+            except:
+                continue
+        
+        if not valid_ids:
+            return []
+
+        db_jobs = await job_model.jobs_collection().find({"_id": {"$in": valid_ids}}).to_list(length=len(valid_ids))
+        
+        # Re-order based on relevance (Pinecone rank)
+        job_map = {str(j["_id"]): j for j in db_jobs}
+        ordered_jobs = []
+        for jid in job_ids:
+            if jid in job_map:
+                ordered_jobs.append(job_map[jid])
+                
+        return [db_job_to_public(job) for job in ordered_jobs]
+        
+    except Exception as e:
+        print(f"Semantic search failed: {e}")
+        # Return empty list on failure rather than 500
+        return []
+
+
+@router.get("/my", response_model=list[JobResponse])
+async def my_jobs(recruiter=Depends(get_current_recruiter)):
+    jobs = await job_model.list_jobs_by_recruiter(str(recruiter["_id"]))
+    return [db_job_to_public(job) for job in jobs]
+
+
+@router.get("/{job_id}", response_model=JobResponse)
+async def get_job(job_id: str, current_user=Depends(get_current_user)):
+    job = await job_model.get_job(job_id)
+    if not job:
+        from ..database import get_database
+        from bson import ObjectId
+        from bson.errors import InvalidId
+        try:
+            opp_col = get_database()["opportunities_jobs"]
+            try:
+                oid = ObjectId(job_id)
+                job = await opp_col.find_one({"_id": oid})
+            except InvalidId:
+                job = await opp_col.find_one({"source_id": job_id})
+        except Exception:
+            pass
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Enforce visibility for student users: they should not be able to fetch
+    # non-public jobs directly by ID.
+    if current_user.get("role") == "student":
+        visibility = job.get("visibility", "public")
+        if visibility != "public":
+             raise HTTPException(status_code=403, detail="Access denied to non-public job")
+             
+    return db_job_to_public(job)
+
+
+@router.get("/{job_id}/pipeline")
+async def get_job_pipeline(job_id: str, recruiter=Depends(get_current_recruiter)):
+    """Get pipeline view for a job's applications."""
+    try:
+        from bson import ObjectId
+        # Verify job belongs to recruiter
+        job = await job_model.jobs_collection().find_one({
+            "_id": ObjectId(job_id),
+            "recruiter_id": recruiter["_id"]
+        })
+        
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found or access denied")
+        
+        # Get applications for this job
+        applications = await application_model.list_applications_for_job(job_id)
+        
+        return {
+            "job_id": job_id,
+            "job_title": job.get("title"),
+            "applications": [db_application_to_public(app) for app in applications],
+            "total": len(applications)
+        }
+    except Exception as e:
+         # Handle invalid ID format
+         if "ObjectId" in str(e):
+             raise HTTPException(status_code=404, detail="Invalid job ID")
+         raise e
+
+
+
+@router.post(
+    "/{job_id}/apply",
+    response_model=JobApplicationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def apply_to_job(
+    job_id: str,
+    payload: JobApplicationCreate,
+    current_student=Depends(get_current_student),
+):
+    """Allow a student to apply to a job."""
+    # Get job to extract company info
+    job = await job_model.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    app_doc = await job_model.create_job_application(job_id, current_student, payload.dict())
+    if not app_doc:
+        raise HTTPException(status_code=404, detail="Application failed")
+    
+    # Create ATS application record (Module 5)
+    recruiter_id = str(job["recruiter_id"])
+    print(f"DEBUG: recruiter_id={recruiter_id} job={job.get('_id')}")
+    pipeline = await pipeline_model.get_active_pipeline(recruiter_id)
+    
+    if not pipeline:
+        # Create default pipeline for this company
+        company_name = job.get("company_name", "Company")
+        pipeline = await pipeline_model.create_default_pipeline_for_company(
+            recruiter_id, company_name
+        )
+    
+    # Get the "Applied" stage
+    applied_stage = pipeline_model.get_stage_by_type(pipeline, "applied")
+    if applied_stage:
+        try:
+            await application_model.create_application(
+                job_id=job_id,
+                student_id=str(current_student["_id"]),
+                company_id=recruiter_id,
+                pipeline_template_id=str(pipeline["_id"]),
+                pipeline_version=pipeline["version"],
+                initial_stage_id=applied_stage["id"],
+                initial_stage_name=applied_stage["name"]
+            )
+        except Exception as e:
+            # Application record might already exist (duplicate apply)
+            print(f"DEBUG Error creating ATS application record: {repr(e)}")
+            pass
+    
+    await log_activity(
+        str(current_student["_id"]), 
+        "JOB_APPLIED", 
+        {"job_id": job_id}
+    )
+    return db_application_to_public(app_doc)
+
+
+@router.put("/{job_id}", response_model=JobResponse)
+async def update_job(
+    job_id: str, 
+    payload: JobCreate, 
+    recruiter=Depends(get_current_recruiter)
+):
+    """Update a job listing (requires ownership)."""
+    job = await job_model.get_job(job_id)
+    if not job or str(job["recruiter_id"]) != str(recruiter["_id"]):
+        raise HTTPException(status_code=404, detail="Job not found or not authorized")
+        
+    updated_job = await job_model.update_job(job_id, str(recruiter["_id"]), payload.dict())
+    if not updated_job:
+        raise HTTPException(status_code=404, detail="Update failed")
+    return db_job_to_public(updated_job)
+
+
+@router.get(
+    "/{job_id}/applications",
+    response_model=list[JobApplicationResponse],
+)
+async def list_job_applications(
+    job_id: str, 
+    limit: int = Query(default=50, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
+    recruiter=Depends(get_current_recruiter)
+):
+    """Return all applications for a given job for the owning recruiter."""
+    applications = await job_model.list_applications_for_job(
+        job_id, 
+        recruiter,
+        limit=limit,
+        skip=skip
+    )
+    if applications is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return [db_application_to_public(doc) for doc in applications]
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(job_id: str, recruiter=Depends(get_current_recruiter)):
+    job = await job_model.get_job(job_id)
+    if not job or str(job["recruiter_id"]) != str(recruiter["_id"]):
+        raise HTTPException(status_code=404, detail="Job not found")
+    await job_model.delete_job(job_id, str(recruiter["_id"]))
+    return {"status": "deleted"}
+
