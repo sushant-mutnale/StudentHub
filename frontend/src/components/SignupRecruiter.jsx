@@ -61,7 +61,7 @@ const SignupRecruiter = () => {
         setSuccess('OTP sent to your email!');
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to send OTP');
+      setError(err.message || 'Failed to send OTP');
     } finally {
       setLoading(false);
     }
@@ -83,7 +83,7 @@ const SignupRecruiter = () => {
         setSuccess('Email Verified!');
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid OTP');
+      setError(err.message || 'Invalid OTP');
     } finally {
       setLoading(false);
     }

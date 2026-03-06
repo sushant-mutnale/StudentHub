@@ -257,6 +257,48 @@ function App() {
               }
             />
 
+            {/* Recruiter sub-routes (sidebar navigates to /recruiter/*) */}
+            <Route
+              path="/recruiter/pipeline"
+              element={
+                <ProtectedRoute allowedType="recruiter">
+                  <ApplicationPipeline />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/recruiter/post-job"
+              element={
+                <ProtectedRoute allowedType="recruiter">
+                  <RecruiterDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/recruiter/jobs"
+              element={
+                <ProtectedRoute allowedType="recruiter">
+                  <RecruiterDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/recruiter/search"
+              element={
+                <ProtectedRoute allowedType="recruiter">
+                  <RecruiterDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/recruiter/matches"
+              element={
+                <ProtectedRoute allowedType="recruiter">
+                  <RecruiterDashboard />
+                </ProtectedRoute>
+              }
+            />
+
             <Route
               path="/applications"
               element={

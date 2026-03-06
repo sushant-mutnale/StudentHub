@@ -15,6 +15,7 @@ const SkillGapAnalysis = () => {
     const [loading, setLoading] = useState(true);
     const [targetRole, setTargetRole] = usePersistedState('gap_targetRole', '');
     const [analyzing, setAnalyzing] = useState(false);
+    const [generating, setGenerating] = useState(null);
     const [historyGroups, setHistoryGroups] = useState([]);
 
     useEffect(() => {
