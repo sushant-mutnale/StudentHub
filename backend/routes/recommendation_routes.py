@@ -43,6 +43,7 @@ async def get_job_recommendations(
     work_mode: Optional[str] = Query(None, description="Filter: remote, onsite, hybrid"),
     experience: Optional[str] = Query(None, description="Filter: entry, mid, senior"),
     company: Optional[str] = Query(None, description="Filter: company name"),
+    skill: Optional[str] = Query(None, description="Filter: specific skill"),
     current_user=Depends(get_current_user)
 ):
     """
@@ -69,6 +70,8 @@ async def get_job_recommendations(
         filters["experience"] = experience
     if company:
         filters["company"] = company
+    if skill:
+        filters["skill"] = skill
     
     result = await recommendation_engine.recommend_jobs(
         student_id=student_id,

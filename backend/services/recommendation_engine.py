@@ -714,6 +714,8 @@ class RecommendationEngine:
                 query["work_mode"] = filters["work_mode"]
             if filters.get("company"):
                 query["company"] = {"$regex": filters["company"], "$options": "i"}
+            if filters.get("skill"):
+                query["skills_required"] = {"$regex": filters["skill"], "$options": "i"}
             if filters.get("experience"):
                 exp_filter = filters["experience"].lower()
                 query["experience_required"] = {"$regex": exp_filter, "$options": "i"}
@@ -815,7 +817,7 @@ class RecommendationEngine:
         query = {}
         if filters:
             if filters.get("topic"):
-                query["topic"] = filters["topic"]
+                query["topic"] = {"$regex": filters["topic"], "$options": "i"}
         
         content = await opportunities_content_collection().find(query).sort(
             "published_at", -1

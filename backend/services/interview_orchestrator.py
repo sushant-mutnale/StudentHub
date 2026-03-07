@@ -91,19 +91,21 @@ class InterviewOrchestrator:
         # Build rounds from company pattern
         rounds = []
         for round_info in company_pattern.get("rounds", []):
-            round_type = round_info.get("type", "coding")
+            round_type_raw = round_info.get("type", "coding")
+            # Skip System Design rounds
+            if "design" in round_type_raw.lower():
+                continue
+                
             # Normalize round type
-            if "dsa" in round_type.lower() or "coding" in round_type.lower():
+            if "dsa" in round_type_raw.lower() or "coding" in round_type_raw.lower():
                 round_type = RoundType.DSA
-            elif "behavioral" in round_type.lower() or "hr" in round_type.lower():
+            elif "behavioral" in round_type_raw.lower() or "hr" in round_type_raw.lower():
                 round_type = RoundType.BEHAVIORAL
-            elif "design" in round_type.lower():
-                round_type = RoundType.SYSTEM_DESIGN
             else:
                 round_type = RoundType.TECHNICAL
             
             rounds.append({
-                "round_num": round_info.get("round", len(rounds)),
+                "round_num": len(rounds),
                 "type": round_type,
                 "name": round_info.get("name", f"Round {len(rounds) + 1}"),
                 "duration_minutes": round_info.get("duration", 60),
@@ -117,8 +119,7 @@ class InterviewOrchestrator:
         if not rounds:
             rounds = [
                 {"round_num": 0, "type": RoundType.DSA, "name": "Coding Round", "duration_minutes": 60, "questions_answered": 0, "questions": [], "score": 0, "status": "pending"},
-                {"round_num": 1, "type": RoundType.SYSTEM_DESIGN, "name": "System Design", "duration_minutes": 45, "questions_answered": 0, "questions": [], "score": 0, "status": "pending"},
-                {"round_num": 2, "type": RoundType.BEHAVIORAL, "name": "Behavioral", "duration_minutes": 30, "questions_answered": 0, "questions": [], "score": 0, "status": "pending"},
+                {"round_num": 1, "type": RoundType.BEHAVIORAL, "name": "Behavioral", "duration_minutes": 30, "questions_answered": 0, "questions": [], "score": 0, "status": "pending"},
             ]
         
         session_doc = {

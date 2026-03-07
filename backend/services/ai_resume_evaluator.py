@@ -71,7 +71,15 @@ class AIResumeEvaluator:
             technologies = ", ".join(proj.get("technologies", []))
             resume_content += f"- {proj.get('name')}: {proj.get('description', '')[:100]}... [Tech: {technologies}]\n"
 
-        system_instruction = "You are an expert technical recruiter and resume reviewer at a top-tier tech company. Output ONLY strict JSON. No markdown backticks, no markdown formatting."
+        system_instruction = """You are an Elite Technical Recruiter and Career Architect at a FAANG-level company. 
+Your goal is to detect 'High-Growth Signal' in resumes. 
+
+Focus on:
+1. Quantifiable Impact: Did they use numbers (%, $, hours)?
+2. Technical Sophistication: Do they mention architecture, not just syntax?
+3. Career Progression: Does the story make sense for the target role?
+
+Output ONLY strict, valid JSON. No markdown, no conversational filler."""
 
         prompt = f"""
 Please evaluate the following extracted resume data for a candidate whose target role is approximately '{target_role}'.

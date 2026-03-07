@@ -51,6 +51,9 @@ class InterviewContext:
     hints_used: int = 0
     feedback_log: List[str] = field(default_factory=list)
     student_profile: Dict = field(default_factory=dict)
+    tested_topics: List[str] = field(default_factory=list) # Checklist of areas covered
+    current_topic_followups: int = 0                       # Avoid infinite deep dives
+    job_description: str = ""                             # Role requirements
 
 
 class BaseAgent:
@@ -95,17 +98,17 @@ class InterviewerAgent(BaseAgent):
         self.question_bank = []
     
     def get_system_prompt(self) -> str:
-        return """You are Alex, a senior software engineer at a top tech company. You are the INTERVIEWER.
-The user (the person responding to you) is the CANDIDATE who is being interviewed.
+        return """You are Alex, a Senior Technical Lead at a Tier-1 tech company. You are the INTERVIEWER.
+        
+Your persona:
+- Elite, professional, but deeply curious. You are looking for a teammate, not just an employee.
+- Adapt your tone to the COMPANY'S DNA. (e.g., if it's Google, focus on scalability; if it's a startup, focus on speed and ownership).
+- NEVER identify as an AI or an assistant. You ARE the interviewer.
+- Ask ONE targeted question at a time.
+- If the candidate is vague, follow up with "Can you drill down into the specifics of [X]?"
+- Keep your speech concise (under 30 words per turn) to respect the VOICE interface.
 
-Your responsibilities:
-- Ask the candidate questions (you do NOT answer questions yourself)
-- Evaluate their responses and decide the next question
-- Be professional, encouraging, and conversational
-- Ask ONE question at a time
-- NEVER introduce yourself as the candidate or describe your own experience as a job-seeker
-
-Remember: YOU ask questions. The CANDIDATE answers them."""
+Your goal is to extract high-quality 'Signal' from the candidate's responses."""
 
     
     async def process(
@@ -203,13 +206,16 @@ Remember: YOU ask questions. The CANDIDATE answers them."""
 
         resume_snippet = ""
         if context.resume_text:
-            resume_snippet = f"\nCANDIDATE RESUME SUMMARY (first 500 chars):\n{context.resume_text[:500]}\nUse this to personalize your greeting — mention 1 specific skill or project you noticed.\n"
+            text_to_show = context.resume_text
+            if len(text_to_show) > 500:
+                text_to_show = text_to_show[:500]
+            resume_snippet = f"\nCANDIDATE RESUME SUMMARY (Snippet):\n{text_to_show}\nUse this to personalize your greeting — mention 1 specific skill or project you noticed.\n"
 
         interview_focus = ""
         if context.interview_type == "behavioral":
             interview_focus = "This will be a behavioral interview focusing on past experiences and soft skills."
         elif context.interview_type == "technical":
-            interview_focus = "This will be a technical interview covering coding, system design, and technical depth."
+            interview_focus = "This will be a technical interview covering core technical concepts and depth of knowledge."
         else:
             interview_focus = "This will cover a brief intro, some behavioral scenarios, then technical questions."
 
@@ -256,75 +262,67 @@ Your opening message:"""
         previous_qs  = [q.get("content", q.get("title", "")) for q in context.questions_asked[-3:]]
         avg_score    = sum(context.scores) / len(context.scores) if context.scores else 50
 
-        # --- Determine interview stage based on type and count ---
+        # --- Determine interview stage with Topic Pivoting ---
         is_behavioral_only = context.interview_type == "behavioral"
         is_technical_only  = context.interview_type == "technical"
         is_dsa_only        = context.interview_type == "dsa"
 
+        # Check for deep-dive loop
+        max_followups = 1
+        should_pivot = False
+        
+        if context.current_topic_followups >= max_followups:
+            should_pivot = True
+            context.current_topic_followups = 0  # Reset for next topic
+        else:
+            context.current_topic_followups += 1
+
         if is_dsa_only:
             stage = "dsa_follow_up"
-            instruction = f"""The candidate just submitted a code solution or answer. Answer: "{last_answer[:600]}"
+            safe_ans = last_answer
+            if len(safe_ans) > 600:
+                safe_ans = safe_ans[:600]
+            instruction = f"""The candidate just submitted a code solution or answer. Answer: "{safe_ans}"
             
-You are conducting a strict DSA (Data Structures and Algorithms) interview. 
-DO NOT ask open-ended system design questions. DO NOT ask behavioral questions.
-
-Ask ONE direct, targeted follow-up question about their solution:
-- Ask them to analyze the time and space complexity.
-- Point out a potential edge case and ask how their code handles it (e.g., empty input, negative numbers).
-- Ask if there's a more optimal way (e.g., O(N) instead of O(N^2)).
-
+You are conducting a strict DSA (Data Structures and Algorithms) interview.
+Ask ONE direct, targeted follow-up question about their solution.
+Analyze complexity or point out an edge case.
 One question only, conversational and direct."""
 
         elif num_answered <= 1:
             stage = "behavioral"
-            instruction = f"""The candidate just introduced themselves. Now ask ONE behavioral question.
-- Use the STAR method context (Situation, Task, Action, Result)
-- Reference something they shared in their intro if possible
-- Themes: teamwork, handling failure, leadership, problem-solving under pressure
-- One question only, conversational tone"""
+            context.tested_topics.append("Introduction")
+            instruction = f"""The candidate explained their background. Now move to a BEHAVIORAL question.
+- Pick a standard behavioral theme: teamwork, leadership, or handling failure.
+- Frame it as "Tell me about a time when..."
+- One question only, conversational tone."""
 
-        elif num_answered <= 3 and not is_behavioral_only:
+        elif (num_answered <= 3 and not is_behavioral_only) or (should_pivot and "Technical Core" not in context.tested_topics):
             stage = "technical_discussion"
-            instruction = f"""Move to a technical discussion question for a {context.role} at {context.company}.
-Based on what they said: "{last_answer[:300]}"
-
-IMPORTANT: This is a VOICE interview. Do NOT ask them to write code or implement anything.
-Instead, ask a question they can ANSWER VERBALLY:
-- System design: "How would you design X? Walk me through your approach."
-- Architecture: "What database would you choose for X and why?"
-- Concepts: "Explain how Y works and when you'd use it."
-- Trade-offs: "What are the tradeoffs between approach A and B?"
-- Experience: "Have you worked with X? Tell me about that experience."
-
+            context.tested_topics.append("Technical Core")
+            safe_ans = last_answer
+            if len(safe_ans) > 300:
+                safe_ans = safe_ans[:300]
+            instruction = f"""PIVOT to Technical Discussion for a {context.role} at {context.company}.
+This is a VOICE interview. Ask a conceptual or architectural question they can answer verbally.
+Example: "How would you design X?" or "What are the tradeoffs of using Y for this role?"
 Difficulty: {difficulty} (avg score so far: {avg_score:.0f}%)
-Do NOT repeat these topics: {', '.join(previous_qs) or 'none yet'}
+One question only."""
 
-One question only. Start with a brief transition like "Let's explore some technical areas..."."""
-
-        elif is_behavioral_only:
+        elif is_behavioral_only or (should_pivot and "Behavioral Deep" not in context.tested_topics):
             stage = "behavioral_deep"
-            instruction = f"""Continue behavioral questioning. Last answer: "{last_answer[:300]}"
-
-Ask a follow-up behavioral question that:
-- Digs into a different soft skill or situation type
-- Could probe: conflict resolution, mentoring, receiving feedback, working under pressure, initiative
-- References their answer if useful
-- Is NOT a repeat of previous questions: {', '.join(previous_qs) or 'none yet'}
-
+            context.tested_topics.append("Behavioral Deep")
+            instruction = f"""PIVOT to a deep behavioral scenario.
+Focus on conflict resolution or mentoring.
 One question only."""
 
         else:
             stage = "cross_question"
-            instruction = f"""Cross-question the candidate based on their last answer: "{last_answer[:400]}"
-
-This is a VOICE interview — no code writing. Ask a verbal follow-up that:
-- Challenges an assumption they made
-- Asks for a concrete real-world example from their experience
-- Explores edge cases or trade-offs they glossed over
-- Asks how they'd handle a specific scenario related to what they said
-- Probes technical depth without asking to write code
-
-Be curious and direct. One follow-up question only."""
+            safe_ans = last_answer
+            if len(safe_ans) > 400:
+                safe_ans = safe_ans[:400]
+            instruction = f"""Final follow-up: Challenge an assumption or ask for a trade-off based on: "{safe_ans}"
+Be direct. One question only."""
 
         prompt = f"""Company: {context.company} | Role: {context.role} | Stage: {stage}
 
@@ -409,15 +407,15 @@ class EvaluatorAgent(BaseAgent):
         super().__init__(AgentRole.EVALUATOR, "Eva the Evaluator")
     
     def get_system_prompt(self) -> str:
-        return """You are Eva, an expert technical evaluator.
+        return """You are Eva, an Elite Technical Evaluator. Your judgment determines if someone gets hired at a top firm.
 
-Your role:
-- Provide fair, objective assessments
-- Score based on correctness, clarity, and depth
-- Identify specific strengths and weaknesses
-- Give constructive, actionable feedback
+Your evaluation criteria:
+1. Signal vs. Noise: Does the candidate give specific details or generic buzzwords?
+2. Technical Rigor: Are they aware of complexity, tradeoffs, and edge cases?
+3. Communication: Can they explain complex topics simply and clearly?
+4. Problem Solving: How do they handle pressure and ambiguity?
 
-Be encouraging but honest. Focus on helping candidates improve."""
+Evaluation Tone: Objective, high-standards, and extremely precise. Identify exactly where they missed the mark."""
     
     async def process(
         self, 
@@ -663,15 +661,15 @@ class CareerCoachAgent(BaseAgent):
         super().__init__(AgentRole.CAREER_COACH, "Charlie the Career Coach")
     
     def get_system_prompt(self) -> str:
-        return """You are Charlie, an experienced career coach and mentor.
+        return """You are Charlie, a High-Performance Career Strategist and Mentor to industry leaders.
 
-Your role:
-- Provide actionable career advice
-- Help candidates improve their interview skills
-- Give motivating, honest feedback
-- Suggest specific resources and practice areas
+Your motive:
+- Turn every 'failure' into a strategic growth point.
+- Provide actionable 'Career Roadmap' advice.
+- Don't just give feedback; give a competitive edge.
+- Tone: Inspirational, strategic, and direct.
 
-Be encouraging and supportive while being constructive."""
+Ask yourself: "What is the one insight this candidate needs to land their dream job tomorrow?" """
     
     async def process(
         self, 

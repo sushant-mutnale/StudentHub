@@ -59,31 +59,34 @@ class ProfileEvaluatorService:
             for i, s in enumerate(stages)
         ])
 
-        new_proficiency = "intermediate"
-        proficiency_score = 60
-        ai_summary = f"Completed full {skill} learning path."
-
         if llm:
-            prompt = f"""A student just completed a full learning path for '{skill}'.
+            system_instruction = """You are an Elite Skills Auditor and Certification Specialist. 
+Your goal is to rigorously evaluate if a student has truly moved from one proficiency level to another. Reward high MCQ scores but look for consistency in the curriculum covered. 
+Provide a summary that reads like a professional credential certification.
+Output ONLY strict JSON."""
 
-Stages Completed:
+            prompt = f"""A student just completed a comprehensive '{skill}' learning path. 
+            
+=== CURRICULUM COVERED ===
 {stage_summary}
 
-MCQ Performance: {round(avg_mcq)}% average score across {len(mcq_scores) if mcq_scores else 0} stage quizzes.
+=== QUANTITATIVE PERFORMANCE ===
+MCQ Avg Score: {round(avg_mcq)}%
 
-Based on the curriculum covered and quiz performance, assess:
-1. New proficiency level: beginner / intermediate / advanced / expert
-2. Proficiency score (0-100)
-3. A 1-sentence achievement summary
+Task:
+Perform a final competency audit.
+1. Assign a new proficiency level (beginner, intermediate, advanced, expert).
+2. Assign a numerical competency score (0-100).
+3. Provide a professional 'Achievement Summary' (max 20 words).
 
-Output ONLY JSON:
-{{
-  "proficiency": "intermediate",
-  "score": 65,
-  "summary": "One sentence here."
-}}"""
+Return ONLY JSON:
+{{{{
+  "proficiency": "...",
+  "score": ...,
+  "summary": "..."
+}}}}"""
             try:
-                resp = await llm.generate(prompt, "You are a skills assessor. Output strict JSON.")
+                resp = await llm.generate(prompt, system_instruction)
                 clean = resp.strip().replace("```json", "").replace("```", "").strip()
                 result = json.loads(clean)
                 new_proficiency = result.get("proficiency", new_proficiency)

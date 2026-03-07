@@ -7,6 +7,8 @@ from ..schemas.post_schema import CommentSchema, PostResponse
 from ..schemas.user_schema import UserPublic, UserUpdate
 from ..utils.dependencies import get_current_user
 from ..utils.ai_scorer import update_student_ai_profile
+from ..models import connection as conn_model
+from ..models import notification as notify_model
 
 router = APIRouter()
 
@@ -56,6 +58,82 @@ async def update_me(payload: UserUpdate, current_user=Depends(get_current_user))
         updated = await user_model.get_user_by_id(user_id)
         
     return db_user_to_public(updated)
+
+
+@router.get("/suggested", response_model=list[dict])
+async def get_suggested_users(current_user=Depends(get_current_user)):
+    """Suggest users based on shared skills, college, or year."""
+    user_id = str(current_user["_id"])
+    existing_connections = current_user.get("connections", [])
+    
+    # Base query: Students only, not current user, not already connected
+    query = {
+        "role": "student",
+        "_id": {"$ne": ObjectId(user_id), "$nin": [ObjectId(cid) for cid in existing_connections if ObjectId.is_valid(cid)]}
+    }
+    
+    # Try to find users with shared skills or from same college
+    user_skills = []
+    if current_user.get("skills"):
+        if isinstance(current_user["skills"][0], dict):
+            user_skills = [s["name"] for s in current_user["skills"]]
+        else:
+            user_skills = current_user["skills"]
+            
+    college = current_user.get("college")
+    
+    # OR query for relevance
+    relevance_criteria = []
+    if user_skills:
+        relevance_criteria.append({"skills.name": {"$in": user_skills}})
+    if college:
+        relevance_criteria.append({"college": college})
+        
+    if relevance_criteria:
+        query["$or"] = relevance_criteria
+        
+    cursor = user_model.users_collection().find(query).limit(10)
+    users = await cursor.to_list(length=None)
+    
+    # If not enough relevant users, fill with others
+    if len(users) < 3:
+        exclude_ids = [ObjectId(user_id)] + [ObjectId(cid) for cid in existing_connections if ObjectId.is_valid(cid)] + [u["_id"] for u in users]
+        fallback_query = {
+            "role": "student",
+            "_id": {"$nin": exclude_ids}
+        }
+        fallback_cursor = user_model.users_collection().find(fallback_query).limit(5 - len(users))
+        fallback_users = await fallback_cursor.to_list(length=None)
+        users.extend(fallback_users)
+    
+    results = []
+    for u in users:
+        reason = "New discovery"
+        u_skills = []
+        if u.get("skills"):
+            if isinstance(u["skills"][0], dict):
+                u_skills = [s["name"] for s in u["skills"]]
+            else:
+                u_skills = u["skills"]
+                
+        shared = set(user_skills).intersection(set(u_skills))
+        if shared:
+            reason = f"Shared skill: {list(shared)[0]}"
+        elif u.get("college") == college and college:
+            reason = f"From {college}"
+        elif u.get("year") == current_user.get("year") and u.get("year"):
+            reason = f"Same year student"
+            
+        results.append({
+            "id": str(u["_id"]),
+            "username": u.get("username"),
+            "full_name": u.get("full_name"),
+            "location": u.get("location") or u.get("college") or "Student",
+            "avatar_url": u.get("avatar_url"),
+            "reason": reason
+        })
+        
+    return results
 
 
 @router.get("/search", response_model=list[dict])
@@ -151,16 +229,111 @@ async def add_connection(target_id: str, current_user=Depends(get_current_user))
     if user_id == target_id:
         raise HTTPException(status_code=400, detail="Cannot connect to yourself")
     
-    target_user = await user_model.get_user_by_id(target_id)
-    if not target_user:
-        raise HTTPException(status_code=404, detail="Target user not found")
+    # Check if a request already exists
+    existing = await conn_model.find_existing_request(user_id, target_id)
+    if existing:
+        if existing["status"] == "accepted":
+            return {"message": "Already connected", "status": "accepted"}
+        if str(existing["sender_id"]) == user_id:
+            return {"message": "Request already sent", "status": "pending"}
+        else:
+            return {"message": "They already sent you a horizontal request. Check your pending requests.", "status": "incoming_pending"}
+
+    # Create new pending request
+    await conn_model.create_connection_request(user_id, target_id)
+    
+    # Notify target user
+    await notify_model.create_notification(
+        user_id=target_id,
+        kind="connection_request",
+        payload={
+            "sender_id": user_id,
+            "sender_name": current_user.get("full_name") or current_user.get("username"),
+            "message": "sent you a connection request"
+        },
+        category="general"
+    )
         
-    connections = current_user.get("connections", [])
-    if target_id not in connections:
-        connections.append(target_id)
-        await user_model.update_user(user_id, {"connections": connections})
+    return {"message": "Connection request sent", "status": "pending"}
+
+
+@router.get("/connections/requests/pending")
+async def list_pending_requests(current_user=Depends(get_current_user)):
+    user_id = str(current_user["_id"])
+    requests = await conn_model.get_pending_requests(user_id)
+    
+    results = []
+    for req in requests:
+        sender = await user_model.get_user_by_id(str(req["sender_id"]))
+        if sender:
+            results.append({
+                "request_id": str(req["_id"]),
+                "sender": {
+                    "id": str(sender["_id"]),
+                    "username": sender.get("username"),
+                    "full_name": sender.get("full_name"),
+                    "avatar_url": sender.get("avatar_url")
+                },
+                "created_at": req["created_at"]
+            })
+    return results
+
+
+@router.post("/connections/requests/{request_id}/accept")
+async def accept_connection(request_id: str, current_user=Depends(get_current_user)):
+    user_id = str(current_user["_id"])
+    request = await conn_model.get_request_by_id(request_id)
+    
+    if not request or str(request["receiver_id"]) != user_id:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    if request["status"] != "pending":
+        return {"message": "Request already processed"}
+
+    # 1. Update request status
+    await conn_model.update_request_status(request_id, "accepted")
+    
+    # 2. Add to both users' connection lists
+    sender_id = str(request["sender_id"])
+    
+    # Update current user (receiver)
+    receiver_conns = current_user.get("connections", [])
+    if sender_id not in receiver_conns:
+        receiver_conns.append(sender_id)
+        await user_model.update_user(user_id, {"connections": receiver_conns})
         
-    return {"message": "Connection added successfully", "connections": connections}
+    # Update sender
+    sender_user = await user_model.get_user_by_id(sender_id)
+    if sender_user:
+        sender_conns = sender_user.get("connections", [])
+        if user_id not in sender_conns:
+            sender_conns.append(user_id)
+            await user_model.update_user(sender_id, {"connections": sender_conns})
+
+    # 3. Notify sender that request was accepted
+    await notify_model.create_notification(
+        user_id=sender_id,
+        kind="connection_accepted",
+        payload={
+            "receiver_id": user_id,
+            "receiver_name": current_user.get("full_name") or current_user.get("username"),
+            "message": "accepted your connection request"
+        },
+        category="general"
+    )
+
+    return {"message": "Connection accepted"}
+
+@router.post("/connections/requests/{request_id}/decline")
+async def decline_connection(request_id: str, current_user=Depends(get_current_user)):
+    user_id = str(current_user["_id"])
+    request = await conn_model.get_request_by_id(request_id)
+    
+    if not request or str(request["receiver_id"]) != user_id:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    await conn_model.update_request_status(request_id, "declined")
+    return {"message": "Connection declined"}
 
 
 @router.delete("/connections/{target_id}")

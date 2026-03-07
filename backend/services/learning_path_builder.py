@@ -9,13 +9,15 @@ import os
 import uuid
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
+import re
 
 
 class ResourceCuratorAgent:
     """
     Agent 2: Searches Tavily for real, free, high-quality resources
     for each week topic in a learning path.
+    Now with LLM-based ranking to ensure high-quality, working links.
     """
 
     def __init__(self):
@@ -25,7 +27,7 @@ class ResourceCuratorAgent:
     def _get_tavily(self):
         if self._tavily_client is None:
             try:
-                from tavily import TavilyClient
+                from tavily import TavilyClient # type: ignore
                 api_key = os.getenv("TAVILY_API_KEY", "")
                 if api_key:
                     self._tavily_client = TavilyClient(api_key=api_key)
@@ -36,7 +38,7 @@ class ResourceCuratorAgent:
     def _get_llm(self):
         if self._llm is None:
             try:
-                from .llm_service import llm_service
+                from .llm_service import llm_service # type: ignore
                 self._llm = llm_service
             except Exception:
                 self._llm = None
@@ -44,96 +46,114 @@ class ResourceCuratorAgent:
 
     async def curate_resources_for_subtopic(self, skill: str, topic: str, subtopic: str) -> List[Dict[str, Any]]:
         """
-        Search Tavily for 3 distinct resources: video, documentation, and exercise/repository.
+        Search Tavily for multiple results, then use LLM to pick the 2-3 best distinct resources.
         """
         tavily = self._get_tavily()
+        llm = self._get_llm()
+        
         if not tavily:
             return self._default_subtopic_resources(skill, subtopic)
 
-        resources = []
-        try:
-            # 1. Video
-            res_video = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: tavily.search(query=f"{skill} {subtopic} tutorial video site:youtube.com", max_results=1, search_depth="basic")
-            )
-            for r in res_video.get("results", []):
-                resources.append({
-                    "resource_id": str(uuid.uuid4()),
-                    "type": "video",
-                    "title": r.get("title", f"{skill} - {subtopic} Video")[:100],
-                    "url": r.get("url", ""),
-                    "duration_minutes": 30,
-                    "source": "YouTube",
-                    "completed": False,
-                    "completed_at": None
-                })
-        except Exception:
-            resources.append({
-                "resource_id": str(uuid.uuid4()),
-                "type": "video",
-                "title": f"{skill} - {subtopic} Video Tutorial",
-                "url": f"https://www.youtube.com/results?search_query={skill.replace(' ', '+')}+{subtopic.replace(' ', '+')}",
-                "duration_minutes": 30,
-                "source": "YouTube",
-                "completed": False,
-                "completed_at": None
-            })
+        # 1. Broad Search Query
+        query_text = f"best free tutorial or documentation for {skill} {subtopic} 2024 2025"
+
+        # Helper with explicit return type for linter
+        def do_search() -> Dict[str, Any]:
+            if not tavily: return {}
+            # We use query_text from closure
+            res = tavily.search(query=query_text, max_results=8, search_depth="basic")
+            return cast(Dict[str, Any], res) if res else {}
 
         try:
-            # 2. Documentation
-            res_docs = await asyncio.get_event_loop().run_in_executor(
+            # Silence linter for complex executor typing
+            search_results = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: tavily.search(query=f"{skill} {subtopic} official documentation OR tutorial site:docs.python.org OR site:developer.mozilla.org OR site:freecodecamp.org OR site:react.dev OR site:geeksforgeeks.org", max_results=1, search_depth="basic")
+                cast(Any, do_search)
             )
-            for r in res_docs.get("results", []):
-                resources.append({
-                    "resource_id": str(uuid.uuid4()),
-                    "type": "documentation",
-                    "title": r.get("title", f"{skill} - {subtopic} Docs")[:100],
-                    "url": r.get("url", ""),
-                    "duration_minutes": 20,
-                    "source": r.get("url", "").split("/")[2] if "/" in r.get("url", "") else "Web",
-                    "completed": False,
-                    "completed_at": None
-                })
+            # Ensure we have a dict
+            results_dict = cast(Dict[str, Any], search_results) if isinstance(search_results, dict) else {}
+            results_list = results_dict.get("results", [])
+            raw_candidates = cast(List[Dict[str, Any]], list(results_list)) if isinstance(results_list, list) else []
         except Exception:
-            resources.append({
-                "resource_id": str(uuid.uuid4()),
-                "type": "documentation",
-                "title": f"{skill} {subtopic} Official Documentation",
-                "url": f"https://www.google.com/search?q={skill.replace(' ', '+')}+{subtopic.replace(' ', '+')}+documentation",
-                "duration_minutes": 20,
-                "source": "Google",
-                "completed": False,
-                "completed_at": None
-            })
+            raw_candidates = []
 
-        try:
-            # 3. Exercise/Repository
-            res_repo = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: tavily.search(query=f"{skill} {subtopic} example project OR exercise site:github.com OR site:hackerrank.com OR site:leetcode.com", max_results=1, search_depth="basic")
-            )
-            for r in res_repo.get("results", []):
-                resources.append({
-                    "resource_id": str(uuid.uuid4()),
-                    "type": "repository",
-                    "title": r.get("title", f"{skill} - {subtopic} Exercise")[:100],
-                    "url": r.get("url", ""),
-                    "duration_minutes": 45,
-                    "source": r.get("url", "").split("/")[2] if "/" in r.get("url", "") else "Web",
-                    "completed": False,
-                    "completed_at": None
-                })
-        except Exception:
+        if not raw_candidates:
+            return self._default_subtopic_resources(skill, subtopic)
+
+        # 2. LLM Ranking (if available)
+        if llm:
+            candidates_text = "\n".join([f"[{i}] {r.get('title')} - {r.get('url')}" for i, r in enumerate(raw_candidates)])
+            prompt = f"""
+            Task: Pick the 2-3 BEST educational resources for learning "{skill}: {subtopic}".
+            
+            Candidates:
+            {candidates_text}
+            
+            Criteria:
+            1. Preference for official documentation (e.g. .org, .dev, official sites like MDN, React.dev, Python.org).
+            2. High authority sites (FreeCodeCamp, GeeksForGeeks, RealPython).
+            3. Must have working, non-redundant URLs.
+            4. Diversify: Mix of Video (YouTube) and Documentation.
+            
+            Return ONLY a JSON array of the indices (e.g., [0, 2]) of the selected resources.
+            """
+            try:
+                system_instruction = """You are a Senior Technical Librarian and Researcher. 
+Your motive:
+- Prioritize official documentation and high-authority platforms (MDN, Python.org, React.dev).
+- Detect and reject 'clickbait' or surface-level blog posts.
+- Ensure a logical diversity of content (1 Deep-dive Video + 1 Official Doc + 1 Hands-on Repo).
+Return ONLY a JSON array of indices."""
+                
+                rank_response = await llm.generate(prompt, system_instruction)
+                import re
+                match = re.search(r'\[.*\]', rank_response)
+                indices = []
+                if match:
+                    try:
+                        parsed = json.loads(match.group())
+                        if isinstance(parsed, list):
+                            indices = [int(i) for i in parsed if str(i).isdigit()]
+                    except Exception:
+                        indices = []
+                
+                if indices:
+                    # Explicit indexing with bounds check
+                    selected_raw = []
+                    for idx in indices:
+                        if isinstance(idx, int) and idx < len(raw_candidates):
+                            selected_raw.append(raw_candidates[idx])
+                else:
+                    # Avoid slicing to satisfy strict linting
+                    selected_raw = []
+                    for k in range(min(2, len(raw_candidates))):
+                        selected_raw.append(raw_candidates[k])
+            except Exception:
+                selected_raw = []
+                for k in range(min(2, len(raw_candidates))):
+                    selected_raw.append(raw_candidates[k])
+        else:
+            selected_raw = []
+            for k in range(min(2, len(raw_candidates))):
+                selected_raw.append(raw_candidates[k])
+
+        resources: List[Dict[str, Any]] = []
+        for r in cast(List[Dict[str, Any]], selected_raw):
+            url = str(r.get("url", ""))
+            res_type = "documentation"
+            if "youtube.com" in url or "vimeo.com" in url:
+                res_type = "video"
+            elif "github.com" in url or "leetcode.com" in url or "hackerrank.com" in url:
+                res_type = "repository"
+            
             resources.append({
                 "resource_id": str(uuid.uuid4()),
-                "type": "repository",
-                "title": f"{skill} - {subtopic} GitHub Repository",
-                "url": f"https://github.com/search?q={skill.replace(' ', '+')}+{subtopic.replace(' ', '+')}&type=repositories",
-                "duration_minutes": 45,
-                "source": "GitHub",
+                "type": res_type,
+                "title": r.get("title", f"{skill} - {subtopic} Resource")[:100],
+                "url": url,
+                "duration_minutes": 30 if res_type == "video" else 20,
+                "source": url.split("/")[2] if "//" in url else "Web",
+                "ai_description": r.get("content", "High-quality resource selected for your learning path.")[:150],
                 "completed": False,
                 "completed_at": None
             })
@@ -141,20 +161,20 @@ class ResourceCuratorAgent:
         return resources
 
     def _default_subtopic_resources(self, skill: str, subtopic: str) -> List[Dict[str, Any]]:
-        """Minimal fallback when Tavily unavailable."""
+        """Minimal fallback when Tavily unavailable or fails."""
         return [
             {
                 "resource_id": str(uuid.uuid4()),
                 "type": "documentation",
-                "title": f"{skill} {subtopic} Official Documentation",
-                "url": f"https://roadmap.sh/search?q={skill.lower().replace(' ', '-')}",
-                "duration_minutes": 30,
-                "source": "roadmap.sh",
+                "title": f"Google Search: {skill} {subtopic}",
+                "url": f"https://www.google.com/search?q={skill.replace(' ', '+')}+{subtopic.replace(' ', '+')}+tutorial",
+                "duration_minutes": 15,
+                "source": "Google",
+                "ai_description": "Direct search for the most current resources on this topic.",
                 "completed": False,
                 "completed_at": None
             }
         ]
-
 
 resource_curator = ResourceCuratorAgent()
 
@@ -172,7 +192,7 @@ class LearningPathBuilder:
             "data", 
             "learning_resources.json"
         )
-        self._resources_cache = None
+        self._resources_cache: Dict[str, Any] = {}
         self.use_ai = use_ai
         self._llm_service = None
     
@@ -180,7 +200,7 @@ class LearningPathBuilder:
         """Lazy load LLM service."""
         if self._llm_service is None:
             try:
-                from .llm_service import llm_service
+                from .llm_service import llm_service # type: ignore
                 self._llm_service = llm_service
             except Exception:
                 self._llm_service = None
@@ -188,16 +208,18 @@ class LearningPathBuilder:
     
     def _load_resources(self) -> Dict[str, Any]:
         """Load learning resources from JSON file."""
-        if self._resources_cache is not None:
+        if self._resources_cache:
             return self._resources_cache
         
         try:
             with open(self.resources_path, "r", encoding="utf-8") as f:
-                self._resources_cache = json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    self._resources_cache = data
         except FileNotFoundError:
             self._resources_cache = {}
         
-        return self._resources_cache
+        return self._resources_cache or {}
     
     def fetch_resources(
         self, 
@@ -323,7 +345,8 @@ Examples:
 - 'Python' → 'Python'"""
 
         try:
-            result = await llm.generate(prompt, "You are a skill name corrector. Return only the corrected name.")
+            system_instruction = "You are a Skill Ontology Expert. Normalize technologies to their industry-standard names (e.g., 'react' -> 'React.js', 'k8s' -> 'Kubernetes'). Return ONLY the string."
+            result = await llm.generate(prompt, system_instruction)
             corrected = result.strip().strip('"').strip("'")
             return corrected if corrected else raw_input.strip()
         except Exception:
@@ -344,7 +367,7 @@ Examples:
         """
         llm = self._get_llm_service()
         if not llm:
-            return None
+            return {}
 
         prompt = f"""
         Act as a Senior Technical Mentor. Create a highly detailed, dependency-based Learning Roadmap for '{skill}'.
@@ -391,12 +414,19 @@ Examples:
         """
         
         try:
-            response = await llm.generate(prompt, "You are an elite curriculum developer. Output strict JSON only.")
+            system_instruction = """You are a Principal Curriculum Engineer. 
+Your Motif:
+- Use a 'Project-First' methodology.
+- Every stage must culminate in a tangible deliverable.
+- Ensure 'Conceptual Bridges': explain why topic A is needed for topic B.
+- Output ONLY valid, strict JSON."""
+            
+            response = await llm.generate(prompt, system_instruction)
             clean_json = response.replace("```json", "").replace("```", "").strip()
             return json.loads(clean_json)
         except Exception as e:
             # logger.error(f"Curriculum Generation Failed: {e}")
-            return None
+            return {}
 
     async def _generate_ai_personalization(
         self,

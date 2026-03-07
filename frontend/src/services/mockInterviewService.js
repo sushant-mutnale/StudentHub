@@ -32,9 +32,9 @@ export const mockInterviewService = {
                                              console.warn('Backend unavailable, using mock question for demo.');
                                              return {
                                                             question_id: "q1",
-                                                            content: "Design a scalable URL shortener like Bit.ly.",
-                                                            type: "system_design",
-                                                            code_template: "class URLShortener:\n    def __init__(self):\n        pass"
+                                                            content: "Implement an LRU Cache with O(1) time complexity.",
+                                                            type: "technical",
+                                                            code_template: "class LRUCache:\n    def __init__(self, capacity):\n        pass"
                                              };
                               }
                },

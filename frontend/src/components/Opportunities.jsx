@@ -53,64 +53,18 @@ const Opportunities = () => {
         setLoading(true);
         try {
             if (resolvedTab === 'jobs') {
-                const data = await recommendationService.getJobRecommendations(50, resolvedFilters);
+                const backendFilters = { ...resolvedFilters };
+                if (backendFilters.jobType) backendFilters.work_mode = backendFilters.jobType;
+                
+                const data = await recommendationService.getJobRecommendations(50, backendFilters);
                 let raw = data.recommendations || data.jobs || data || [];
-
-                // Strict Frontend Filtering 
-                if (resolvedFilters.company) {
-                    const term = resolvedFilters.company.toLowerCase();
-                    raw = raw.filter(i => {
-                        const job = i.job || i;
-                        const compName = job.company || job.company_name || '';
-                        return compName.toLowerCase().includes(term);
-                    });
-                }
-                
-                if (resolvedFilters.skill) {
-                    const term = resolvedFilters.skill.toLowerCase();
-                    raw = raw.filter(i => {
-                        const job = i.job || i;
-                        const skills = job.skills_required || job.requirements || [];
-                        const titleMatch = job.title?.toLowerCase().includes(term);
-                        const descMatch = job.description_snippet?.toLowerCase().includes(term);
-                        const reqMatch = skills.some(r => r.toLowerCase().includes(term));
-                        return titleMatch || descMatch || reqMatch;
-                    });
-                }
-                
-                if (resolvedFilters.location) {
-                    const term = resolvedFilters.location.toLowerCase();
-                    raw = raw.filter(i => {
-                        const job = i.job || i;
-                        return job.location?.toLowerCase().includes(term);
-                    });
-                }
-                
-                if (resolvedFilters.jobType) {
-                    const term = resolvedFilters.jobType.toLowerCase();
-                    raw = raw.filter(i => {
-                        const job = i.job || i;
-                        const wm = job.work_mode?.toLowerCase() || '';
-                        return wm.includes(term);
-                    });
-                }
-                
-                if (resolvedFilters.experience) {
-                    const term = resolvedFilters.experience.toLowerCase();
-                    raw = raw.filter(i => {
-                        const job = i.job || i;
-                        return job.experience_level?.toLowerCase().includes(term) ||
-                               job.experience_required?.toLowerCase().includes(term);
-                    });
-                }
-
                 setJobs(raw.map(item => item.job ? { ...item.job, score: item.score, match_details: item.match_details } : item));
             } else if (resolvedTab === 'hackathons') {
-                const data = await recommendationService.getHackathonRecommendations(15);
+                const data = await recommendationService.getHackathonRecommendations(15, resolvedFilters);
                 const raw = data.recommendations || data.hackathons || data || [];
-                setHackathons(raw.map(item => item.hackathon ? { ...item.hackathon, score: item.score, match_details: item.match_details } : item));
+                setHackathons(raw.map(item => item.hackathon ? { ...item.hackathon, score: item.score, match_details: item.match_details } : (item.hackathon_id ? item : item)));
             } else {
-                const data = await recommendationService.getContentRecommendations(15);
+                const data = await recommendationService.getContentRecommendations(15, resolvedFilters);
                 const raw = data.recommendations || data.content || data || [];
                 setContent(raw.map(item => item.article ? { ...item.article, score: item.score, match_details: item.match_details } : item));
             }
@@ -185,73 +139,97 @@ const Opportunities = () => {
                         ))}
                     </div>
 
-                    {/* Filters for Jobs */}
-                    {activeTab === 'jobs' && (
-                        <div className="card glass-card animate-slide-up delay-100" style={{ marginBottom: '2rem', padding: '1.5rem' }}>
-                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                <div style={{ position: 'relative', flex: 1 }}>
-                                    <FiSearch style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                                    <input
-                                        type="text"
-                                        placeholder="Filter by skill..."
-                                        value={filters.skill}
-                                        onChange={(e) => setFilters({ ...filters, skill: e.target.value })}
-                                        className="form-input"
-                                        style={{ marginBottom: 0, paddingLeft: '2.5rem' }}
-                                    />
-                                </div>
-                                <div style={{ position: 'relative', flex: 1 }}>
-                                    <FiMapPin style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                                    <input
-                                        type="text"
-                                        placeholder="Location..."
-                                        value={filters.location}
-                                        onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-                                        className="form-input"
-                                        style={{ marginBottom: 0, paddingLeft: '2.5rem' }}
-                                    />
-                                </div>
-                                <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
-                                    <select
-                                        value={filters.experience}
-                                        onChange={(e) => setFilters({ ...filters, experience: e.target.value })}
-                                        className="form-input"
-                                        style={{ marginBottom: 0, padding: '0.5rem' }}
-                                    >
-                                        <option value="">Any Experience</option>
-                                        <option value="entry">Entry Level</option>
-                                        <option value="mid">Mid Level</option>
-                                        <option value="senior">Senior Level</option>
-                                    </select>
-
-                                    <select
-                                        value={filters.jobType}
-                                        onChange={(e) => setFilters({ ...filters, jobType: e.target.value })}
-                                        className="form-input"
-                                        style={{ marginBottom: 0, padding: '0.5rem' }}
-                                    >
-                                        <option value="">Any Type</option>
-                                        <option value="full-time">Full-time</option>
-                                        <option value="part-time">Part-time</option>
-                                        <option value="internship">Internship</option>
-                                        <option value="contract">Contract</option>
-                                    </select>
-
-                                    <input
-                                        type="text"
-                                        placeholder="Company..."
-                                        value={filters.company}
-                                        onChange={(e) => setFilters({ ...filters, company: e.target.value })}
-                                        className="form-input"
-                                        style={{ marginBottom: 0, padding: '0.5rem' }}
-                                    />
-                                </div>
-                                <button onClick={() => loadOpportunities()} className="form-button hover-scale" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
-                                    <FiFilter /> Apply Filters
-                                </button>
+                    {/* Filters */}
+                    <div className="card glass-card animate-slide-up delay-100" style={{ marginBottom: '2rem', padding: '1.5rem' }}>
+                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                            <div style={{ position: 'relative', flex: 1 }}>
+                                <FiSearch style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                                <input
+                                    type="text"
+                                    placeholder={activeTab === 'jobs' ? "Filter by skill..." : activeTab === 'hackathons' ? "Search themes (AI, Web3)..." : "Search topics..."}
+                                    value={filters.skill || filters.theme || filters.topic || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (activeTab === 'jobs') setFilters({ ...filters, skill: val });
+                                        else if (activeTab === 'hackathons') setFilters({ ...filters, theme: val, skill: val });
+                                        else setFilters({ ...filters, topic: val, skill: val });
+                                    }}
+                                    className="form-input"
+                                    style={{ marginBottom: 0, paddingLeft: '2.5rem' }}
+                                />
                             </div>
+
+                            {activeTab === 'jobs' && (
+                                <>
+                                    <div style={{ position: 'relative', flex: 1 }}>
+                                        <FiMapPin style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                                        <input
+                                            type="text"
+                                            placeholder="Location..."
+                                            value={filters.location}
+                                            onChange={(e) => setFilters({ ...filters, location: e.target.value })}
+                                            className="form-input"
+                                            style={{ marginBottom: 0, paddingLeft: '2.5rem' }}
+                                        />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+                                        <select
+                                            value={filters.experience}
+                                            onChange={(e) => setFilters({ ...filters, experience: e.target.value })}
+                                            className="form-input"
+                                            style={{ marginBottom: 0, padding: '0.5rem' }}
+                                        >
+                                            <option value="">Any Experience</option>
+                                            <option value="entry">Entry Level</option>
+                                            <option value="mid">Mid Level</option>
+                                            <option value="senior">Senior Level</option>
+                                        </select>
+
+                                        <select
+                                            value={filters.jobType}
+                                            onChange={(e) => setFilters({ ...filters, jobType: e.target.value })}
+                                            className="form-input"
+                                            style={{ marginBottom: 0, padding: '0.5rem' }}
+                                        >
+                                            <option value="">Any Type</option>
+                                            <option value="full-time">Full-time</option>
+                                            <option value="part-time">Part-time</option>
+                                            <option value="internship">Internship</option>
+                                            <option value="contract">Contract</option>
+                                        </select>
+
+                                        <input
+                                            type="text"
+                                            placeholder="Company..."
+                                            value={filters.company}
+                                            onChange={(e) => setFilters({ ...filters, company: e.target.value })}
+                                            className="form-input"
+                                            style={{ marginBottom: 0, padding: '0.5rem' }}
+                                        />
+                                    </div>
+                                </>
+                            )}
+
+                            {activeTab === 'hackathons' && (
+                                <div style={{ flex: 0.5 }}>
+                                    <select
+                                        value={filters.eligibility}
+                                        onChange={(e) => setFilters({ ...filters, eligibility: e.target.value })}
+                                        className="form-input"
+                                        style={{ marginBottom: 0, padding: '0.5rem' }}
+                                    >
+                                        <option value="">All Eligibility</option>
+                                        <option value="students">Students only</option>
+                                        <option value="all">Open to all</option>
+                                    </select>
+                                </div>
+                            )}
+
+                            <button onClick={() => loadOpportunities()} className="form-button hover-scale" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
+                                <FiFilter /> Apply Filters
+                            </button>
                         </div>
-                    )}
+                    </div>
 
                     {/* Content Grid */}
                     {loading ? (

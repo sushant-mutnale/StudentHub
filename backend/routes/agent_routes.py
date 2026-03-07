@@ -3,16 +3,53 @@ Multi-Agent Interview Routes
 API endpoints for AI-powered interview simulation using multiple agents.
 """
 
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional, Any
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 import uuid
 
 from ..services.multi_agent_system import multi_agent_interview
+from ..services.resume_parser import resume_parser
 from ..utils.dependencies import get_current_user
 
 
 router = APIRouter(prefix="/agent-interview", tags=["multi-agent-interview"])
+
+
+# ============ Helper Logic ============
+
+@router.post("/extract-text")
+async def extract_resume_text(
+    file: UploadFile = File(...),
+    current_user=Depends(get_current_user)
+):
+    """
+    Extract raw text from a PDF resume for interview personalization.
+    Does not save the file permanently.
+    """
+    import tempfile
+    import os
+    
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+    try:
+        content = await file.read()
+        # open in binary mode
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", mode='wb') as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+            
+        try:
+            text, _ = resume_parser.extract_text(tmp_path)
+            if not text:
+                raise HTTPException(status_code=422, detail="Could not extract text from PDF")
+            return {"text": text, "filename": file.filename}
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============ Request/Response Models ============

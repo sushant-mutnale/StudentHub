@@ -25,4 +25,16 @@ export const userService = {
     const { data } = await api.get('/users/search', { params });
     return data;
   },
+  getPendingRequests: async () => {
+    const { data } = await api.get('/users/connections/requests/pending');
+    return data;
+  },
+  acceptRequest: async (requestId) => {
+    const { data } = await api.post(`/users/connections/requests/${requestId}/accept`);
+    return data;
+  },
+  declineRequest: async (requestId) => {
+    const { data } = await api.post(`/users/connections/requests/${requestId}/decline`);
+    return data;
+  },
 };

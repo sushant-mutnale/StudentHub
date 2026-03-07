@@ -251,8 +251,7 @@ const MockInterview = () => {
                                         {[
                                             { value: 'behavioral', label: 'Behavioral', icon: FiMessageSquare },
                                             { value: 'technical', label: 'Technical', icon: FiTarget },
-                                            { value: 'dsa', label: 'DSA/Coding', icon: FiCode },
-                                            { value: 'system_design', label: 'System Design', icon: FiAward }
+                                            { value: 'dsa', label: 'DSA/Coding', icon: FiCode }
                                         ].map(type => (
                                             <button
                                                 key={type.value}

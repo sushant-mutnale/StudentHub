@@ -181,7 +181,10 @@ const VoiceInterview = () => {
         difficulty: 'medium',
         resumeText: '',
         resumeLoaded: false,
+        resumeFilename: ''
     });
+
+    const [uploadingResume, setUploadingResume] = useState(false);
 
     // ── Interview state ──────────────────────────
     const [sessionId, setSessionId] = useState(null);
@@ -212,18 +215,37 @@ const VoiceInterview = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const supported = !!SpeechRecognition && 'speechSynthesis' in window;
 
-    // Load latest resume on mount
-    useEffect(() => {
-        const fetchResume = async () => {
-            try {
-                const { data } = await api.get('/resumes/latest');
-                if (data?.extracted_text || data?.text) {
-                    setConfig(c => ({ ...c, resumeText: data.extracted_text || data.text, resumeLoaded: true }));
-                }
-            } catch { /* no resume on file */ }
-        };
-        fetchResume();
-    }, []);
+    // Handle PDF upload for extraction
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf') {
+            setError('Please upload a PDF file.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        setUploadingResume(true);
+        setError(null);
+        try {
+            const { data } = await api.post('/agent-interview/extract-text', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setConfig(c => ({ 
+                ...c, 
+                resumeText: data.text, 
+                resumeLoaded: true,
+                resumeFilename: data.filename 
+            }));
+        } catch (err) {
+            setError('Failed to extract text from PDF. You can still paste text manually.');
+        } finally {
+            setUploadingResume(false);
+        }
+    };
 
     // Cleanup on unmount
     useEffect(() => {
@@ -604,16 +626,48 @@ const VoiceInterview = () => {
                             </div>
                         </div>
 
-                        {!config.resumeLoaded && (
+                        {!config.resumeLoaded ? (
                             <div className="vi-field-group">
-                                <label>Resume (paste text — optional)</label>
+                                <label>Profile Context (Upload PDF or Paste Text)</label>
+                                <div className="vi-upload-container">
+                                    <input
+                                        type="file"
+                                        id="resume-upload"
+                                        accept=".pdf"
+                                        onChange={handleFileUpload}
+                                        style={{ display: 'none' }}
+                                    />
+                                    <label htmlFor="resume-upload" className={`vi-upload-dropzone ${uploadingResume ? 'loading' : ''}`}>
+                                        {uploadingResume ? (
+                                            <>
+                                                <div className="vi-mini-spinner" />
+                                                <span>Extracting text...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="vi-upload-icon">📄</span>
+                                                <span>Click to upload Resume PDF</span>
+                                            </>
+                                        )}
+                                    </label>
+                                </div>
+                                
+                                <div className="vi-separator"><span>OR</span></div>
+
                                 <textarea
-                                    rows={4}
-                                    placeholder="Paste your resume text to get personalized questions..."
+                                    rows={3}
+                                    placeholder="Paste your profile/resume text here manually..."
                                     value={config.resumeText}
                                     onChange={e => setConfig(c => ({ ...c, resumeText: e.target.value }))}
                                     className="vi-input vi-textarea"
                                 />
+                            </div>
+                        ) : (
+                            <div className="vi-resume-banner success">
+                                <span>✅ Resume Loaded: <strong>{config.resumeFilename || 'Latest found'}</strong></span>
+                                <button className="vi-clear-btn" onClick={() => setConfig(c => ({ ...c, resumeText: '', resumeLoaded: false, resumeFilename: '' }))}>
+                                    Change
+                                </button>
                             </div>
                         )}
                     </div>

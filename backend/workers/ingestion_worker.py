@@ -17,19 +17,19 @@ class IngestionWorker(BackgroundWorker):
     def __init__(self, poll_interval: float = 43200): # 12 hours
         super().__init__(name="ingestion_worker", poll_interval=poll_interval)
     
-    async def process(self) -> None:
+    async def _polling_loop(self) -> None:
         """
-        Trigger ingestion of all opportunities.
+        Internal polling loop that triggers ingestion.
         """
-        logger.info("IngestionWorker: Starting scheduled ingestion...")
+        logger.info(f"IngestionWorker: Started polling loop (interval: {self.poll_interval}s)")
         
-        try:
-            # We pass use_mock=False to attempt real scraping
-            # The service gracefully falls back to mocks/empty if keys are missing
-            result = await opportunity_ingestion.ingest_all(use_mock=False)
+        while self.running:
+            try:
+                logger.info("IngestionWorker: Starting scheduled ingestion...")
+                # We pass use_mock=False to attempt real scraping
+                result = await opportunity_ingestion.ingest_all(use_mock=False)
+                logger.info(f"IngestionWorker: Ingestion completed. Stats: {result}")
+            except Exception as e:
+                logger.error(f"IngestionWorker cycle failed: {e}")
             
-            logger.info(f"IngestionWorker: Ingestion completed. Stats: {result}")
-            
-        except Exception as e:
-            logger.error(f"IngestionWorker failed: {e}")
-            # Don't raise, just log error so worker keeps running next cycle
+            await asyncio.sleep(self.poll_interval)

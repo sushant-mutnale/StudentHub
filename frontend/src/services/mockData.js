@@ -276,13 +276,6 @@ export const mockInterviews = [
         date: new Date(Date.now() - 86400000).toISOString()
     },
     {
-        id: "mock-int-2",
-        title: "System Design: URL Shortener",
-        type: "system_design",
-        status: "scheduled",
-        date: new Date(Date.now() + 86400000).toISOString()
-    },
-    {
         id: "mock-int-3",
         title: "Behavioral: Leadership",
         type: "behavioral",

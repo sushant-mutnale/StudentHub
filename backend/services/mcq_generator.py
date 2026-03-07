@@ -80,7 +80,14 @@ Output ONLY valid JSON in this exact format:
 }}"""
 
         try:
-            response = await llm.generate(prompt, "You are a technical quiz generator. Output strict JSON only.")
+            system_instruction = """You are an Expert Pedagogical Designer. Your goal is to create 'High-Retention' technical quizzes.
+Rules:
+- Questions must be scenario-based (e.g., 'You are debugging X, what do you do?').
+- Distractors (wrong answers) must be plausible and represent common misconceptions.
+- Explanations must be educational, not just stating the fact.
+- Maintain strict JSON format."""
+            
+            response = await llm.generate(prompt, system_instruction)
             clean = response.strip()
             # Strip markdown code blocks if present
             if clean.startswith("```"):
