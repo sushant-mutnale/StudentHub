@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { postService } from '../services/postService';
 import { userService } from '../services/userService';
+import { messageService } from '../services/messageService';
 import { useAuth } from '../contexts/AuthContext';
 import Avatar from './Avatar';
 import '../App.css';
@@ -14,6 +15,7 @@ const PublicProfile = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [creatingThread, setCreatingThread] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -58,6 +60,22 @@ const PublicProfile = () => {
     }),
     [posts, profile]
   );
+
+  const handleMessageClick = async () => {
+    if (!profile || creatingThread) return;
+    setCreatingThread(true);
+    try {
+      // Use participant_usernames to accurately match what the backend expects
+      const thread = await messageService.createThread({
+        participant_usernames: [profile.username],
+      });
+      navigate(`/messages/${thread.id}`);
+    } catch (err) {
+      console.error('Failed to start conversation', err);
+      alert('Unable to start conversation at this time. Please try again.');
+      setCreatingThread(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -109,10 +127,11 @@ const PublicProfile = () => {
           {user && user.id !== userId && (
             <button
               className="post-button"
-              style={{ marginLeft: 'auto' }}
-              onClick={() => navigate(`/messages?compose=true&recipientId=${userId}`)}
+              style={{ marginLeft: 'auto', opacity: creatingThread ? 0.7 : 1 }}
+              onClick={handleMessageClick}
+              disabled={creatingThread}
             >
-              Message
+              {creatingThread ? 'Starting...' : 'Message'}
             </button>
           )}
         </div>
