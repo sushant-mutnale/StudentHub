@@ -50,13 +50,8 @@ class OutboxWorker(BackgroundWorker):
             await outbox.mark_processing(event.id)
             
             # Convert string event type to enum (if valid)
-            try:
-                event_type = EventTypes(event.event_type)
-            except ValueError:
-                # Unknown event type, log and skip
-                logger.warning(f"Unknown event type: {event.event_type}")
-                await outbox.mark_processed(event.id)
-                return True
+            # Use the event type string directly
+            event_type = event.event_type
             
             # Publish to event bus
             await event_bus.publish(

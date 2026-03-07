@@ -142,13 +142,23 @@ def generate_default_transitions(stages: List[Dict]) -> List[Dict[str, Any]]:
     non_terminal = [s for s in stages if s["type"] not in TERMINAL_STAGE_TYPES]
     terminal_stages = {s["type"]: s["id"] for s in stages if s["type"] in TERMINAL_STAGE_TYPES}
     
-    for i, stage in enumerate(non_terminal[:-1]):
+    for i, stage in enumerate(non_terminal):
         # Forward to next stage
-        transitions.append({
-            "from_stage_id": stage["id"],
-            "to_stage_id": non_terminal[i + 1]["id"],
-            "allowed_by": ["recruiter", "admin"]
-        })
+        if i < len(non_terminal) - 1:
+            transitions.append({
+                "from_stage_id": stage["id"],
+                "to_stage_id": non_terminal[i + 1]["id"],
+                "allowed_by": ["recruiter", "admin"]
+            })
+            
+        # Allow hiring from Offer stage
+        if stage["type"] == STAGE_TYPE_OFFER and STAGE_TYPE_HIRED in terminal_stages:
+            transitions.append({
+                "from_stage_id": stage["id"],
+                "to_stage_id": terminal_stages[STAGE_TYPE_HIRED],
+                "allowed_by": ["recruiter", "admin"]
+            })
+            
         # Allow rejection from any non-terminal stage
         if STAGE_TYPE_REJECTED in terminal_stages:
             transitions.append({
@@ -352,6 +362,18 @@ def can_transition(pipeline: dict, from_stage_id: str, to_stage_id: str, actor_r
             transition.get("to_stage_id") == to_stage_id):
             allowed = transition.get("allowed_by", [])
             return actor_role in allowed or "admin" in allowed
+            
+    # Fallback for pipelines missing transitions
+    from_stage = get_stage_by_id(pipeline, from_stage_id)
+    to_stage = get_stage_by_id(pipeline, to_stage_id)
+    if from_stage and to_stage:
+        if from_stage.get("type") == STAGE_TYPE_OFFER and to_stage.get("type") == STAGE_TYPE_HIRED:
+            return actor_role in ["recruiter", "admin"]
+        if to_stage.get("type") == STAGE_TYPE_REJECTED and from_stage.get("type") not in TERMINAL_STAGE_TYPES:
+            return actor_role in ["recruiter", "admin"]
+        if to_stage.get("type") == STAGE_TYPE_WITHDRAWN and from_stage.get("type") not in TERMINAL_STAGE_TYPES:
+            return actor_role in ["student", "admin"]
+            
     return False
 
 
