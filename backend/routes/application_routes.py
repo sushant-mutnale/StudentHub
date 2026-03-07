@@ -83,17 +83,43 @@ def serialize_application(app: dict, job: dict = None, student: dict = None) -> 
 
 def serialize_student_application(app: dict, job: dict) -> StudentApplicationResponse:
     """Convert to student-facing application response."""
+    history = [
+        StageHistoryEntry(
+            stage_id=h.get("stage_id"),
+            stage_name=h["stage_name"],
+            changed_by="Manager", # Hide actual ID/name for privacy if needed
+            timestamp=h["timestamp"],
+            reason=h.get("reason")
+        ) for h in app.get("stage_history", [])
+    ]
+    
+    # Determine next step hint based on current status
+    next_step = None
+    if app["status"] == application_model.STATUS_ACTIVE:
+        stage_name = app["current_stage_name"].lower()
+        if "applied" in stage_name:
+            next_step = "Your application is being reviewed by the recruiter."
+        elif "screening" in stage_name:
+            next_step = "You are in the screening round. Expect a call or email soon."
+        elif "interview" in stage_name or "round" in stage_name:
+            next_step = "Prepare for your upcoming interview!"
+        elif "offer" in stage_name:
+            next_step = "Review the offer terms carefully."
+    
     return StudentApplicationResponse(
         id=str(app["_id"]),
         job_id=str(app["job_id"]),
         job_title=job.get("title", "Unknown"),
         company_name=job.get("company_name", "Unknown"),
         current_stage=app.get("student_visible_stage", "Under Review"),
+        current_stage_name=app["current_stage_name"],
         status=app["status"],
         applied_at=app["applied_at"],
         last_updated=app["updated_at"],
         interview_count=len(app.get("interview_ids", [])),
-        has_offer=app.get("offer_id") is not None
+        has_offer=app.get("offer_id") is not None,
+        stage_history=history,
+        next_step=next_step
     )
 
 

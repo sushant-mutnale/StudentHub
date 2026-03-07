@@ -81,11 +81,14 @@ class StudentApplicationResponse(BaseModel):
     job_title: str
     company_name: str
     current_stage: str  # student_visible_stage
+    current_stage_name: str # internal stage name
     status: str
     applied_at: datetime
     last_updated: datetime
     interview_count: int = 0
     has_offer: bool = False
+    stage_history: List[StageHistoryEntry] = []
+    next_step: Optional[str] = None
 
 
 class StudentApplicationsListResponse(BaseModel):

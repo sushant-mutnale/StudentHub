@@ -225,6 +225,7 @@ async def get_pipeline_board(
                     student_id=str(app["student_id"]),
                     student_name=student.get("full_name") or student.get("username", "Unknown"),
                     student_avatar=student.get("avatar_url"),
+                    email=student.get("email"),
                     applied_at=app["applied_at"],
                     last_activity=app.get("updated_at"),
                     overall_score=app.get("rating_summary", {}).get("overall_score"),

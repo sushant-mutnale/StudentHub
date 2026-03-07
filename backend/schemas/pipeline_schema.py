@@ -80,6 +80,7 @@ class PipelineBoardCandidate(BaseModel):
     student_id: str
     student_name: str
     student_avatar: Optional[str] = None
+    email: Optional[str] = None
     applied_at: datetime
     last_activity: Optional[datetime] = None
     overall_score: Optional[float] = None
