@@ -92,6 +92,15 @@ def serialize_student_application(app: dict, job: dict) -> StudentApplicationRes
         status=app["status"],
         applied_at=app["applied_at"],
         last_updated=app["updated_at"],
+        stage_history=[
+            StageHistoryEntry(
+                stage_id=h.get("stage_id"),
+                stage_name=h["stage_name"] if "student_visible_stage" not in h else h.get("student_visible_stage", h["stage_name"]),
+                changed_by=h["changed_by"],
+                timestamp=h["timestamp"],
+                reason=h.get("reason")
+            ) for h in app.get("stage_history", [])
+        ],
         interview_count=len(app.get("interview_ids", [])),
         has_offer=app.get("offer_id") is not None
     )
@@ -267,18 +276,6 @@ async def move_application_stage(
     
     job = await job_model.get_job(str(app["job_id"]))
     student = await user_model.get_user_by_id(str(app["student_id"]))
-    
-    # Send smart notification to the student
-    from ..services.notification_service import notification_service
-    company_name = job.get("company_name") or recruiter.get("company_name", "Company")
-    await notification_service.create_application_update_notification(
-        student_id=str(app["student_id"]),
-        job_title=job.get("title", "Job"),
-        company_name=company_name,
-        new_stage_name=new_stage["name"],
-        stage_type=new_stage.get("type", "custom"),
-        application_id=application_id
-    )
     
     return serialize_application(updated, job, student)
 

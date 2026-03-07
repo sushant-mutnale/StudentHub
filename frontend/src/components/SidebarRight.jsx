@@ -67,8 +67,10 @@ const SidebarRight = () => {
       if (!user) return;
       try {
         setLoadingConnections(true);
-        const { data: suggested } = await api.get('/users/suggested');
-        setConnections(suggested || []);
+        const users = await userService.searchUsers();
+        const existingIds = user.connections || [];
+        const suggested = users.filter(u => u.id !== user.id && !existingIds.includes(u.id)).slice(0, 3);
+        setConnections(suggested);
       } catch (err) {
         console.error('Failed to fetch connections:', err);
       } finally {
@@ -121,33 +123,28 @@ const SidebarRight = () => {
                     <Link to={`/profile/${conn.id}`} style={{ textDecoration: 'none', color: 'var(--color-text)', fontWeight: '600', fontSize: '0.9rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {conn.full_name || conn.username}
                     </Link>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: '600', opacity: 0.8 }}>
-                      {conn.reason}
-                    </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {conn.location}
+                      {conn.location || 'Student'}
                     </div>
                   </div>
                   <button
                     onClick={() => handleConnect(conn.id)}
                     className="btn-icon hover-scale"
-                    title={user.connections?.includes(conn.id) ? "Connected" : "Connect"}
-                    disabled={user.connections?.includes(conn.id)}
+                    title="Connect"
                     style={{
                       width: '32px',
                       height: '32px',
                       borderRadius: '50%',
-                      background: user.connections?.includes(conn.id) ? 'rgba(46, 204, 113, 0.1)' : 'rgba(102, 126, 234, 0.1)',
-                      color: user.connections?.includes(conn.id) ? '#2ecc71' : 'var(--color-primary)',
+                      background: 'rgba(102, 126, 234, 0.1)',
+                      color: 'var(--color-primary)',
                       border: 'none',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      cursor: user.connections?.includes(conn.id) ? 'default' : 'pointer',
-                      opacity: user.connections?.includes(conn.id) ? 0.8 : 1
+                      cursor: 'pointer'
                     }}
                   >
-                    {user.connections?.includes(conn.id) ? <FiCheckCircle size={16} /> : <FiUserPlus size={16} />}
+                    <FiUserPlus size={16} />
                   </button>
                 </div>
               ))
@@ -167,12 +164,7 @@ const SidebarRight = () => {
           <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text)', margin: 0 }}>
             Upcoming Contests
           </h3>
-          <span 
-            onClick={() => navigate('/opportunities?tab=hackathons')} 
-            style={{ fontSize: '0.8rem', color: 'var(--color-primary)', fontWeight: '600', cursor: 'pointer' }}
-          >
-            View All
-          </span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)', fontWeight: '600', cursor: 'pointer' }}>View All</span>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -308,17 +300,13 @@ const SidebarRight = () => {
           )}
         </div>
 
-        <button 
-          onClick={() => navigate('/opportunities?tab=content')}
-          className="btn-ghost" 
-          style={{
-            width: '100%',
-            marginTop: '0.5rem',
-            fontSize: '0.85rem',
-            fontWeight: '600',
-            color: 'var(--color-primary)'
-          }}
-        >
+        <button className="btn-ghost" style={{
+          width: '100%',
+          marginTop: '0.5rem',
+          fontSize: '0.85rem',
+          fontWeight: '600',
+          color: 'var(--color-primary)'
+        }}>
           Explore More Resources
         </button>
       </div>
