@@ -12,7 +12,7 @@ const ApplicationTracker = () => {
     const loadApplications = async () => {
         try {
             const data = await applicationService.getStudentApplications();
-            setApplications(data);
+            setApplications(data.applications || []);
         } catch (error) {
             console.error("Failed to load applications", error);
         } finally {
@@ -59,8 +59,8 @@ const ApplicationTracker = () => {
                                         <p className="text-gray-600 font-medium">{app.company_name}</p>
                                         <p className="text-sm text-gray-400 mt-1">Applied on {new Date(app.applied_at).toLocaleDateString()}</p>
                                     </div>
-                                    <span className={`px-4 py-1 rounded-full text-sm font-semibold border ${getStatusColor(app.current_stage_name)}`}>
-                                        {app.current_stage_name}
+                                    <span className={`px-4 py-1 rounded-full text-sm font-semibold border ${getStatusColor(app.current_stage)}`}>
+                                        {app.current_stage}
                                     </span>
                                 </div>
 
@@ -69,7 +69,7 @@ const ApplicationTracker = () => {
                                     <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-200 transform -translate-y-1/2 -z-10"></div>
                                     <div className="flex justify-between items-center w-full px-4">
                                         {['Applied', 'Screening', 'Interview', 'Offer'].map((step, index) => {
-                                            const status = getStepStatus(step, app.current_stage_name);
+                                            const status = getStepStatus(step, app.current_stage);
                                             return (
                                                 <div key={step} className="flex flex-col items-center bg-white px-2">
                                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${getStepColor(status)}`}>
