@@ -96,9 +96,9 @@ const ApplicationPipeline = () => {
             <SidebarLeft />
             <div className="dashboard-main animate-fade-in" style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', background: '#f9fafb', overflow: 'hidden' }}>
                 {/* Header */}
-                <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', background: 'white', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10, position: 'relative' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: '700', background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', background: 'white', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', zIndex: 10, position: 'relative' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1.5rem' }}>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: '700', background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', margin: 0 }}>
                             {pipeline.name}
                         </h2>
                         <div style={{ display: 'flex', alignItems: 'center', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '6px 12px' }}>
@@ -132,7 +132,7 @@ const ApplicationPipeline = () => {
                                 <div
                                     key={stage.stage_id}
                                     style={{
-                                        width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column',
+                                        width: '280px', flexShrink: 0, display: 'flex', flexDirection: 'column',
                                         background: 'rgba(249,250,251,0.7)',
                                         borderRadius: '12px', maxHeight: '100%', transition: 'background 0.2s ease',
                                         animation: `fadeIn 0.5s ease-out ${stageIdx * 0.1}s backwards`

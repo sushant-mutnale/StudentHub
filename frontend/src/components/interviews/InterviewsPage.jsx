@@ -4,6 +4,7 @@ import { interviewService } from '../../services/interviewService';
 import InterviewCard from './InterviewCard';
 import InterviewModal from './InterviewModal';
 import FeedbackForm from './FeedbackForm';
+import SidebarLeft from '../SidebarLeft';
 import '../../App.css';
 
 const InterviewsPage = () => {
@@ -41,52 +42,65 @@ const InterviewsPage = () => {
   const handleUpdated = () => load();
 
   return (
-    <div className="messages-layout">
-      <div className="messages-panel">
-        <div className="conversation-header">
-          <div>
-            <h2>Interviews</h2>
-            <p style={{ color: '#666', marginTop: '0.25rem' }}>
-              Track proposals and scheduled interviews.
-            </p>
+    <div className="dashboard-container">
+      <SidebarLeft />
+      <div className="dashboard-main">
+        <div className="dashboard-header animate-fade-in">
+          <h1 className="dashboard-title" style={{
+            background: 'var(--gradient-primary)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text'
+          }}>Interviews</h1>
+          <p style={{ color: '#666', marginTop: '0.25rem', fontSize: '0.9rem' }}>
+            Track proposals and scheduled interviews.
+          </p>
+        </div>
+
+        <div className="dashboard-content">
+          <div className="glass-card animate-fade-in-up" style={{ padding: '1.5rem', borderRadius: 'var(--radius-lg)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <div className="filter-row">
+                <select
+                  className="form-input"
+                  style={{ minWidth: '150px' }}
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                >
+                  <option value="all">All</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="proposed">Proposed</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="rescheduled">Rescheduled</option>
+                </select>
+              </div>
+
+              {user?.role === 'recruiter' && (
+                <button className="btn-glow" onClick={() => setShowModal(true)}>
+                  + Propose Interview
+                </button>
+              )}
+            </div>
+
+            {error && <div className="error-message" style={{ marginBottom: '1rem' }}>{error}</div>}
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>Loading interviews...</div>
+              ) : list.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>No interviews yet.</div>
+              ) : (
+                list.map((interview) => (
+                  <InterviewCard
+                    key={interview.id}
+                    interview={interview}
+                    currentUser={user}
+                    onUpdated={handleUpdated}
+                    onFeedback={(id) => setFeedbackInterview(id)}
+                  />
+                ))
+              )}
+            </div>
           </div>
-          {user?.role === 'recruiter' && (
-            <button className="form-button" onClick={() => setShowModal(true)}>
-              + Propose Interview
-            </button>
-          )}
         </div>
-
-        <div className="filter-row">
-          <select
-            className="form-input"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          >
-            <option value="all">All</option>
-            <option value="upcoming">Upcoming</option>
-            <option value="proposed">Proposed</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="rescheduled">Rescheduled</option>
-          </select>
-        </div>
-
-        {error && <div className="error-message">{error}</div>}
-        {loading ? (
-          <div className="empty-state">Loading interviews...</div>
-        ) : list.length === 0 ? (
-          <div className="empty-state">No interviews yet.</div>
-        ) : (
-          list.map((interview) => (
-            <InterviewCard
-              key={interview.id}
-              interview={interview}
-              currentUser={user}
-              onUpdated={handleUpdated}
-              onFeedback={(id) => setFeedbackInterview(id)}
-            />
-          ))
-        )}
       </div>
 
       {showModal && user?.role === 'recruiter' && (

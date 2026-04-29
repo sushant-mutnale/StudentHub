@@ -5,6 +5,7 @@ import SidebarLeft from './SidebarLeft';
 import SidebarRight from './SidebarRight';
 import PostBox from './PostBox';
 import PostFeed from './PostFeed';
+import FloatingActionButton from './FloatingActionButton';
 import { FiHome, FiGrid } from 'react-icons/fi';
 import '../App.css';
 
@@ -12,6 +13,7 @@ const StudentDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
 
   useEffect(() => {
     if (!user || user.role !== 'student') {
@@ -22,6 +24,7 @@ const StudentDashboard = () => {
 
   const handlePostCreated = () => {
     setRefreshTrigger((prev) => prev + 1);
+    setIsComposeOpen(false); // Close modal on success
   };
 
   if (!user || user.role !== 'student') {
@@ -59,8 +62,12 @@ const StudentDashboard = () => {
 
         <div className="dashboard-content" style={{ maxWidth: '800px', margin: '0 auto' }}>
 
-          <div className="animate-fade-in-up delay-100">
-            <h3 style={{
+          <div className={`compose-section ${isComposeOpen ? 'mobile-open' : ''} animate-fade-in-up delay-100`}>
+            <div className="compose-header-mobile">
+              <h3 style={{ margin: 0 }}>Create Post</h3>
+              <button onClick={() => setIsComposeOpen(false)} className="btn-icon">×</button>
+            </div>
+            <h3 className="compose-title-desktop" style={{
               marginBottom: '1rem',
               color: 'var(--color-text)',
               display: 'flex',
@@ -80,6 +87,11 @@ const StudentDashboard = () => {
       </div>
 
       <SidebarRight />
+
+      <FloatingActionButton
+        onClick={() => setIsComposeOpen(!isComposeOpen)}
+        isOpen={isComposeOpen}
+      />
     </div>
   );
 };

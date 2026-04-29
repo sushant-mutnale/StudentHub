@@ -17,6 +17,7 @@ const SidebarLeft = () => {
   const { user, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const deepRoutes = [
     '/research', '/learning', '/assessment',
@@ -77,6 +78,11 @@ const SidebarLeft = () => {
         .catch(err => console.error("Failed to load unread count:", err));
     }
   }, [user, location.pathname]); // Refresh when navigating back from deep routes
+
+  const handleNavClick = (path) => {
+    setMobileMenuOpen(false);
+    navigate(path);
+  };
 
   const studentNavStructure = [
     { type: 'link', label: 'Dashboard', icon: FiHome, path: '/dashboard/student' },
@@ -178,7 +184,7 @@ const SidebarLeft = () => {
     return (
       <div
         key={item.path}
-        onClick={() => navigate(item.path)}
+        onClick={() => handleNavClick(item.path)}
         className={`nav-item-modern ${active ? 'active' : ''}`}
         style={{
           paddingLeft: isDeepRoute ? '1rem' : (isNested ? '2.5rem' : '1.25rem'),
@@ -294,15 +300,30 @@ const SidebarLeft = () => {
           cursor: 'pointer'
         }}
       >
-        <FiHome /> Home
       </button>
     </div>
   );
 
   return (
     <>
+      <button
+        className="mobile-menu-toggle"
+        onClick={() => setMobileMenuOpen(true)}
+        style={{ display: 'none' }} // Hidden on desktop via CSS, shown via media query
+      >
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="24" height="24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
+      <div
+        className={`sidebar-overlay ${mobileMenuOpen ? 'mobile-open' : ''}`}
+        onClick={() => setMobileMenuOpen(false)}
+      />
+
       {isDeepRoute && <FloatingButtons />}
-      <div className={`sidebar-left glass-panel ${isDeepRoute ? 'collapsed' : ''}`} style={{
+
+      <div className={`sidebar-left glass-panel ${isDeepRoute ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`} style={{
         borderRight: '1px solid rgba(255,255,255,0.5)',
         background: 'rgba(255, 255, 255, 0.8)',
         backdropFilter: 'blur(20px)',

@@ -624,7 +624,7 @@ const PostFeed = ({ refreshTrigger = 0 }) => {
               <div style={{ height: '1px', background: 'var(--color-border-light)', marginBottom: '1rem' }} />
 
               {/* Interaction Buttons */}
-              <div style={{ display: 'flex', gap: '1.5rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
                 <button
                   onClick={() => toggleLike(post.id)}
                   className="hover-lift"

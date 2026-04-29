@@ -462,7 +462,7 @@ const LearningPath = () => {
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
                         {/* Path List */}
                         <div className="glass-card animate-fade-in-up delay-100" style={{ height: 'fit-content', padding: '1.5rem', borderRadius: 'var(--radius-lg)' }}>
                             <h4 style={{ marginBottom: '1rem', color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem' }}>
@@ -523,7 +523,7 @@ const LearningPath = () => {
                                 <>
                                     {/* Path Header */}
                                     <div style={{ marginBottom: '2rem' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                                             <div>
                                                 <h2 style={{ color: 'var(--color-text)', margin: 0, fontSize: '1.5rem', marginBottom: '0.5rem' }}>{activePath.skill || activePath.name}</h2>
                                                 {activePath.ai_advice && <p style={{ color: 'var(--color-text-secondary)', margin: 0, fontSize: '0.9rem' }}>{activePath.ai_advice}</p>}
@@ -533,7 +533,7 @@ const LearningPath = () => {
                                                     </span>
                                                 )}
                                             </div>
-                                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexShrink: 0 }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', flexShrink: 0 }}>
                                                 <button onClick={() => setIsChatOpen(!isChatOpen)} className="btn-glow hover-lift"
                                                     style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', background: isChatOpen ? 'var(--gradient-success)' : 'linear-gradient(135deg,#8b5cf6 0%,#7c3aed 100%)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontWeight: '600', cursor: 'pointer' }}>
                                                     <FiMessageCircle size={16} />{isChatOpen ? 'Close Chat' : 'Ask AI Mentor'}
@@ -612,7 +612,7 @@ const LearningPath = () => {
                                                         borderRadius: 'var(--radius-lg)',
                                                         border: `1px solid ${isCompleted ? 'rgba(16,185,129,0.2)' : 'var(--color-border-light)'}`
                                                     }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', gap: '1rem' }}>
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', gap: '1rem' }}>
                                                             <h4 style={{ margin: 0, color: 'var(--color-text)', fontSize: '1.1rem' }}>
                                                                 {stage.stage_name || stage.name}
                                                                 {stage.mcq_score !== undefined && (

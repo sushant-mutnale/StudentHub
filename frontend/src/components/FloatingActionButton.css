@@ -1,0 +1,36 @@
+.floating-action-button {
+    display: none;
+    /* Hidden on desktop */
+}
+
+@media (max-width: 1024px) {
+    .floating-action-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        bottom: 80px;
+        /* Above the MobileBottomNav (60px + padding) */
+        right: 20px;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: var(--gradient-primary);
+        color: white;
+        border: none;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        z-index: 900;
+        cursor: pointer;
+        transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease;
+    }
+
+    .floating-action-button:active {
+        transform: scale(0.9);
+    }
+
+    .floating-action-button.open {
+        background: var(--color-danger);
+        /* E.g., red when open to close it */
+        transform: rotate(90deg);
+    }
+}

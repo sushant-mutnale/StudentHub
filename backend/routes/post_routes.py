@@ -52,15 +52,16 @@ def serialize_post(doc: dict) -> PostResponse:
     )
 
 
-@router.get("/", response_model=list[PostResponse])
+@router.get("", response_model=list[PostResponse])
 async def list_posts():
     posts = await post_model.list_posts()
     return [serialize_post(p) for p in posts]
 
 
-@router.post("/", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
 async def create_post(payload: PostCreate, current_student=Depends(get_current_student)):
     doc = await post_model.create_post(current_student, payload.dict())
+
     await log_activity(
         str(current_student["_id"]), 
         "POST_CREATED", 

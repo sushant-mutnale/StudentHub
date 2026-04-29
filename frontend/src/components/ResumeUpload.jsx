@@ -249,6 +249,7 @@ const ResumeUpload = () => {
                                 border: '1px solid rgba(59, 130, 246, 0.2)',
                                 borderRadius: 'var(--radius-md)',
                                 display: 'flex',
+                                flexWrap: 'wrap',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 gap: '1rem'
@@ -336,8 +337,10 @@ const ResumeUpload = () => {
                             {/* Success Header */}
                             <div style={{
                                 display: 'flex',
+                                flexWrap: 'wrap',
                                 justifyContent: 'space-between',
                                 alignItems: 'flex-start',
+                                gap: '1rem',
                                 marginBottom: '2rem',
                                 paddingBottom: '1.5rem',
                                 borderBottom: '1px solid var(--color-border-light)'
@@ -496,7 +499,7 @@ const ResumeUpload = () => {
                                     {/* Strengths & Issues Grid */}
                                     <div style={{
                                         display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
                                         gap: '1.5rem',
                                         marginBottom: '2rem'
                                     }}>

@@ -33,6 +33,7 @@ import ApplicationTracker from './components/ApplicationTracker';
 import AdminDashboard from './components/AdminDashboard';
 import VerificationStatus from './components/VerificationStatus';
 import AnalyticsDashboard from './components/Analytics/AnalyticsDashboard';
+import MobileBottomNav from './components/MobileBottomNav';
 import './App.css';
 
 // Protected Route Component
@@ -337,6 +338,7 @@ function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <MobileBottomNav />
         </div>
       </Router>
     </AuthProvider>

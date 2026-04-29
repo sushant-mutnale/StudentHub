@@ -268,7 +268,7 @@ const RecruiterDashboard = () => {
                         </span>
                       ))}
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '1rem' }}>
                       <button
                         className="form-button"
                         type="button"
@@ -359,7 +359,7 @@ const RecruiterDashboard = () => {
                                     </span>
                                   ))}
                                 </div>
-                                <div className="match-actions" style={{ display: 'flex', gap: '0.8rem' }}>
+                                <div className="match-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.8rem', marginTop: '1rem' }}>
                                   <Link to={`/profile/${student.id}`} className="form-button outline" style={{ margin: 0, padding: '0.6rem 1rem', fontSize: '0.85rem' }}>
                                     View Profile
                                   </Link>

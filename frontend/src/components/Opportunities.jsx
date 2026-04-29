@@ -108,7 +108,7 @@ const Opportunities = () => {
                 </div>
                 <div className="dashboard-content">
                     {/* Tabs */}
-                    <div className="animate-slide-up" style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+                    <div className="animate-slide-up" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
                         {tabs.map(tab => (
                             <button
                                 key={tab.id}
@@ -138,7 +138,7 @@ const Opportunities = () => {
                     {/* Filters for Jobs */}
                     {activeTab === 'jobs' && (
                         <div className="card glass-card animate-slide-up delay-100" style={{ marginBottom: '2rem', padding: '1.5rem' }}>
-                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
                                 <div style={{ position: 'relative', flex: 1 }}>
                                     <FiSearch style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                                     <input
@@ -161,7 +161,7 @@ const Opportunities = () => {
                                         style={{ marginBottom: 0, paddingLeft: '2.5rem' }}
                                     />
                                 </div>
-                                <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', flex: 1 }}>
                                     <select
                                         value={filters.experience}
                                         onChange={(e) => setFilters({ ...filters, experience: e.target.value })}
