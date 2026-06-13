@@ -3,7 +3,7 @@ Voice Interview Routes
 Handles voice-based interview sessions with pre-recorded video states.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional
 import uuid
@@ -302,3 +302,93 @@ async def end_voice_session(
         }
     
     raise HTTPException(status_code=404, detail="Session not found")
+
+
+# ============ LiveKit & real-time streaming ============
+
+class LiveKitTokenRequest(BaseModel):
+    room_name: str
+    identity: str
+    name: Optional[str] = None
+
+
+@router.post("/token")
+async def get_livekit_token(
+    data: LiveKitTokenRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Generate a LiveKit JWT access token for WebRTC connection.
+    """
+    from jose import jwt
+    from datetime import datetime, timedelta
+    from ..config import settings
+    
+    try:
+        now = datetime.utcnow()
+        payload = {
+            "iss": settings.livekit_api_key,
+            "sub": data.identity,
+            "nbf": int(now.timestamp()),
+            "exp": int((now + timedelta(hours=2)).timestamp()),
+            "video": {
+                "roomJoin": True,
+                "room": data.room_name,
+                "canPublish": True,
+                "canSubscribe": True,
+                "canPublishData": True
+            }
+        }
+        if data.name:
+            payload["name"] = data.name
+            
+        token = jwt.encode(payload, settings.livekit_api_secret, algorithm="HS256")
+        return {
+            "token": token,
+            "url": settings.livekit_url
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate token: {str(e)}")
+
+
+@router.websocket("/stream/{session_id}")
+async def voice_stream_endpoint(
+    websocket: WebSocket,
+    session_id: str
+):
+    """
+    WebSocket endpoint for real-time duplex audio streaming (STT/TTS routing stub).
+    Allows sending audio chunks and receiving transcription and synthesized audio response.
+    """
+    await websocket.accept()
+    print(f"WebSocket voice stream connected: {session_id}")
+    try:
+        while True:
+            # Receive audio frame (binary) or command (text)
+            data = await websocket.receive()
+            
+            if "bytes" in data:
+                # Stub: Process incoming raw audio chunk (e.g. run Whisper or stream to LiveKit)
+                audio_chunk = data["bytes"]
+                # For demo/stub purposes, echo back acknowledgment or mock response
+                await websocket.send_json({
+                    "status": "processing",
+                    "bytes_received": len(audio_chunk),
+                    "message": "Audio chunk received by stub"
+                })
+            elif "text" in data:
+                text_data = data["text"]
+                # Process command or text input
+                await websocket.send_json({
+                    "status": "acknowledged",
+                    "text_received": text_data,
+                    "message": "Command received by stub"
+                })
+    except WebSocketDisconnect:
+        print(f"WebSocket voice stream disconnected: {session_id}")
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        try:
+            await websocket.close()
+        except Exception:
+            pass

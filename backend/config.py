@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # Scrapers
     apify_api_key: Optional[str] = None
     
+    # LiveKit (WebRTC)
+    livekit_api_key: str = "devkey"
+    livekit_api_secret: str = "secret"
+    livekit_url: str = "http://localhost:7880"
+    
     # Rate Limiting
     rate_limit_enabled: bool = True
     rate_limit_default: str = "100/minute"
