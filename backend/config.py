@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator, Field
 from typing import List, Optional
 from pathlib import Path
 
@@ -27,6 +28,9 @@ class Settings(BaseSettings):
     # Frontend
     frontend_origin: str = "http://localhost:5173"
     frontend_base_url: Optional[str] = None
+    # Comma-separated extra origins injected via env (e.g. FRONTEND_ORIGINS=https://a.com,https://b.com)
+    frontend_origins_extra: Optional[str] = None
+    frontend_origins_env: Optional[str] = Field(default=None, validation_alias="FRONTEND_ORIGINS")
     
     # Environment
     app_env: str = "development"
@@ -74,6 +78,20 @@ class Settings(BaseSettings):
     class Config:
         env_file = str(CONFIG_DIR / ".env")
         env_file_encoding = "utf-8"
+        env_prefix = ""
+
+    @model_validator(mode="after")
+    def _validate_production_secrets(self) -> "Settings":
+        """Enforce that production deployments use a real JWT secret."""
+        if (
+            self.app_env == "production"
+            and self.jwt_secret == "dev-only-change-me-in-production"
+        ):
+            raise ValueError(
+                "JWT_SECRET must be changed from the default value in production. "
+                "Set a strong random secret in your environment variables."
+            )
+        return self
 
     @property
     def frontend_origins(self) -> List[str]:
@@ -95,9 +113,20 @@ class Settings(BaseSettings):
             "https://student-hub-five-self.vercel.app",
             "https://student-hub-five-self.vercel.app/",
         ]
-        # Add custom frontend origin from env if set
+        # Add single custom frontend origin from env if set
         if self.frontend_origin and self.frontend_origin not in origins:
             origins.append(self.frontend_origin)
+        # Add comma-separated FRONTEND_ORIGINS env var entries
+        if self.frontend_origins_extra:
+            for origin in self.frontend_origins_extra.split(","):
+                origin = origin.strip()
+                if origin and origin not in origins:
+                    origins.append(origin)
+        if self.frontend_origins_env:
+            for origin in self.frontend_origins_env.split(","):
+                origin = origin.strip()
+                if origin and origin not in origins:
+                    origins.append(origin)
         return origins
 
 

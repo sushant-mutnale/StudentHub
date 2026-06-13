@@ -87,3 +87,10 @@ async def add_comment(post_id: str, user_id: str, text: str):
     )
     return await get_post(post_id)
 
+
+async def ensure_post_indexes():
+    coll = posts_collection()
+    await coll.create_index("author_id", background=True)
+    await coll.create_index("created_at", background=True)
+
+

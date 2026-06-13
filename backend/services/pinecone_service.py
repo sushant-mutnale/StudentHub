@@ -1,113 +1,103 @@
-from pinecone import Pinecone
 import os
 import logging
 from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-# Initialize Pinecone
+# Initialize Pinecone safely
 try:
-    api_key = settings.pinecone_api_key or os.getenv("PINECONE_API_KEY")
-    pc = Pinecone(api_key=api_key)
-    # Connect to your existing index
-    index_name = settings.pinecone_index or os.getenv("PINECONE_INDEX") or "studenthub"
-    index = pc.Index(index_name)
-    logger.info(f"Pinecone service initialized for index: {index_name}")
-except Exception as e:
-    logger.error(f"Failed to initialize Pinecone: {e}")
-    pc = None
-    index = None
+    from pinecone import Pinecone
+except ImportError as e:
+    logger.warning(f"Pinecone SDK not installed (ModuleNotFoundError): {e}. Pinecone service will be disabled.")
+    Pinecone = None
+
+pc = None
+index = None
+
+if Pinecone is not None:
+    try:
+        api_key = settings.pinecone_api_key or os.getenv("PINECONE_API_KEY")
+        index_name = settings.pinecone_index or os.getenv("PINECONE_INDEX") or "studenthub"
+        if api_key:
+            pc = Pinecone(api_key=api_key)
+            index = pc.Index(index_name)
+            logger.info(f"Pinecone service initialized for index: {index_name}")
+        else:
+            logger.warning("PINECONE_API_KEY is not set. Pinecone service will be disabled.")
+    except Exception as e:
+        logger.error(f"Failed to initialize Pinecone: {e}")
+        pc = None
+        index = None
 
 def get_index():
     if index is None:
         logger.warning("Pinecone index not initialized.")
     return index
 
-def add_record(id: str, text: str):
+def add_record(id: str, text: str, namespace: str = ""):
     """
     Add a unified text record to Pinecone.
+    Uses integrated embeddings if supported, otherwise falls back to OpenAI embeddings.
     """
     idx = get_index()
     if not idx:
         return None
 
     try:
-        # User specified format for integrated embedding
-        record = [
-            {
-                "id": id,
-                "text": text
-            }
-        ]
-        # Using 'vectors' arg usually, but user specified 'records' for integrated embedding
-        # We will try satisfying their specific request pattern
-        # If this fails, we might need to adjust based on the library version
-        response = idx.upsert(vectors=record) 
-        # WAIT: The user said 'records=record'. 
-        # But usually client.upsert(vectors=[...]). 
-        # If they use integrated embedding, maybe the dict keys are different.
-        # Let's try to match their exact snippet logic:
-        # "index.upsert(records=record)"
-        # I will check if I can use 'vectors' but pass the dict structure they want.
-        # Actually, let's stick to their method name if it exists? 
-        # No, Python is strict. upsert(vectors=...) is the standard. 
-        # I will use `vectors=record` BUT I'll leave a comment that this depends on the server handling 'text' field generation.
-        # Actually, for "Integrated Inference", the format IS usually passing text in a specific way.
-        # I will use 'vectors=record' as that is the standard arg name, but maybe the client supports 'records'?
-        # Let's try 'vectors' first as it's safer, but I will wrap carefully.
-        
-        # ACTUALLY, I will try to follow their exact snippet lines in the test file easier.
-        # Here I will write a robust service.
-        
-        # Let's trust the user's specific instruction:
-        # index.upsert(records=record)
-        # However, type hinting in recent clients might complain.
-        # I'll use **kwargs if needed or just try call.
-        
-        return idx.upsert(vectors=record) 
+        # Check if modern upsert_records (integrated embedding API) is supported
+        if hasattr(idx, "upsert_records"):
+            record = [{"id": id, "text": text}]
+            return idx.upsert_records(
+                namespace=namespace,
+                records=record
+            )
+        else:
+            # Fallback to OpenAI embeddings + old Index.upsert(vectors=...)
+            logger.info("upsert_records not supported on index. Falling back to generating OpenAI embeddings first.")
+            from langchain_openai import OpenAIEmbeddings
+            openai_api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+            embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
+            vector = embeddings.embed_query(text)
+            
+            record = [{"id": id, "values": vector, "metadata": {"text": text}}]
+            return idx.upsert(vectors=record, namespace=namespace)
     except Exception as e:
         logger.error(f"Error adding record to Pinecone: {e}")
         return None
 
-def search_records(query_text: str, top_k: int = 5):
+def search_records(query_text: str, top_k: int = 5, namespace: str = ""):
     """
     Search Pinecone index using text query.
+    Uses integrated search if supported, otherwise falls back to OpenAI embeddings.
     """
     idx = get_index()
     if not idx:
         return []
 
     try:
-        # User's snippet:
-        # result = index.query(
-        #    top_k=5,
-        #    queries=[{"text": query_text}],
-        #    include_metadata=True
-        # )
-        # Standard query uses `vector` or `id`. 
-        # If integrated, `inputs` or `queries` might be valid.
-        # I'll stick to the user's requested format.
-        
-        result = idx.query(
-            top_k=top_k,
-            vector=[], # usually required if not using ID, but maybe optional for integrated
-            # queries=[{"text": query_text}], # This arg is definitely non-standard in old clients
-            # Let's try to pass it via kwargs or assume the user knows this specific client version capabilities
-            inputs={"text": query_text}, # Another guess for inference API
-            include_metadata=True
-        )
-        return result
-    except TypeError:
-         # Fallback to user's exact syntax if my guess failed
-         try:
-             return idx.query(
+        # Check if modern search (integrated embedding search) is supported
+        if hasattr(idx, "search"):
+            results = idx.search(
+                namespace=namespace,
+                query={"inputs": {"text": query_text}, "top_k": top_k},
+                fields=["text"]
+            )
+            return results
+        else:
+            # Fallback to OpenAI embeddings + old Index.query
+            logger.info("search method not supported on index. Falling back to OpenAI embeddings query.")
+            from langchain_openai import OpenAIEmbeddings
+            openai_api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+            embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
+            vector = embeddings.embed_query(query_text)
+            
+            results = idx.query(
+                namespace=namespace,
+                vector=vector,
                 top_k=top_k,
-                queries=[{"text": query_text}],
                 include_metadata=True
-             )
-         except Exception as e:
-             logger.error(f"Pinecone search error: {e}")
-             return []
+            )
+            return results
     except Exception as e:
         logger.error(f"Pinecone search error: {e}")
         return []

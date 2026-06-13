@@ -1,14 +1,14 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .base import MongoModel
 
 
 class JobCreate(MongoModel):
-    title: str
-    description: str
+    title: str = Field(..., max_length=200)
+    description: str = Field(..., max_length=15000)
     skills_required: List[str]
     location: str
     # Controls which students can see this job in their feed.

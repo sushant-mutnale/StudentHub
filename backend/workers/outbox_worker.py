@@ -53,12 +53,13 @@ class OutboxWorker(BackgroundWorker):
             # Use the event type string directly
             event_type = event.event_type
             
-            # Publish to event bus
+            # Publish to event bus synchronously to ensure handlers succeed
             await event_bus.publish(
                 event_type=event_type,
                 payload=event.payload,
                 correlation_id=event.correlation_id,
-                actor_id=event.actor_id
+                actor_id=event.actor_id,
+                wait=True
             )
             
             # Mark as processed
@@ -73,6 +74,7 @@ class OutboxWorker(BackgroundWorker):
             
         except Exception as e:
             await outbox.mark_failed(event.id, str(e))
+            await self.on_job_failure(event, e)  # Call explicitly before re-raising
             raise
     
     async def on_job_failure(self, event: OutboxEvent, error: Exception):

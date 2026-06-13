@@ -24,10 +24,10 @@ class AIProfileSchema(BaseModel):
     last_computed_at: datetime = Field(default_factory=datetime.utcnow)
 
 class UserBase(MongoModel):
-    username: str
+    username: str = Field(..., min_length=3, max_length=30)
     email: EmailStr
     avatar_url: Optional[str] = None
-    bio: Optional[str] = None
+    bio: Optional[str] = Field(None, max_length=2000)
     skills: List[SkillSchema] = Field(default_factory=list)
     ai_profile: Optional[AIProfileSchema] = None
     connections: List[str] = Field(default_factory=list)
@@ -35,7 +35,7 @@ class UserBase(MongoModel):
 
 class StudentCreate(UserBase):
     full_name: str
-    password: str
+    password: str = Field(..., min_length=8)
     prn: str
     college: str
     branch: str
@@ -45,7 +45,7 @@ class StudentCreate(UserBase):
 
 
 class RecruiterCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=8)
     company_name: str
     contact_number: Optional[str] = None
     website: Optional[str] = None
@@ -104,7 +104,7 @@ class MatchResult(UserPublic):
 
 class UserUpdate(MongoModel):
     avatar_url: Optional[str] = None
-    bio: Optional[str] = None
+    bio: Optional[str] = Field(None, max_length=2000)
     skills: Optional[List[SkillSchema]] = None
     ai_profile: Optional[AIProfileSchema] = None
     connections: Optional[List[str]] = None

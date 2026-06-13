@@ -48,7 +48,7 @@ def calculate_match_explanation(student: dict, required_skills: list[str]) -> Ma
     proficiency_sum = 0
     
     # Also check bio for partial credit if it wasn't a direct skill match
-    student_bio = student.get("bio", "").lower()
+    student_bio = (student.get("bio") or "").lower()
 
     for req in normalized_required:
         if req in student_skills_dict:
@@ -133,7 +133,38 @@ async def job_matches(job_id: str, recruiter=Depends(get_current_recruiter)):
         raise HTTPException(status_code=404, detail="Job not found")
 
     required_skills = job.get("skills_required", [])
-    students = await user_model.list_students_by_skill_matches(required_skills)
+    job_description = job.get("description", "")
+    
+    students = []
+    used_semantic = False
+    
+    # Try Pinecone semantic search first
+    try:
+        from ..services.pinecone_service import get_index, search_records
+        from bson import ObjectId
+        index = get_index()
+        if index is not None and job_description:
+            print(f"Trying Pinecone semantic search for job: {job_id}...")
+            search_res = search_records(job_description, top_k=20)
+            if search_res and "matches" in search_res:
+                match_ids = [ObjectId(m["id"]) for m in search_res["matches"] if ObjectId.is_valid(m["id"])]
+                if match_ids:
+                    cursor = user_model.users_collection().find({
+                        "role": "student",
+                        "_id": {"$in": match_ids}
+                    })
+                    db_students = await cursor.to_list(length=None)
+                    # Maintain the order of matches returned by Pinecone
+                    student_map = {str(s["_id"]): user_model.migrate_user_skills(s) for s in db_students}
+                    students = [student_map[str(m_id)] for m_id in match_ids if str(m_id) in student_map]
+                    used_semantic = True
+                    print(f"Found {len(students)} students via Pinecone semantic search.")
+    except Exception as e:
+        print(f"⚠️ Pinecone query failed, falling back to regex: {e}")
+        
+    if not used_semantic:
+        print("Using MongoDB regex fallback matching...")
+        students = await user_model.list_students_by_skill_matches(required_skills)
 
     results = []
     for student in students:

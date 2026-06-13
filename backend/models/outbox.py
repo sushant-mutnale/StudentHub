@@ -222,3 +222,10 @@ async def publish_with_outbox(
         correlation_id=correlation_id,
         actor_id=actor_id
     )
+
+
+async def ensure_outbox_indexes():
+    coll = OutboxService()._get_collection()
+    await coll.create_index("id", unique=True, background=True)
+    await coll.create_index([("status", 1), ("attempts", 1), ("created_at", 1)], background=True)
+

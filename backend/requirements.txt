@@ -1,5 +1,6 @@
 # StudentHub Backend - Production Requirements
 # Optimized for Render.com deployment (Python 3.13)
+Faker
 # Using latest versions with pre-built wheels
 
 # ===== Core Framework =====

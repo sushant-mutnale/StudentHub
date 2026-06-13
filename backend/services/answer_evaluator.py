@@ -127,10 +127,21 @@ class AnswerEvaluator:
         # Generate feedback
         feedback = await self._generate_dsa_feedback(question, answer, code, breakdown)
         
+        # Add AI complexity analysis
+        complexity = await self._ai_analyze_complexity(code or answer)
+        feedback_with_complexity = (
+            feedback + 
+            f"\n\n**Complexity Analysis:**\n"
+            f"- **Time Complexity:** `{complexity['time_complexity']}`\n"
+            f"- **Space Complexity:** `{complexity['space_complexity']}`\n"
+            f"- **Explanation:** {complexity['explanation']}"
+        )
+        
         return {
             "score": round(overall, 1),
             "breakdown": breakdown,
-            "feedback": feedback,
+            "feedback": feedback_with_complexity,
+            "complexity_analysis": complexity,
             "strengths": strengths[:3],
             "improvements": improvements[:3],
             "grade": self._score_to_grade(overall)
@@ -429,6 +440,60 @@ Write 2-3 sentences of specific, encouraging feedback. Mention what was good and
             return "Good attempt! Your solution shows understanding of the core concepts. Focus on optimizing time complexity and handling edge cases."
         else:
             return "Keep practicing! Try breaking down the problem into smaller steps. Consider the data structures that might help solve this efficiently."
+
+    async def _ai_analyze_complexity(self, code: Optional[str]) -> Dict[str, str]:
+        """Use the LLM to statically inspect and analyze code complexity (Time and Space)."""
+        if not code or len(code) < 15:
+            return {
+                "time_complexity": "N/A",
+                "space_complexity": "N/A",
+                "explanation": "No code provided to analyze complexity."
+            }
+            
+        llm = self._get_llm_service()
+        if not llm:
+            return {
+                "time_complexity": "Unknown",
+                "space_complexity": "Unknown",
+                "explanation": "AI complexity analyzer is currently offline."
+            }
+            
+        prompt = f"""Statically analyze the time and space complexity (Big-O notation) of this code.
+        
+Code:
+```
+{code}
+```
+
+Format the output strictly as a JSON object with keys:
+"time_complexity": "O(...)",
+"space_complexity": "O(...)",
+"explanation": "A concise 1-2 sentence explanation of why."
+
+Do not return any other text, markdown blocks, or headers. Return ONLY the JSON object.
+"""
+        try:
+            response = await llm.generate(prompt)
+            import json
+            # find first '{' and last '}'
+            start_idx = response.find('{')
+            end_idx = response.rfind('}')
+            if start_idx != -1 and end_idx != -1:
+                json_str = response[start_idx:end_idx+1]
+                data = json.loads(json_str)
+                return {
+                    "time_complexity": data.get("time_complexity", "Unknown"),
+                    "space_complexity": data.get("space_complexity", "Unknown"),
+                    "explanation": data.get("explanation", "Parsed complexity successfully.")
+                }
+        except Exception as e:
+            print(f"Error in _ai_analyze_complexity: {e}")
+            
+        return {
+            "time_complexity": "Unknown",
+            "space_complexity": "Unknown",
+            "explanation": "Failed to analyze complexity using AI."
+        }
     
     # ============ Behavioral Evaluation ============
     

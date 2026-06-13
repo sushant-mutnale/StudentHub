@@ -7,10 +7,13 @@ Agents: Interviewer, Evaluator, Hint Provider, Career Coach, Coordinator.
 import os
 import json
 import asyncio
+import logging
 from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class AgentRole(str, Enum):
@@ -54,6 +57,18 @@ class InterviewContext:
     tested_topics: List[str] = field(default_factory=list) # Checklist of areas covered
     current_topic_followups: int = 0                       # Avoid infinite deep dives
     job_description: str = ""                             # Role requirements
+
+    def to_dict(self) -> Dict[str, Any]:
+        from dataclasses import asdict
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "InterviewContext":
+        import inspect
+        sig = inspect.signature(cls)
+        valid_keys = {k for k, v in sig.parameters.items()}
+        filtered_data = {k: v for k, v in data.items() if k in valid_keys}
+        return cls(**filtered_data)
 
 
 class BaseAgent:
@@ -106,7 +121,8 @@ Your persona:
 - NEVER identify as an AI or an assistant. You ARE the interviewer.
 - Ask ONE targeted question at a time.
 - If the candidate is vague, follow up with "Can you drill down into the specifics of [X]?"
-- Keep your speech concise (under 30 words per turn) to respect the VOICE interface.
+- Keep your speech concise (under 50 words per turn) to respect the VOICE interface.
+- Use natural conversational transitions/cues (e.g. "That makes sense. Let's dig deeper into...", "Got it. Moving to the next area...") to make the dialogue feel human and natural.
 
 Your goal is to extract high-quality 'Signal' from the candidate's responses."""
 
@@ -324,9 +340,16 @@ One question only."""
             instruction = f"""Final follow-up: Challenge an assumption or ask for a trade-off based on: "{safe_ans}"
 Be direct. One question only."""
 
-        prompt = f"""Company: {context.company} | Role: {context.role} | Stage: {stage}
+        resume_context = f"\nCandidate Resume Context:\n{context.resume_text}\n" if context.resume_text else ""
+        jd_context = f"\nTarget Job Description:\n{context.job_description}\n" if context.job_description else ""
 
-{instruction}"""
+        prompt = f"""Company: {context.company} | Role: {context.role} | Stage: {stage}
+{jd_context}
+{resume_context}
+Instructions for this turn:
+{instruction}
+- Start the response with a natural, conversational verbal transition or acknowledgment of their previous answer (if applicable) before asking the question.
+- Keep the generated question voice-friendly and concise."""
 
         try:
             response = await llm.generate(prompt, self.get_system_prompt())
@@ -380,15 +403,18 @@ Be direct. One question only."""
         if not llm:
             return "Can you tell me more about your approach? What's the time complexity?"
         
-        prompt = f"""The candidate just answered: "{answer[:500]}"
+        resume_context = f"\nCandidate Resume Context:\n{context.resume_text}\n" if context.resume_text else ""
+        jd_context = f"\nTarget Job Description:\n{context.job_description}\n" if context.job_description else ""
 
-Generate a brief follow-up question to dig deeper. Could be about:
-- Time/space complexity
-- Edge cases
-- Alternative approaches
-- Real-world considerations
+        prompt = f"""Company: {context.company} | Role: {context.role}
+{jd_context}
+{resume_context}
+The candidate just answered: "{answer[:500]}"
 
-Keep it concise and natural."""
+Generate a brief follow-up question to dig deeper.
+- Begin with a natural conversational cue (e.g. "That makes sense...", "Interesting point...") acknowledging their response.
+- Ask a drill-down question about their approach (e.g., edge cases, time/space complexity, alternative approaches, design tradeoffs).
+- Keep it concise (under 50 words) and voice-friendly."""
         
         try:
             response = await llm.generate(prompt, self.get_system_prompt())
@@ -847,12 +873,21 @@ class CoordinatorAgent(BaseAgent):
             "question_id": len(context.questions_asked)
         })
         
+        # Determine whether to ask a follow-up (drill-down) or pivot to a new topic (continue)
+        is_technical = context.interview_type in ("technical", "mixed", "dsa")
+        if is_technical and context.current_topic_followups == 0:
+            context.current_topic_followups = 1
+            msg_type = "follow_up"
+        else:
+            context.current_topic_followups = 0
+            msg_type = "continue"
+
         # Get next question
         next_message = AgentMessage(
             from_agent=AgentRole.COORDINATOR,
             to_agent=AgentRole.INTERVIEWER,
             content=answer,
-            message_type="continue"
+            message_type=msg_type
         )
         
         next_response = await self.agents[AgentRole.INTERVIEWER].process(next_message, context)
@@ -926,17 +961,106 @@ class CoordinatorAgent(BaseAgent):
 
 # ============ Service Interface ============
 
+from ..redis_client import get_redis
+
+def _serialize_context(ctx) -> str:
+    """Serialize InterviewContext to JSON for Redis storage."""
+    def default(o):
+        if hasattr(o, '__dict__'):
+            return o.__dict__
+        if hasattr(o, 'value'):
+            return o.value  # Enum
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return str(o)
+    data = ctx.to_dict() if hasattr(ctx, 'to_dict') else (ctx.__dict__ if hasattr(ctx, '__dict__') else ctx)
+    return json.dumps(data, default=default)
+
+def _deserialize_context(data_str: str) -> Optional[InterviewContext]:
+    """Deserialize JSON string to InterviewContext."""
+    try:
+        data = json.loads(data_str)
+        return InterviewContext.from_dict(data)
+    except Exception as e:
+        logger.error(f"Failed to deserialize InterviewContext: {e}")
+        return None
+
 class MultiAgentInterviewService:
     """
     High-level service for multi-agent interviews.
-    Manages sessions and provides API-friendly interface.
+    Manages sessions with L1 (in-memory) and L2 (Redis) caching.
     """
     
     def __init__(self):
         self.coordinator = CoordinatorAgent()
         self.active_contexts: Dict[str, InterviewContext] = {}
+        self.last_accessed: Dict[str, datetime] = {}
+        self._eviction_task_started = False
     
-    def create_context(
+    def _start_eviction_task_if_needed(self):
+        if not self._eviction_task_started:
+            try:
+                loop = asyncio.get_running_loop()
+                if loop.is_running():
+                    loop.create_task(self._periodic_evict_sessions())
+                    self._eviction_task_started = True
+            except RuntimeError:
+                pass
+
+    async def _periodic_evict_sessions(self):
+        """Evict in-memory sessions that haven't been accessed in 30 minutes."""
+        while True:
+            try:
+                await asyncio.sleep(60)  # Check every minute
+                now = datetime.utcnow()
+                to_evict = []
+                for session_id, last_time in list(self.last_accessed.items()):
+                    if (now - last_time).total_seconds() > 1800:  # 30 minutes
+                        to_evict.append(session_id)
+                for session_id in to_evict:
+                    logger.info(f"Evicting idle in-memory session {session_id} from L1 cache")
+                    self.active_contexts.pop(session_id, None)
+                    self.last_accessed.pop(session_id, None)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in session eviction task: {e}")
+
+    async def _save_to_redis(self, context: InterviewContext):
+        """Write session to Redis with 1 hour TTL."""
+        try:
+            redis_client = get_redis()
+            if redis_client:
+                key = f"interview:session:{context.session_id}"
+                serialized = _serialize_context(context)
+                await redis_client.set(key, serialized, ex=3600)
+        except Exception as e:
+            logger.warning(f"Redis write failed, falling back to L1 cache only: {e}")
+
+    async def _get_from_redis(self, session_id: str) -> Optional[InterviewContext]:
+        """Read session from Redis."""
+        try:
+            redis_client = get_redis()
+            if redis_client:
+                key = f"interview:session:{session_id}"
+                data_str = await redis_client.get(key)
+                if data_str:
+                    return _deserialize_context(data_str)
+        except Exception as e:
+            logger.warning(f"Redis read failed, falling back to L1 cache only: {e}")
+        return None
+
+    async def _delete_from_redis(self, session_id: str):
+        """Delete session from Redis."""
+        try:
+            redis_client = get_redis()
+            if redis_client:
+                key = f"interview:session:{session_id}"
+                await redis_client.delete(key)
+        except Exception as e:
+            logger.warning(f"Redis delete failed: {e}")
+
+    async def create_context(
         self,
         session_id: str,
         student_id: str,
@@ -956,12 +1080,40 @@ class MultiAgentInterviewService:
             interview_type=interview_type,
             resume_text=resume_text
         )
-        self.active_contexts[session_id] = context
+        await self.update_context(context)
         return context
+
+    async def create_session(self, *args, **kwargs) -> InterviewContext:
+        """Alias for create_context to support alternative naming conventions."""
+        return await self.create_context(*args, **kwargs)
     
-    def get_context(self, session_id: str) -> Optional[InterviewContext]:
-        """Get existing context."""
-        return self.active_contexts.get(session_id)
+    async def get_context(self, session_id: str) -> Optional[InterviewContext]:
+        """Get existing context, checking L1 first, then L2 Redis."""
+        self.last_accessed[session_id] = datetime.utcnow()
+        self._start_eviction_task_if_needed()
+
+        if session_id in self.active_contexts:
+            return self.active_contexts[session_id]
+
+        context = await self._get_from_redis(session_id)
+        if context:
+            self.active_contexts[session_id] = context
+            return context
+
+        return None
+
+    async def get_session(self, session_id: str) -> Optional[InterviewContext]:
+        """Alias for get_context to support alternative naming conventions."""
+        return await self.get_context(session_id)
+
+    async def update_context(self, context: InterviewContext):
+        """Update context in both L1 (in-memory) and L2 (Redis)."""
+        session_id = context.session_id
+        self.last_accessed[session_id] = datetime.utcnow()
+        self._start_eviction_task_if_needed()
+
+        self.active_contexts[session_id] = context
+        await self._save_to_redis(context)
     
     async def start(
         self,
@@ -974,7 +1126,7 @@ class MultiAgentInterviewService:
         resume_text: str = ""
     ) -> Dict[str, Any]:
         """Start new multi-agent interview."""
-        context = self.create_context(
+        context = await self.create_context(
             session_id, student_id, company, role, difficulty,
             interview_type, resume_text
         )
@@ -985,11 +1137,12 @@ class MultiAgentInterviewService:
         context.questions_asked.append(context.current_question)
         context.question_count += 1
 
+        await self.update_context(context)
         return result
     
     async def answer(self, session_id: str, answer: str) -> Dict[str, Any]:
         """Submit answer for current question."""
-        context = self.get_context(session_id)
+        context = await self.get_context(session_id)
         if not context:
             return {"error": "Session not found"}
 
@@ -1000,32 +1153,34 @@ class MultiAgentInterviewService:
         context.questions_asked.append(context.current_question)
         context.question_count += 1
 
+        await self.update_context(context)
         return result
     
     async def hint(self, session_id: str, level: int = 1) -> Dict[str, Any]:
         """Request hint for current question."""
-        context = self.get_context(session_id)
+        context = await self.get_context(session_id)
         if not context:
             return {"error": "Session not found"}
         
-        return await self.coordinator.request_hint(context, level)
+        result = await self.coordinator.request_hint(context, level)
+        await self.update_context(context)
+        return result
     
     async def finish(self, session_id: str) -> Dict[str, Any]:
         """End interview and get final results."""
-        context = self.get_context(session_id)
+        context = await self.get_context(session_id)
         if not context:
             return {"error": "Session not found"}
 
         result = await self.coordinator.end_interview(context)
         result["question_count"] = context.question_count
 
-        # Keep context briefly for feedback call (don't delete immediately)
-        # It will be cleaned up in feedback() or after 30 min
+        await self.update_context(context)
         return result
 
     async def feedback(self, session_id: str) -> Dict[str, Any]:
         """Generate structured 7-dimension feedback from full conversation."""
-        context = self.get_context(session_id)
+        context = await self.get_context(session_id)
         if not context:
             return {"error": "Session not found"}
 
@@ -1094,9 +1249,15 @@ Return ONLY this JSON (no markdown, no explanation):
             "summary": f"Overall performance: {avg_score:.0f}/100. You completed {context.question_count} questions. Keep practicing to build confidence and depth."
         }
 
-    def cleanup(self, session_id: str):
-        """Remove session context."""
+    async def cleanup(self, session_id: str):
+        """Remove session context from L1 and L2."""
         self.active_contexts.pop(session_id, None)
+        self.last_accessed.pop(session_id, None)
+        await self._delete_from_redis(session_id)
+
+    async def cleanup_session(self, session_id: str):
+        """Alias for cleanup to support alternative naming conventions."""
+        await self.cleanup(session_id)
 
     def get_active_sessions(self) -> List[str]:
         """Get list of active session IDs."""

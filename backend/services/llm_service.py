@@ -11,17 +11,17 @@ This follows the exact same pattern that is confirmed to work:
     print(response.content)
 """
 
+import asyncio
+import logging
 import os
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_exception
 
-# Load .env from backend/ regardless of where uvicorn is started from
-_dotenv_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(_dotenv_path, override=True)
+logger = logging.getLogger(__name__)
 
 # ─── Read provider config ──────────────────────────────────────────────────────
 _OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY", "")
@@ -29,7 +29,15 @@ _OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 _MODEL = os.getenv("LLM_MODEL", "arcee-ai/arcee-blitz:free")
 
 
-def _build_llm(model: Optional[str] = None, temperature: float = 0.7, max_tokens: int = 1024) -> ChatOpenAI:
+def _is_retryable_exception(exception: Exception) -> bool:
+    """Check if exception is a transient LLM error that should be retried."""
+    if isinstance(exception, asyncio.TimeoutError):
+        return True
+    error_str = str(exception)
+    return '429' in error_str or '503' in error_str or '502' in error_str
+
+
+def _build_llm(model: Optional[str] = None, temperature: float = 0.7, max_tokens: int = 4096) -> ChatOpenAI:
     """Build a ChatOpenAI instance pointed at OpenRouter — same pattern as user's working script."""
     if not _OPENROUTER_KEY:
         raise ValueError("OPENROUTER_API_KEY not set in backend/.env")
@@ -52,7 +60,7 @@ class LLMService:
         self,
         model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 1024,
+        max_tokens: int = 4096,
     ):
         self.model = model or _MODEL
         self.temperature = temperature
@@ -64,16 +72,39 @@ class LLMService:
             self._llm = _build_llm(self.model, self.temperature, self.max_tokens)
         return self._llm
 
+    @retry(
+        retry=retry_if_exception(_is_retryable_exception),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True
+    )
+    async def _invoke_with_retry(self, messages: list) -> str:
+        """Inner method with retry logic."""
+        try:
+            llm = self._get_llm()
+            response = await asyncio.wait_for(
+                llm.ainvoke(messages),
+                timeout=30.0
+            )
+            return response.content
+        except asyncio.TimeoutError:
+            logger.warning("LLM request timed out")
+            raise
+        except Exception as e:
+            logger.warning(f"LLM API error: {e}")
+            raise
+
     # ── Async (used in FastAPI route handlers / async agents) ──────────────────
     async def generate(
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
         use_fallback: bool = False,   # False = don't silently swallow errors
-    ) -> str:
+    ) -> Optional[str]:
         """
         Generate a response asynchronously.
-        Errors are surfaced directly (use_fallback=False by default).
+        Raises exceptions directly if use_fallback is False.
+        If use_fallback is True, logs the error and returns None.
         """
         messages = []
         if system_prompt:
@@ -81,14 +112,30 @@ class LLMService:
         messages.append(HumanMessage(content=prompt))
 
         try:
-            llm = self._get_llm()
-            response = await llm.ainvoke(messages)
-            return response.content
+            return await self._invoke_with_retry(messages)
         except Exception as e:
-            if not use_fallback:
-                return f"Error: {str(e)}"
-            # If fallback is requested, surface the error clearly
-            return f"Error: {str(e)}"
+            if use_fallback:
+                logger.error(f"LLM service generate failed, using fallback: {e}")
+                return None
+            raise
+
+    async def generate_from_messages(
+        self,
+        messages: list,
+        use_fallback: bool = False
+    ) -> Optional[str]:
+        """
+        Generate a response asynchronously from a list of structured LangChain messages.
+        Raises exceptions directly if use_fallback is False.
+        If use_fallback is True, logs the error and returns None.
+        """
+        try:
+            return await self._invoke_with_retry(messages)
+        except Exception as e:
+            if use_fallback:
+                logger.error(f"LLM service generate_from_messages failed, using fallback: {e}")
+                return None
+            raise
 
     # ── Sync (used in scripts / background tasks) ─────────────────────────────
     def generate_sync(

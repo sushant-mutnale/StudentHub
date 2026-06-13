@@ -42,7 +42,7 @@ async def test_diag_evaluate_answer(client, student_user, student_token):
     resp = await client.post(
         "/questions/evaluate",
         json={
-            "question": "What is a binary search tree?",
+            "question": {"title": "Binary Search Tree", "description": "What is a binary search tree?"},
             "answer": "A BST is a tree data structure where each node has at most two children, and the left subtree contains values less than the parent while the right subtree contains values greater.",
             "type": "dsa",
         },

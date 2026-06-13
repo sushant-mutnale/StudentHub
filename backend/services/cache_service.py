@@ -27,16 +27,22 @@ class CacheService:
         self._memory_cache: dict = {}
         self._memory_expiry: dict = {}
         self._use_redis = True
+        self._redis_retry_after: Optional[datetime] = None
     
     async def _get_redis_conn(self):
         """Get Redis connection if available."""
         if not self._use_redis:
-            return None
+            if self._redis_retry_after and datetime.utcnow() > self._redis_retry_after:
+                self._use_redis = True
+                self._redis_retry_after = None
+            else:
+                return None
             
         try:
             return get_redis()
         except Exception:
             self._use_redis = False
+            self._redis_retry_after = datetime.utcnow() + timedelta(seconds=30)
             logger.warning("Redis unavailable, falling back to in-memory cache")
             return None
 
@@ -75,18 +81,20 @@ class CacheService:
         """Set item in cache."""
         # Redis
         redis_conn = await self._get_redis_conn()
+        redis_success = False
         if redis_conn:
             try:
                 # Serialize complex objects if needed
                 val_json = json.dumps(value, default=str)
                 await redis_conn.set(key, val_json, ex=ttl_seconds)
+                redis_success = True
             except Exception as e:
                 logger.error(f"Redis set failed: {e}")
         
-        # Always update local memory too (L1 cache strategy could go here, 
-        # but for now we just keep it as backup or for hybrid heavy read)
-        self._memory_cache[key] = value
-        self._memory_expiry[key] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+        # Only write to local memory cache if Redis is NOT available (don't double-write)
+        if not redis_success:
+            self._memory_cache[key] = value
+            self._memory_expiry[key] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
     
     async def delete(self, key: str) -> None:
         """Remove item from cache."""

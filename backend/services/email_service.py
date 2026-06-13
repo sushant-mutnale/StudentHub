@@ -6,6 +6,7 @@ Handles sending emails via SMTP for OTP verification, password reset, etc.
 
 import smtplib
 import logging
+import asyncio
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
@@ -47,37 +48,41 @@ class EmailService:
             logger.info(f"[DEV] Content: {text_content or html_content[:200]}")
             return True  # Return True in dev mode so flow continues
         
-        try:
-            # Prepare message
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"] = self.email_from
-            msg["To"] = to_email
-            
-            # Attach text and HTML parts
-            if text_content:
-                msg.attach(MIMEText(text_content, "plain"))
-            msg.attach(MIMEText(html_content, "html"))
-            
-            # Define synchronous sending function
-            def _send_sync():
-                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                    # Timeout after 10s to prevent hanging
-                    server.timeout = 10
-                    server.starttls()
-                    server.login(self.sender_email, self.sender_password)
-                    server.sendmail(self.email_from, to_email, msg.as_string())
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                # Prepare message
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = subject
+                msg["From"] = self.email_from
+                msg["To"] = to_email
+                
+                # Attach text and HTML parts
+                if text_content:
+                    msg.attach(MIMEText(text_content, "plain"))
+                msg.attach(MIMEText(html_content, "html"))
+                
+                # Define synchronous sending function
+                def _send_sync():
+                    with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=10) as server:
+                        server.starttls()
+                        server.login(self.sender_email, self.sender_password)
+                        server.sendmail(self.email_from, to_email, msg.as_string())
 
-            # Run in threadpool to avoid blocking async event loop
-            from fastapi.concurrency import run_in_threadpool
-            await run_in_threadpool(_send_sync)
-            
-            logger.info(f"Email sent successfully to {to_email}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to send email to {to_email}: {e}")
-            return False
+                # Run in threadpool to avoid blocking async event loop
+                from fastapi.concurrency import run_in_threadpool
+                await run_in_threadpool(_send_sync)
+                
+                logger.info(f"Email sent successfully to {to_email}")
+                return True
+                
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed to send email to {to_email}: {e}")
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(1)
+                else:
+                    logger.error(f"All attempts failed to send email to {to_email}: {e}")
+                    return False
     
     async def send_otp_email(self, to_email: str, otp_code: str, purpose: str = "verification") -> bool:
         """Send OTP verification email."""
@@ -90,8 +95,8 @@ class EmailService:
         
         subject = subject_map.get(purpose, "Your OTP Code - StudentHub")
         
-        # [DEBUG] Log OTP for manual verification
-        logger.info(f"Generated OTP for {to_email}: {otp_code}")
+        # [DEBUG] Log OTP status
+        logger.info(f"OTP sent to {to_email} (code redacted)")
         
         html_content = f"""
         <!DOCTYPE html>

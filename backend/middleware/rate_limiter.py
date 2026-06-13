@@ -69,8 +69,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             # We don't verify signature here to keep it fast - auth middleware does that
-            # We just use the token string itself as part of the key for authenticated users
-            user_id = f"token:{hash(auth_header)}"
+            # We just use a SHA-256 hash of the token to keep it deterministic across processes
+            import hashlib
+            token_hash = hashlib.sha256(auth_header.encode("utf-8")).hexdigest()
+            user_id = f"token:{token_hash}"
 
         # 2. Determine Limit
         limit, period = self.default_limit
@@ -129,36 +131,39 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return count <= limit
             except Exception as e:
                 logger.error(f"Rate limit Redis error: {e}")
-                # Fail open if Redis is down
-                return True
+                # Fallback to memory instead of failing open
+                return self._check_rate_limit_memory(key, limit, period)
         else:
-            # Simple in-memory fallback (not distributed, but better than nothing)
-            # Note: This is per-process, so it resets on restart
-            current_time = int(time.time())
+            return self._check_rate_limit_memory(key, limit, period)
+
+    def _check_rate_limit_memory(self, key: str, limit: int, period: int) -> bool:
+        """Fallback to in-memory rate limiting."""
+        import time
+        current_time = int(time.time())
+        
+        # Simple fixed window
+        if not hasattr(self, "_memory_store"):
+            self._memory_store = {}
             
-            # Simple fixed window
-            if not hasattr(self, "_memory_store"):
-                self._memory_store = {}
-                
-            # Cleanup old
-            to_del = []
-            for k, (ts, _) in self._memory_store.items():
-                if current_time - ts > period:
-                    to_del.append(k)
-            for k in to_del:
-                del self._memory_store[k]
-                
-            if key not in self._memory_store:
+        # Cleanup old
+        to_del = []
+        for k, (ts, _) in self._memory_store.items():
+            if current_time - ts > period:
+                to_del.append(k)
+        for k in to_del:
+            del self._memory_store[k]
+            
+        if key not in self._memory_store:
+            self._memory_store[key] = (current_time, 1)
+            return True
+        else:
+            ts, count = self._memory_store[key]
+            if current_time - ts > period:
+                # Reset window
                 self._memory_store[key] = (current_time, 1)
                 return True
             else:
-                ts, count = self._memory_store[key]
-                if current_time - ts > period:
-                    # Reset window
-                    self._memory_store[key] = (current_time, 1)
-                    return True
-                else:
-                    if count >= limit:
-                        return False
-                    self._memory_store[key] = (ts, count + 1)
-                    return True
+                if count >= limit:
+                    return False
+                self._memory_store[key] = (ts, count + 1)
+                return True

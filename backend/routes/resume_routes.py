@@ -5,11 +5,14 @@ API endpoints for resume upload, parsing, and management.
 
 import os
 import shutil
+import logging
 from datetime import datetime
 from typing import Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+
+logger = logging.getLogger(__name__)
 
 from ..database import get_database
 from ..models import user as user_model
@@ -54,10 +57,15 @@ def get_resume_path(student_id: str, filename: str) -> str:
     """Generate unique file path for resume."""
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-")
-    return os.path.join(
+    final_path = os.path.join(
         ensure_upload_dir(),
         f"{student_id}_{timestamp}_{safe_filename}"
     )
+    final_path = os.path.abspath(final_path)
+    base_dir = os.path.abspath(UPLOAD_DIR)
+    if not final_path.startswith(base_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    return final_path
 
 
 # ============ Upload Endpoint ============
@@ -85,15 +93,12 @@ async def upload_resume(
             detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
         )
     
-    # Read file content
+    # Pre-read size check
+    if hasattr(file, 'size') and file.size and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail=f"File too large. Max size is {MAX_FILE_SIZE // (1024*1024)}MB")
     content = await file.read()
-    
-    # Validate file size
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024*1024)}MB"
-        )
+        raise HTTPException(status_code=413, detail=f"File too large. Max size is {MAX_FILE_SIZE // (1024*1024)}MB")
     
     # Calculate file hash for deduplication
     file_hash = resume_parser.get_file_hash_from_bytes(content) if hasattr(resume_parser, 'get_file_hash_from_bytes') else None
@@ -468,13 +473,14 @@ async def delete_resume(resume_id: str, current_user=Depends(get_current_user)):
     if str(doc["student_id"]) != str(current_user["_id"]):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Delete file
     file_path = doc.get("file_path", "")
-    if file_path and os.path.exists(file_path):
-        os.remove(file_path)
-    
-    # Delete from MongoDB
+    # Delete DB record first (atomic), then file
     await resumes_collection().delete_one({"_id": ObjectId(resume_id)})
+    try:
+        if file_path:
+            os.remove(file_path)
+    except OSError as e:
+        logger.warning(f"Could not delete file {file_path}: {e}")
     
     return DeleteResponse(message="Resume deleted successfully")
 

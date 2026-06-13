@@ -94,14 +94,40 @@ class NotificationWorker(BackgroundWorker):
 
     async def _simulate_email_delivery(self, notification):
         """
-        Simulate sending an email.
+        Send an email via the email service.
         """
-        # In production this would use SMTP or SendGrid/SES
-        # For now, just a tiny delay and logic check
-        await asyncio.sleep(0.1)
+        from ..models.user import users_collection
+        from ..services.email_service import email_service
         
-        # We could inspect payload to format a message
+        user_id = notification.get("user_id")
+        user = None
+        if user_id:
+            user = await users_collection().find_one({"_id": ObjectId(user_id) if isinstance(user_id, str) else user_id})
+        
+        email = user.get("email") if user else None
+        if not email:
+            logger.warning(f"No user or email found for notification {notification.get('_id')}")
+            return
+            
         payload = notification.get("payload", {})
         msg = payload.get("msg", "No message content")
+        subject = f"Notification: {notification.get('kind', 'Update')}"
         
-        # logger.debug(f"sending email: {msg}")
+        html_content = f"""
+        <html>
+        <body>
+            <h3>StudentHub Notification</h3>
+            <p>{msg}</p>
+        </body>
+        </html>
+        """
+        
+        # Send using the existing async send_email method on email_service
+        success = await email_service.send_email(
+            to_email=email,
+            subject=subject,
+            html_content=html_content,
+            text_content=msg
+        )
+        if not success:
+            logger.error(f"Failed to send email to {email} for notification {notification.get('_id')}")

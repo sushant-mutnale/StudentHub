@@ -85,6 +85,9 @@ Return ONLY JSON:
   "score": ...,
   "summary": "..."
 }}}}"""
+            new_proficiency = "beginner"
+            proficiency_score = 0
+            ai_summary = "Completed learning path."
             try:
                 resp = await llm.generate(prompt, system_instruction)
                 clean = resp.strip().replace("```json", "").replace("```", "").strip()

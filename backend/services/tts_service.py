@@ -97,6 +97,25 @@ class TTSService:
                 - filepath: Full path to audio file
                 - url: Relative URL to access audio
         """
+        # Generate unique filename if not provided
+        if output_filename is None:
+            output_filename = f"speech_{uuid.uuid4().hex[:12]}"
+
+        # 1. Try edge-tts first
+        try:
+            import edge_tts
+            output_path = os.path.join(self.output_dir, f"{output_filename}.mp3")
+            communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
+            await communicate.save(output_path)
+            return {
+                "filename": f"{output_filename}.mp3",
+                "filepath": output_path,
+                "url": f"/static/audio/{output_filename}.mp3",
+                "text": text
+            }
+        except Exception as e:
+            print(f"⚠️ edge-tts failed or not installed: {e}. Falling back to Piper/mock.")
+        
         if not self._check_piper_installed():
             print("⚠️ Piper TTS not found. Using mock audio response.")
             # Fallback for dev/verification without Piper
@@ -106,10 +125,6 @@ class TTSService:
                 "url": "/static/audio/mock_audio.wav",
                 "text": text
             }
-        
-        # Generate unique filename if not provided
-        if output_filename is None:
-            output_filename = f"speech_{uuid.uuid4().hex[:12]}"
         
         output_path = os.path.join(self.output_dir, f"{output_filename}.wav")
         
@@ -164,14 +179,27 @@ class TTSService:
     
     async def generate_speech_raw(self, text: str) -> bytes:
         """
-        Generate speech and return raw audio bytes (WAV format).
+        Generate speech and return raw audio bytes.
         
         Args:
             text: Text to convert to speech
             
         Returns:
-            Raw WAV audio bytes
+            Raw audio bytes (MP3 or WAV format)
         """
+        # 1. Try edge-tts first
+        try:
+            import edge_tts
+            communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
+            data = b""
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    data += chunk["data"]
+            if data:
+                return data
+        except Exception as e:
+            print(f"⚠️ edge-tts raw failed or not installed: {e}. Falling back to Piper.")
+
         # Generate to temp file
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
             tmp_path = tmp.name

@@ -64,11 +64,20 @@ async def handle_application_stage_changed(event: Event):
     # Import here to avoid circular dependency
     from ...database import get_database
     
+    try:
+        message = template["template"].format(**payload)
+    except KeyError as e:
+        logger.warning(f"Notification template missing key {e} for event {event.type}")
+        message = template.get("template", "You have a new notification")
+    except Exception as e:
+        logger.error(f"Notification template formatting error: {e}")
+        message = "You have a new notification"
+        
     notification = {
         "user_id": payload.get("student_id"),
         "type": template["type"],
         "title": template["title"],
-        "message": template["template"].format(**payload),
+        "message": message,
         "related_id": payload.get("application_id"),
         "read": False,
         "correlation_id": event.correlation_id,
@@ -159,11 +168,20 @@ async def handle_job_status_change(event: Event):
     from ...database import get_database
     db = get_database()
     
+    try:
+        message = template["template"].format(**payload)
+    except KeyError as e:
+        logger.warning(f"Notification template missing key {e} for event {event.type}")
+        message = template.get("template", "You have a new notification")
+    except Exception as e:
+        logger.error(f"Notification template formatting error: {e}")
+        message = "You have a new notification"
+        
     notification = {
         "user_id": payload.get("recruiter_id"),
         "type": "job",
         "title": template["title"],
-        "message": template["template"].format(**payload),
+        "message": message,
         "related_id": payload.get("job_id"),
         "read": False,
         "correlation_id": event.correlation_id

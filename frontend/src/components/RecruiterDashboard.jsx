@@ -132,9 +132,9 @@ const RecruiterDashboard = () => {
   }
 
   return (
-    <div className="dashboard-container recruiter-only">
+    <>
       
-      <div className="dashboard-main">
+      <div className="dashboard-main recruiter-only">
         <div className="dashboard-header">
           <h1 className="dashboard-title">Recruiter Workspace</h1>
         </div>
@@ -371,7 +371,7 @@ const RecruiterDashboard = () => {
           onCreated={handleInterviewCreated}
         />
       )}
-    </div>
+    </>
   );
 };
 

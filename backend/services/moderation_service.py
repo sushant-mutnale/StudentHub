@@ -32,6 +32,17 @@ class ModerationService:
     """
     Automated content moderation engine.
     """
+    # Verification Status Constants
+    VERIFICATION_UNVERIFIED = "unverified"
+    VERIFICATION_REVIEW_REQUIRED = "review_required"
+    VERIFICATION_VERIFIED = "verified"
+    VERIFICATION_SUSPENDED = "suspended"
+
+    # Job Status Constants
+    JOB_STATUS_PENDING_REVIEW = "pending_review"
+    JOB_STATUS_PUBLISHED = "published"
+    JOB_STATUS_REJECTED = "rejected"
+    JOB_STATUS_CLOSED = "closed"
     
     # Sensitive keywords (simplified for demo)
     SENSITIVE_KEYWORDS = {
@@ -135,5 +146,94 @@ class ModerationService:
                 {"_id": ObjectId(content_id)}, 
                 {"$set": {"is_visible": False, "moderation_status": "flagged"}}
             )
+
+    async def get_recruiter_trust_score(self, recruiter_id: str, db) -> int:
+        """Calculate trust score (0-100) for a recruiter."""
+        from bson import ObjectId
+        try:
+            recruiter = await db["users"].find_one({"_id": ObjectId(recruiter_id)})
+            if not recruiter:
+                return 0
+        except Exception:
+            return 0
+            
+        score = 40  # base score
+        
+        # Email verified (always True for seeded, check verification_data)
+        ver_data = recruiter.get("verification_data", {})
+        if ver_data.get("email_verified"):
+            score += 15
+            
+        # Domain verified
+        if ver_data.get("domain_verified"):
+            score += 25
+            
+        # Profile completeness
+        if recruiter.get("company_name"):
+            score += 5
+        if recruiter.get("website"):
+            score += 5
+        if recruiter.get("company_description"):
+            score += 5
+        if recruiter.get("contact_number"):
+            score += 5
+            
+        # Check connection count
+        connections = recruiter.get("connections", [])
+        if connections:
+            score += min(len(connections) * 2, 10)
+            
+        return min(score, 100)
+
+    def get_domain_from_email(self, email: str) -> Optional[str]:
+        """Extract domain from an email address."""
+        if not email or "@" not in email:
+            return None
+        parts = email.split("@")
+        return parts[-1].strip().lower()
+
+    def get_domain_from_url(self, url: str) -> Optional[str]:
+        """Extract domain from a website URL."""
+        if not url:
+            return None
+        cleaned = url.strip().lower()
+        cleaned = re.sub(r'^https?://', '', cleaned)
+        cleaned = re.sub(r'^www\.', '', cleaned)
+        parts = cleaned.split('/')
+        domain = parts[0].split(':')[0]
+        return domain if domain else None
+
+    async def check_domain_mismatch(self, recruiter: dict) -> dict:
+        """
+        Check if recruiter's email domain matches their website domain.
+        Returns a dict with verification details and warning flags.
+        """
+        email = recruiter.get("email", "")
+        website = recruiter.get("website", "")
+        
+        email_domain = self.get_domain_from_email(email)
+        website_domain = self.get_domain_from_url(website)
+        
+        if not email_domain:
+            return {"flag": "missing_email", "details": "Recruiter email is missing."}
+        if not website_domain:
+            return {"flag": "missing_website", "details": "Recruiter website URL is missing."}
+            
+        public_domains = {"gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "zoho.com", "protonmail.com"}
+        if email_domain in public_domains:
+            return {
+                "flag": "public_email_domain",
+                "details": f"Public email domains ({email_domain}) cannot be used for auto-verification."
+            }
+            
+        matched = (email_domain == website_domain) or email_domain.endswith(f".{website_domain}") or website_domain.endswith(f".{email_domain}")
+        
+        if matched:
+            return {"flag": None, "details": "Email domain matches website domain successfully."}
+        else:
+            return {
+                "flag": "domain_mismatch",
+                "details": f"Email domain '{email_domain}' does not match website domain '{website_domain}'."
+            }
 
 moderation_service = ModerationService()

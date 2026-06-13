@@ -528,43 +528,36 @@ class ResumeParser:
     async def ai_enhance_extraction(self, raw_text: str, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Use LLM to enhance/fix extraction for complex layouts.
-        MOCKED FOR DEMO: Returns high-quality static data.
         """
-        # MOCK DATA FOR DEMO
-        return {
-            **parsed_data,
-            "skills": ["Python", "JavaScript", "React", "FastAPI", "MongoDB", "AWS", "Docker", "Machine Learning"],
-            "experience": [
-                {
-                    "title": "Senior Software Engineer",
-                    "company": "Tech Innovations Inc.",
-                    "start_date": "2021",
-                    "end_date": "Present",
-                    "description": "Led development of microservices architecture using FastAPI and React. Improved system performance by 40%."
-                },
-                {
-                    "title": "Software Developer",
-                    "company": "StartUp Hub",
-                    "start_date": "2019",
-                    "end_date": "2021",
-                    "description": "Full stack development using MERN stack. Built real-time collaboration features."
-                }
-            ],
-            "projects": [
-                {
-                    "name": "E-Commerce Platform",
-                    "description": "Built a scalable e-commerce platform with microservices.",
-                    "technologies": ["Python", "Django", "React", "PostgreSQL"]
-                },
-                {
-                    "name": "AI Resume Parser",
-                    "description": "Developed an AI-powered resume parser using NLP.",
-                    "technologies": ["Python", "Spacy", "FastAPI"]
-                }
-            ],
-            "ai_enhanced": True,
-            "parsing_confidence": 95.0
-        }
+        llm = self._get_llm_service()
+        if not llm:
+            return parsed_data
+            
+        import json
+        prompt = f"""You are an expert resume parser. I have extracted some data from a resume, but it may be incomplete or incorrect.
+        
+Raw Resume Text (Snippet):
+{raw_text[:3000]}
+
+Extracted Data:
+{json.dumps(parsed_data, indent=2, default=str)}
+
+Please fix any errors in the extracted data, add missing skills, experience, projects, or education, and return the corrected JSON.
+Output MUST be a valid JSON object matching the input structure. Do not output anything else.
+"""
+        try:
+            response = await llm.generate(prompt)
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if json_match:
+                enhanced_data = json.loads(json_match.group())
+                enhanced_data["ai_enhanced"] = True
+                enhanced_data["parsing_confidence"] = 95.0
+                return enhanced_data
+        except Exception as e:
+            logger.error(f"AI Enhancement failed: {e}")
+            
+        return parsed_data
     
     def _parse_ai_corrections(self, response: str, original: Dict[str, Any]) -> Dict[str, Any]:
         """Parse AI response and merge corrections."""

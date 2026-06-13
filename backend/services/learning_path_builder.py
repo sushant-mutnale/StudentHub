@@ -195,6 +195,7 @@ class LearningPathBuilder:
         self._resources_cache: Dict[str, Any] = {}
         self.use_ai = use_ai
         self._llm_service = None
+        self._semaphore = asyncio.Semaphore(5)
     
     def _get_llm_service(self):
         """Lazy load LLM service."""
@@ -545,28 +546,41 @@ Your Motif:
             weeks = curriculum.get("weeks", [])
             total_weeks = len(weeks)
 
-            for i, week in enumerate(weeks, start=1):
-                # Use Tavily to get REAL resources for each subtopic
+            # Curate resources for all subtopics concurrently using a Semaphore
+            async def curate_subtopic(topic, sub):
+                sub_title = sub.get("title", "Concept")
+                try:
+                    async with self._semaphore:
+                        resources = await resource_curator.curate_resources_for_subtopic(skill, topic, sub_title)
+                except Exception as e:
+                    print(f"Error curating resources for subtopic {sub_title}: {e}")
+                    resources = resource_curator._default_subtopic_resources(skill, sub_title)
+                
+                return {
+                    "title": sub_title,
+                    "estimated_time_minutes": sub.get("estimated_time_minutes", 60),
+                    "acceptance_criteria": sub.get("acceptance_criteria", []),
+                    "resources": resources,
+                    "completed": False,
+                    "completed_at": None
+                }
+
+            all_tasks = []
+            week_subtopic_counts = []
+            for week in weeks:
                 topic = week.get("topic", skill)
                 subtopics_data = week.get("subtopics", [])
-                built_subtopics = []
-                
+                week_subtopic_counts.append(len(subtopics_data))
                 for sub in subtopics_data:
-                    sub_title = sub.get("title", "Concept")
-                    try:
-                        resources = await resource_curator.curate_resources_for_subtopic(skill, topic, sub_title)
-                    except Exception as e:
-                        print(f"Error curating resources for subtopic: {e}")
-                        resources = resource_curator._default_subtopic_resources(skill, sub_title)
-                        
-                    built_subtopics.append({
-                        "title": sub_title,
-                        "estimated_time_minutes": sub.get("estimated_time_minutes", 60),
-                        "acceptance_criteria": sub.get("acceptance_criteria", []),
-                        "resources": resources,
-                        "completed": False,
-                        "completed_at": None
-                    })
+                    all_tasks.append(curate_subtopic(topic, sub))
+
+            all_built_subtopics = await asyncio.gather(*all_tasks)
+
+            subtopic_idx = 0
+            for i, week in enumerate(weeks, start=1):
+                count = week_subtopic_counts[i - 1]
+                built_subtopics = all_built_subtopics[subtopic_idx : subtopic_idx + count]
+                subtopic_idx += count
 
                 stages.append({
                     "stage_number": week.get("week", i),
@@ -640,29 +654,32 @@ Your Motif:
         goal_level: str = "Job-ready"
     ) -> List[Dict[str, Any]]:
         """
-        Build learning paths for multiple skill gaps.
+        Build learning paths for multiple skill gaps concurrently.
         """
-        paths = []
-        
+        tasks = []
         for gap in gaps:
-            path = await self.build_path(
-                skill=gap.get("skill", "unknown"),
-                current_level=gap.get("current_level", 0),
-                target_level=gap.get("target_level", 80),
-                priority=gap.get("priority", "MEDIUM"),
-                student_id=student_id,
-                current_skills=current_skills,
-                use_ai=use_ai,
-                available_time=available_time,
-                goal_level=goal_level
+            tasks.append(
+                self.build_path(
+                    skill=gap.get("skill", "unknown"),
+                    current_level=gap.get("current_level", 0),
+                    target_level=gap.get("target_level", 80),
+                    priority=gap.get("priority", "MEDIUM"),
+                    student_id=student_id,
+                    current_skills=current_skills,
+                    use_ai=use_ai,
+                    available_time=available_time,
+                    goal_level=goal_level
+                )
             )
-            paths.append(path)
+        
+        paths = await asyncio.gather(*tasks)
         
         # Sort by priority (HIGH first)
         priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-        paths.sort(key=lambda x: priority_order.get(x["gap_priority"], 2))
+        paths_list = list(paths)
+        paths_list.sort(key=lambda x: priority_order.get(x["gap_priority"], 2))
         
-        return paths
+        return paths_list
 
 
 # Singleton instance

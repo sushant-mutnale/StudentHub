@@ -1,11 +1,15 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from jose import jwt
 
+from ..config import settings
 from ..models import user as user_model
 from ..schemas.auth_schema import LoginRequest, TokenResponse
 from ..schemas.user_schema import RecruiterCreate, StudentCreate, UserPublic
-from ..utils.auth import create_access_token, hash_password, verify_password
+from ..utils.auth import create_access_token, hash_password, verify_password, blacklist_token, invalidate_user_cache
+from ..utils.dependencies import get_current_user, oauth2_scheme
+from ..services.otp_service import otp_service
 
 router = APIRouter()
 
@@ -112,6 +116,36 @@ async def login(payload: LoginRequest):
     return TokenResponse(access_token=token, expires_at=expires_at, user=user_public)
 
 
+@router.post("/logout")
+async def logout(current_user=Depends(get_current_user), token: str = Depends(oauth2_scheme)):
+    try:
+        if current_user and "_id" in current_user:
+            await invalidate_user_cache(str(current_user["_id"]))
+            
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if jti and exp:
+            expires_at = datetime.fromtimestamp(exp)
+            await blacklist_token(jti, expires_at)
+    except Exception:
+        pass  # Best effort
+    return {"message": "Logged out successfully"}
+
+
+@router.post("/refresh")
+async def refresh_token(current_user=Depends(get_current_user)):
+    """Issue a new access token for the authenticated user."""
+    # The current token is still valid (get_current_user passed)
+    # Issue a fresh access token
+    token_data = {
+        "sub": str(current_user["_id"]),
+        "role": current_user["role"]
+    }
+    new_token, expires = create_access_token(token_data)
+    return {"access_token": new_token, "token_type": "bearer", "expires_at": expires.isoformat()}
+
+
 # ============ Real-time Validation Endpoints ============
 
 @router.get("/check-username/{username}")
@@ -150,7 +184,6 @@ async def check_email_available(email: str):
 from ..schemas.auth_schema import (
     SendOTPRequest, VerifyOTPRequest, ResetPasswordWithOTPRequest, OTPResponse
 )
-from ..services.otp_service import otp_service
 from ..services.email_service import email_service
 
 
@@ -227,5 +260,6 @@ async def reset_password(payload: ResetPasswordWithOTPRequest):
     # Update password
     new_hash = hash_password(payload.new_password)
     await user_model.update_user_password(str(user["_id"]), new_hash)
+    await invalidate_user_cache(str(user["_id"]))
     
     return OTPResponse(success=True, message="Password reset successfully")

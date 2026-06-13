@@ -6,20 +6,30 @@ from fastapi.testclient import TestClient
 from faker import Faker
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env first
+_dotenv_path = Path(__file__).resolve().parent.parent / "backend" / ".env"
+if not _dotenv_path.exists():
+    _dotenv_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(_dotenv_path, override=True)
+
 # Override env settings for testing
 os.environ["APP_ENV"] = "testing"
 os.environ["MONGODB_DB"] = "student_hub_test" 
+# Keep MONGODB_URI from .env if present, otherwise default to localhost
+if not os.environ.get("MONGODB_URI"):
+    os.environ["MONGODB_URI"] = "mongodb://localhost:27017"
 
 from backend.main import app
 from backend.database import db
 from backend.config import settings
 
 # FORCE SETTINGS UPDATE
-# This ensures that even if config was imported before env vars were set,
-# we explicitly point to the test environment.
 settings.app_env = "testing"
 settings.mongodb_db = "student_hub_test" 
-# print(f"DEBUG_CONFTEST: Settings updated. DB={settings.mongodb_db}") 
+settings.mongodb_uri = os.environ["MONGODB_URI"]
 
 from backend.utils.auth import create_access_token
 
@@ -58,12 +68,15 @@ def clear_db():
     import asyncio
     
     async def _clear():
-        client = AsyncIOMotorClient(settings.mongodb_uri)
-        database = client[settings.mongodb_db]
-        collections = await database.list_collection_names()
-        for collection in collections:
-            await database[collection].delete_many({})
-        client.close()
+        try:
+            client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=2000)
+            database = client[settings.mongodb_db]
+            collections = await database.list_collection_names()
+            for collection in collections:
+                await database[collection].delete_many({})
+            client.close()
+        except Exception as e:
+            print(f"\n[Warning] Database cleanup skipped (DB unreachable): {e}")
         
     # Run sync
     loop = asyncio.new_event_loop()

@@ -53,7 +53,13 @@ const ProtectedRoute = ({ children, allowedType }) => {
     return <Navigate to="/" replace />;
   }
 
-  if (allowedType && user.role !== allowedType) {
+  const allowed = Array.isArray(allowedType)
+    ? allowedType
+    : allowedType
+    ? [allowedType]
+    : ['student', 'recruiter', 'admin'];
+
+  if (!allowed.includes(user.role)) {
     return <Navigate to="/" replace />;
   }
 
@@ -300,7 +306,7 @@ function App() {
             <Route
               path="/admin/dashboard"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedType="admin">
                   <AdminDashboard />
                 </ProtectedRoute>
               }

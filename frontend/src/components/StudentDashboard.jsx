@@ -29,9 +29,6 @@ const StudentDashboard = () => {
   }
 
   return (
-    <div className="dashboard-container" style={{ background: 'var(--color-bg)' }}>
-      <SidebarLeft />
-
       <div className="dashboard-main custom-scrollbar">
         <div className="dashboard-header glass-panel" style={{
           position: 'sticky',
@@ -78,9 +75,6 @@ const StudentDashboard = () => {
           </div>
         </div>
       </div>
-
-      <SidebarRight />
-    </div>
   );
 };
 

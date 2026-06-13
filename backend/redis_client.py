@@ -61,7 +61,38 @@ class RedisClient:
             logger.error(f"Redis ping failed: {e}")
             return False
 
+    @classmethod
+    async def health_check(cls) -> bool:
+        """Check Redis health and reset instance on failure."""
+        try:
+            client = cls.get_instance()
+            result = await client.ping()
+            if result:
+                return True
+            if cls._instance is not None:
+                cls._instance = None
+            return False
+        except Exception as e:
+            logger.warning(f"Redis health check failed: {e}")
+            if cls._instance is not None:
+                cls._instance = None
+            return False
+
 
 # Global accessor
 def get_redis() -> redis.Redis:
     return RedisClient.get_instance()
+
+
+async def init_redis() -> bool:
+    """Initialize and verify Redis at startup. Returns True if available."""
+    try:
+        client = RedisClient.get_instance()
+        result = await client.ping()
+        if result:
+            logger.info("Redis connection verified at startup")
+        return result
+    except Exception as e:
+        logger.warning(f"Redis unavailable at startup (will retry on use): {e}")
+        RedisClient._instance = None  # Reset so it retries
+        return False

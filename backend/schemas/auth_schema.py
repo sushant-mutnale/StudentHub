@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -15,7 +16,7 @@ class TokenResponse(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
-    role: str
+    role: Literal["student", "recruiter"]
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -34,7 +35,7 @@ class ChangePasswordRequest(BaseModel):
 # OTP Schemas
 class SendOTPRequest(BaseModel):
     email: EmailStr
-    purpose: str = "verification"  # verification, signup, password_reset
+    purpose: Literal["verification", "signup", "password_reset"] = "verification"
 
 class VerifyOTPRequest(BaseModel):
     email: EmailStr

@@ -89,6 +89,7 @@ class DeepResearchTool:
         self._cache: Dict[str, Dict] = {}  # In-memory cache
         self._cache_ttl = timedelta(hours=24)
         self._llm_service = None
+        self._semaphore = asyncio.Semaphore(5)
     
     def _get_llm_service(self):
         """Lazy load LLM service."""
@@ -147,17 +148,25 @@ class DeepResearchTool:
             "sources_used": []
         }
         
-        # Research each category
+        # Research each category in parallel
+        tasks = []
+        active_categories = []
         for category in categories:
             if category not in self.RESEARCH_TEMPLATES:
                 continue
-            
-            category_results = await self._research_category(
-                company_name, 
-                category, 
-                max_results_per_category
+            active_categories.append(category)
+            tasks.append(
+                self._research_category(
+                    company_name,
+                    category,
+                    max_results_per_category
+                )
             )
-            results["categories"][category] = category_results
+        
+        if tasks:
+            category_results = await asyncio.gather(*tasks)
+            for category, category_res in zip(active_categories, category_results):
+                results["categories"][category] = category_res
         
         # Generate summary using LLM
         results["summary"] = await self._generate_summary(company_name, results["categories"])
@@ -199,18 +208,26 @@ class DeepResearchTool:
             logger.warning(f"No real search results for {company_name}/{category} — LLM will generate content")
             return []
         
-        # Scrape content from top results (best-effort — many sites block, that's fine)
-        scraped = []
-        for result in results[:max_results]:
-            content = await self._scrape_url(result.get("url", ""))
+        # Scrape content from top results concurrently (best-effort — many sites block, that's fine)
+        async def scrape_one(result):
+            url = result.get("url", "")
+            if not url:
+                return None
+            async with self._semaphore:
+                content = await self._scrape_url(url)
             if content:
-                scraped.append({
+                return {
                     "title": result.get("title", ""),
-                    "url": result.get("url", ""),
+                    "url": url,
                     "snippet": result.get("snippet", ""),
                     "content": content[:1000],
-                    "source": self._extract_domain(result.get("url", ""))
-                })
+                    "source": self._extract_domain(url)
+                }
+            return None
+
+        scrape_tasks = [scrape_one(r) for r in results[:max_results]]
+        scraped_results = await asyncio.gather(*scrape_tasks)
+        scraped = [s for s in scraped_results if s is not None]
         
         # Return scraped content if available, otherwise raw search results (with snippets)
         return scraped if scraped else results[:max_results]
@@ -416,11 +433,10 @@ Research data:\n{research_context}\n\nWrite only the interview process summary (
 Research data:\n{research_context}\n\nWrite only the tech stack summary (2-3 sentences, no headers):""",
         }
 
-        for cat, prompt in CATEGORY_PROMPTS.items():
-            if cat not in categories:
-                continue
+        async def generate_one(cat, prompt):
             try:
-                llm_text = await llm.generate(prompt)
+                async with self._semaphore:
+                    llm_text = await llm.generate(prompt)
                 llm_text = llm_text.strip()
                 if llm_text and not llm_text.startswith("Error:"):
                     # Prepend the LLM-generated summary as the first (highest-priority) item
@@ -432,6 +448,15 @@ Research data:\n{research_context}\n\nWrite only the tech stack summary (2-3 sen
                     })
             except Exception as e:
                 logger.warning(f"LLM category summary failed for {cat}: {e}")
+
+        gen_tasks = []
+        for cat, prompt in CATEGORY_PROMPTS.items():
+            if cat not in categories:
+                continue
+            gen_tasks.append(generate_one(cat, prompt))
+        
+        if gen_tasks:
+            await asyncio.gather(*gen_tasks)
 
 
     async def _extract_insights(self, categories: Dict[str, List]) -> List[str]:

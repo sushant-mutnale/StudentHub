@@ -23,6 +23,7 @@ class BackgroundWorker:
         self.batch_size = batch_size
         self.running = False
         self._poll_task = None
+        self._consecutive_failures: int = 0
         
     async def start(self):
         """Start the worker (subscriptions + polling)."""
@@ -48,23 +49,35 @@ class BackgroundWorker:
         logger.info(f"Worker {self.name} stopped")
 
     async def _polling_loop(self):
-        """Internal polling loop."""
+        """Internal polling loop with exponential backoff and parallel processing."""
         logger.info(f"Started polling loop for {self.name}")
         while self.running:
             try:
                 jobs = await self.get_jobs()
                 if jobs:
-                    for job in jobs:
-                        await self.process_job(job)
-                else:
-                    # Sleep only if no jobs found to avoid busy loop? 
-                    # Actually usually we sleep anyway or depending on logic.
-                    # For simple polling, we sleep after each check.
-                    pass
+                    semaphore = asyncio.Semaphore(self.batch_size)  # use batch_size as concurrency limit
+
+                    async def _process_with_sem(job):
+                        async with semaphore:
+                            try:
+                                await self.process_job(job)
+                            except Exception as e:
+                                logger.error(f"[{self.name}] Job processing error: {e}")
+
+                    await asyncio.gather(*[_process_with_sem(j) for j in jobs])
+
+                # Successful poll — reset failure counter and sleep normally
+                self._consecutive_failures = 0
+                await asyncio.sleep(self.poll_interval)
+
             except Exception as e:
-                logger.error(f"Error in parsing loop for {self.name}: {e}")
-            
-            await asyncio.sleep(self.poll_interval)
+                self._consecutive_failures += 1
+                backoff = min(2 ** self._consecutive_failures, 60)
+                logger.error(
+                    f"Error in polling loop for {self.name}: {e}. "
+                    f"Backing off for {backoff}s (failure #{self._consecutive_failures})"
+                )
+                await asyncio.sleep(backoff)
 
     async def get_jobs(self) -> list:
         """Override to fetch jobs for polling."""

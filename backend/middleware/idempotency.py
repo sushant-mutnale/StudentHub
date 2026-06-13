@@ -38,7 +38,8 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         user_id = "anon"
         auth_header = request.headers.get("Authorization")
         if auth_header:
-            user_id = str(hash(auth_header))
+            import hashlib
+            user_id = hashlib.sha256(auth_header.encode("utf-8")).hexdigest()
             
         cache_key = f"idempotency:{user_id}:{key}"
         
@@ -46,7 +47,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         redis = None
         try:
             redis = get_redis()
-        except:
+        except Exception:
             pass # Fallback to no idempotency if Redis down
         
         if redis:

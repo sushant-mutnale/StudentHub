@@ -42,9 +42,7 @@ class InterviewAgent:
         """
         Initialize a new interview session.
         """
-        # 1. Fetch Job Context (from RAG or DB)
-        # We can use RAG to get the simplified "Job Description" vector text
-        # Or just fetch from DB. For the agent prompt, DB text is fine.
+        # Fetch Job Context
         job = await self.jobs_collection.find_one({"_id": ObjectId(job_id)})
         if not job:
             job = await self.opportunities_jobs_collection.find_one({"_id": ObjectId(job_id)})
@@ -52,13 +50,39 @@ class InterviewAgent:
         if not job:
             raise ValueError("Job not found")
             
+        # Fetch Candidate Resume Context
+        resume_doc = await get_database()["resume_uploads"].find_one(
+            {"student_id": ObjectId(user_id)},
+            sort=[("uploaded_at", -1)]
+        )
+        resume_text = ""
+        if resume_doc:
+            resume_text = resume_doc.get("raw_text", "")
+            if not resume_text and resume_doc.get("parsed_data"):
+                pd = resume_doc["parsed_data"]
+                skills = ", ".join(pd.get("skills", []))
+                resume_text = f"Skills: {skills}"
+
+        system_instruction = (
+            f"You are an AI interviewer for the role of {job.get('title')}.\n"
+            f"Company / Job Description Details:\n{job.get('description')}\n\n"
+            f"Candidate Resume Details:\n{resume_text or 'No resume details provided.'}\n\n"
+            "Interviewer Guidelines:\n"
+            "- Conduct a professional, realistic interview.\n"
+            "- Keep replies very concise (under 50 words) to support natural voice flow.\n"
+            "- Ask one question at a time.\n"
+            "- Reference candidate's resume projects or skills organically where appropriate.\n"
+            "- In your first greeting, introduce yourself and ask an opening question referencing their background."
+        )
+
         session = {
             "user_id": ObjectId(user_id),
             "job_id": ObjectId(job_id),
             "job_title": job.get("title"),
-            "job_description": job.get("description"), # Pass this to system prompt
+            "job_description": job.get("description"),
+            "resume_text": resume_text,
             "history": [
-                {"role": "system", "content": f"You are an AI interviewer for the role of {job.get('title')}. Conduct a professional technical interview based on the description: {job.get('description')}. Be polite but rigorous."}
+                {"role": "system", "content": system_instruction}
             ],
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
@@ -84,56 +108,38 @@ class InterviewAgent:
             {"$push": {"history": {"role": "user", "content": user_message}}}
         )
         
-        # 2. Generate Response (Mock LLM for now, can perform RAG search if needed)
-        # In a real impl, retrieve history + context + query LLM
-        # For this prototype: Simple contextual response
-        
+        # 2. Query LLM Service with conversation history
         try:
-            # Calculate context from history
-            history = session.get("history", [])
-            assistant_msgs = [m for m in history if m.get("role") == "assistant"]
-            last_exchange_count = len(assistant_msgs)
-
-            # [FIX] Add timeout simulation or actual LLM call with timeout
-            # If we were calling self.llm_service.generate(..., timeout=10), handle it here.
-            # For now, we are mocking, but let's make it robust against any future IO blocks.
+            # Reload session to get latest history
+            updated_session = await self.get_session(session_id)
+            history = updated_session.get("history", [])
             
-            import asyncio
+            from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+            from backend.services.llm_service import llm_service
             
-            # MOCK QUESTIONS FOR DEMO
-            # Fixed sequence to ensure a smooth, predictable demo flow
-            MOCK_QUESTIONS = [
-                "Hello! Let's get started. Could you briefly introduce yourself and highlight your experience with Python backend development?",
-                "Thanks. Can you explain the difference between a list and a tuple in Python, and when you would use each?",
-                "Great. Now, imagine you have a large dataset that doesn't fit in memory. How would you process it efficiently in Python?",
-                "Moving on to system design. How would you design a simple rate limiter for a public API to prevent abuse?",
-                "That's a solid approach. Finally, tell me about a time you had to debug a complex issue in a production environment.",
-                "Thank you for sharing your experiences. We've covered the key functional areas. Do you have any questions for me before we conclude?"
-            ]
-
-            async def generate_response():
-                # Simulate "thinking" time for realism
-                await asyncio.sleep(1.5) 
+            lc_messages = []
+            for msg in history:
+                role = msg.get("role")
+                content = msg.get("content", "")
+                if role == "system":
+                    lc_messages.append(SystemMessage(content=content))
+                elif role == "user":
+                    lc_messages.append(HumanMessage(content=content))
+                elif role == "assistant":
+                    lc_messages.append(AIMessage(content=content))
+            
+            # Generate LLM response
+            response_text = await llm_service.generate_from_messages(lc_messages)
+            response_text = response_text.strip()
+            
+            # Handle empty or error messages gracefully
+            if response_text.startswith("Error:") or not response_text:
+                logger.error(f"LLM generation failed: {response_text}")
+                response_text = "Got it. Let's move to the next technical topic. Tell me about your experience with building REST APIs."
                 
-                # Determine next question based on conversation progress
-                # history has system, user, assistant, user, assistant...
-                # Each assistant message corresponds to one question asked.
-                assistant_msgs = [m for m in history if m.get("role") == "assistant"]
-                question_idx = len(assistant_msgs)
-                
-                if question_idx < len(MOCK_QUESTIONS):
-                    return MOCK_QUESTIONS[question_idx]
-                else:
-                    return "Excellent. We have completed the interview. Your responses have been recorded. Best of luck!"
-
-            # Wait max 10 seconds for response
-            response_text = await asyncio.wait_for(generate_response(), timeout=10.0)
-
-        except asyncio.TimeoutError:
-            response_text = "I apologize, I'm taking a bit long to think. Could you please rephrase that?"
         except Exception as e:
-            logger.error(f"Interview Agent Error: {e}")
-            response_text = "I'm having trouble processing that. Let's move to the next topic."
+            logger.error(f"Interview Agent Chat Error: {e}")
+            response_text = "Understood. Let's proceed. Can you explain how you handle database connections efficiently in an API?"
             
         # 3. Append Agent Response
         await self.sessions_collection.update_one(

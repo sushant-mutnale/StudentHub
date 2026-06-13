@@ -18,8 +18,10 @@ router = APIRouter(prefix="/questions", tags=["question-generation"])
 # ============ Request/Response Models ============
 
 class GenerateQuestionRequest(BaseModel):
-    """Request to generate a question."""
-    question_type: str = Field(..., description="dsa, behavioral, system_design, or technical")
+    class Config:
+        populate_by_name = True
+    # "type" is an alias for "question_type" to match tests
+    question_type: str = Field(..., alias="type", description="dsa, behavioral, system_design, or technical")
     difficulty: str = Field(default="medium", description="easy, medium, or hard")
     company: Optional[str] = None
     topics: Optional[List[str]] = Field(default=None, description="DSA topics")

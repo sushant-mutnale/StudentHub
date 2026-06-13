@@ -68,8 +68,8 @@ async def create_user(user_data: dict):
         }
         
     result = await users_collection().insert_one(user_data)
-    user = await users_collection().find_one({"_id": result.inserted_id})
-    return migrate_user_skills(user)
+    user_data["_id"] = result.inserted_id
+    return migrate_user_skills(user_data)
 
 
 async def get_user_by_username(username: str):
@@ -92,7 +92,7 @@ async def get_users_by_ids(user_ids: list[str]):
     if not valid_ids:
         return []
     cursor = users_collection().find({"_id": {"$in": valid_ids}})
-    users = await cursor.to_list(length=None)
+    users = await cursor.to_list(length=500)
     return [migrate_user_skills(u) for u in users]
 
 
@@ -153,3 +153,12 @@ async def update_user_password(user_id: str, new_password_hash: str):
             "updated_at": datetime.utcnow()
         }}
     )
+
+
+async def ensure_user_indexes():
+    coll = users_collection()
+    await coll.create_index("email", unique=True, background=True)
+    await coll.create_index("username", unique=True, background=True)
+    await coll.create_index("role", background=True)
+    await coll.create_index([("skills.name", 1)], background=True)
+

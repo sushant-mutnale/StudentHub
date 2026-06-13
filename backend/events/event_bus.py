@@ -12,6 +12,8 @@ from datetime import datetime
 import uuid
 from dataclasses import dataclass, field
 
+from enum import Enum
+
 logger = logging.getLogger(__name__)
 
 # ==========================================
@@ -26,10 +28,11 @@ class Event:
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     correlation_id: Optional[str] = None
 
-class EventTypes:
+class EventTypes(str, Enum):
     # User Events
     USER_SIGNED_UP = "user.signed_up"
-    PROFILE_UPDATED = "user.profile.updated"
+    USER_PROFILE_UPDATED = "user.profile.updated"
+    PROFILE_UPDATED = USER_PROFILE_UPDATED
     USER_REGISTERED = "user.registered" # Added for analytics compatibility
     
     # Job Events
@@ -59,7 +62,6 @@ class EventTypes:
     OFFER_DECLINED = "offer.declined"
     
     # User Events - Audit
-    USER_PROFILE_UPDATED = "user.profile.updated" # Duplicate of above but consistent naming
     USER_SCORE_CHANGED = "user.score_changed"
 
 Events = EventTypes  # Alias for backward compatibility
@@ -87,10 +89,11 @@ class EventBus:
         self._subscribers[event_type].append(handler)
         logger.info(f"Handler subscribed to {event_type}")
 
-    async def publish(self, event_type: str, payload: Dict[str, Any], correlation_id: Optional[str] = None, actor_id: Optional[str] = None):
+    async def publish(self, event_type: str, payload: Dict[str, Any], correlation_id: Optional[str] = None, actor_id: Optional[str] = None, wait: bool = False):
         """
         Publish an event to all subscribers.
-        FIRE-AND-FORGET: Runs handlers in background.
+        If wait is True, runs handlers synchronously and propagates exceptions.
+        Otherwise, runs handlers in background (fire-and-forget).
         """
         if event_type not in self._subscribers:
             logger.debug(f"No subscribers for {event_type}")
@@ -106,17 +109,19 @@ class EventBus:
             payload=payload,
             correlation_id=cid
         )
-        # Note: Event dataclass doesn't support actor_id directly as per previous steps, 
-        # so we rely on payload or we should add it. 
-        # For now, let's stick to the Event definition we agreed on.
         
-        logger.info(f"Publishing event {event_type} [{event_id}]")
+        logger.info(f"Publishing event {event_type} [{event_id}] (wait={wait})")
         
-        # Fire handlers in background tasks
-        for handler in self._subscribers[event_type]:
-            task = asyncio.create_task(self._run_handler(handler, event))
-            self._background_tasks.add(task)
-            task.add_done_callback(self._background_tasks.discard)
+        if wait:
+            # Synchronous: await each handler sequentially and propagate failures
+            for handler in self._subscribers[event_type]:
+                await handler(event)
+        else:
+            # Fire-and-forget: run handlers in background tasks
+            for handler in self._subscribers[event_type]:
+                task = asyncio.create_task(self._run_handler(handler, event))
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
 
     async def _run_handler(self, handler, event):
         """Execute handler with error safety."""

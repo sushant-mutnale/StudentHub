@@ -1,4 +1,7 @@
+import logging
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,35 +53,70 @@ from .middleware import RateLimitMiddleware, CorrelationIdMiddleware, Idempotenc
 
 app = FastAPI(title="Student Hub API")
 
+from fastapi.responses import JSONResponse
+from fastapi import Request
+import traceback
+from bson.errors import InvalidId
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(
+        f"Unhandled exception on {request.method} {request.url.path}: {exc}",
+        exc_info=True
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred. Please try again later."}
+    )
+
+@app.exception_handler(InvalidId)
+async def invalid_id_exception_handler(request: Request, exc: InvalidId):
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "Invalid document ID format."}
+    )
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     import time
-    print(f"Incoming Request: {request.method} {request.url.path}")
+    logger.info(f"Incoming Request: {request.method} {request.url.path}")
     start_time = time.time()
     try:
         response = await call_next(request)
         process_time = time.time() - start_time
-        print(f"Request Completed: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.4f}s")
+        logger.info(f"Request Completed: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.4f}s")
         return response
     except Exception as e:
-        print(f"Request Failed: {request.method} {request.url.path} - Error: {str(e)}")
+        logger.error(f"Request Failed: {request.method} {request.url.path} - Error: {str(e)}")
         raise e
+
+from starlette.middleware.base import BaseHTTPMiddleware
+import asyncio
+
+class TimeoutMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, timeout: int = 60):
+        super().__init__(app)
+        self.timeout = timeout
+
+    async def dispatch(self, request, call_next):
+        try:
+            return await asyncio.wait_for(call_next(request), timeout=self.timeout)
+        except asyncio.TimeoutError:
+            return JSONResponse(
+                status_code=504,
+                content={"detail": "Request timed out"}
+            )
 
 # Middlewares (Order matters: executed bottom-to-top for request, top-to-bottom for response)
 if settings.app_env != "testing":
+    app.add_middleware(TimeoutMiddleware, timeout=60)
     app.add_middleware(RateLimitMiddleware)  # 3. Check rate limits
     app.add_middleware(IdempotencyMiddleware)  # 2. Check for duplicate requests
     app.add_middleware(CorrelationIdMiddleware)  # 1. Tag request with ID
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", 
-        "http://127.0.0.1:5173", 
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ],
-    allow_origin_regex="https?://.*",
+    allow_origins=settings.frontend_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,14 +125,50 @@ app.add_middleware(
 
 @app.get("/health", tags=["health"])
 async def health_check():
-    """Health check endpoint for Render and monitoring."""
+    """Basic liveness check."""
     return {"status": "healthy", "version": "1.0.0"}
+
+@app.get("/health/ready", tags=["health"])
+async def readiness_check():
+    """Deep readiness check — verifies DB and Redis connectivity."""
+    checks = {}
+    overall = "ready"
+    
+    # Check MongoDB
+    try:
+        db = get_database()
+        await db.command("ping")
+        checks["mongodb"] = "ok"
+    except Exception as e:
+        checks["mongodb"] = f"error: {str(e)}"
+        overall = "degraded"
+    
+    # Check Redis
+    try:
+        from .redis_client import RedisClient
+        ok = await RedisClient.ping()
+        checks["redis"] = "ok" if ok else "error: ping failed"
+        if not ok:
+            overall = "degraded"
+    except Exception as e:
+        checks["redis"] = f"error: {str(e)}"
+        overall = "degraded"
+    
+    status_code = 200 if overall == "ready" else 503
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": overall, "checks": checks, "version": "1.0.0"}
+    )
 
 
 @app.on_event("startup")
 async def startup_event():
     await connect_to_mongo()
-    await ensure_database_indexes()
+    try:
+        await ensure_database_indexes()
+    except Exception as e:
+        logger.warning(f"Failed to ensure database indexes: {e}")
     
     # Initialize Event-Driven System
     register_all_handlers()
@@ -106,6 +180,8 @@ async def startup_event():
         worker_manager.register(RecommendationWorker(poll_interval=300))
         worker_manager.register(RetentionWorker(poll_interval=86400))
         worker_manager.register(IngestionWorker(poll_interval=43200)) # 12 hours
+        from .workers.rag_worker import RAGWorker
+        worker_manager.register(RAGWorker())
         await worker_manager.start_all()
         
         # Check if we need immediate ingestion (startup check)
@@ -126,17 +202,18 @@ async def startup_event():
                     needs_ingestion = True
                     
             if needs_ingestion:
-                import sys
-                print("Running initial opportunity ingestion check on startup...", file=sys.stderr)
+                logger.info("Running initial opportunity ingestion check on startup...")
                 # Fire and forget
                 import asyncio
                 asyncio.create_task(opportunity_ingestion.ingest_all(use_mock=False))
         except Exception as e:
-            import sys
-            print(f"Failed to check ingestion status on startup: {e}", file=sys.stderr)
+            logger.error(f"Failed to check ingestion status on startup: {e}")
     
     if settings.app_env.lower() != "production":
-        await seed_default_users()
+        try:
+            await seed_default_users()
+        except Exception as e:
+            logger.warning(f"Failed to seed default users: {e}")
 
 
 @app.on_event("shutdown")

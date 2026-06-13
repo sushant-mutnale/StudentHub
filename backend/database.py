@@ -11,7 +11,15 @@ db = Database()
 
 
 async def connect_to_mongo():
-    db.client = AsyncIOMotorClient(settings.mongodb_uri)
+    db.client = AsyncIOMotorClient(
+        settings.mongodb_uri,
+        maxPoolSize=100,
+        minPoolSize=10,
+        maxIdleTimeMS=60000,
+        serverSelectionTimeoutMS=5000,
+        socketTimeoutMS=30000,
+        connectTimeoutMS=10000
+    )
 
 
 async def close_mongo_connection():

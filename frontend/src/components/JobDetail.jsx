@@ -90,14 +90,14 @@ const JobDetail = () => {
 
   if (loading) {
     return (
-      <div className="dashboard-container" style={{ display: 'block' }}>
+      <>
         <div className="dashboard-main" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
           <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
             <FiLoader className="animate-spin" size={32} />
             <p style={{ marginTop: '1rem' }}>Loading job details...</p>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 

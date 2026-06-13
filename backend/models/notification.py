@@ -43,3 +43,11 @@ async def mark_notification_as_read(notification_id: str):
     )
 
 
+async def ensure_notification_indexes():
+    coll = notifications_collection()
+    await coll.create_index([("user_id", 1), ("read", 1)], background=True)
+    await coll.create_index([("user_id", 1), ("is_read", 1)], background=True)
+    await coll.create_index("created_at", background=True)
+
+
+
