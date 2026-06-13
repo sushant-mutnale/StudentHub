@@ -20,9 +20,10 @@ async def test_livekit_token_generation(client, student_user, student_token):
     assert "url" in data
     assert data["url"] == "http://localhost:7880"
 
-def test_websocket_stream_endpoint():
-    with TestClient(app) as client:
-        with client.websocket_connect("/api/voice/stream/test-session-abc") as websocket:
+@pytest.mark.asyncio
+async def test_websocket_stream_endpoint(managed_app):
+    client = TestClient(managed_app)
+    with client.websocket_connect("/api/voice/stream/test-session-abc") as websocket:
             # Send text command
             websocket.send_text("ping")
             data = websocket.receive_json()

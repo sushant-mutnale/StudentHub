@@ -67,7 +67,11 @@ async def execute_code(
         "status": "success" if result.success else "error",
         "output": result.output,
         "error": result.error if result.error else None,
-        "exit_code": result.exit_code
+        "exit_code": result.exit_code,
+        "memory_kb": result.memory_kb,
+        "run_time_ms": result.run_time_ms,
+        "timeout": result.timeout,
+        "oom_killed": result.oom_killed
     }
 
 
