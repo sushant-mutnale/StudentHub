@@ -167,7 +167,6 @@ async def update_pipeline(
 
 
 @router.get("/{pipeline_id}/board/{job_id}", response_model=PipelineBoardResponse)
-@cache_response(prefix=CacheKeys.PIPELINE_BOARD, ttl_seconds=CacheTTL.SHORT)
 async def get_pipeline_board(
     pipeline_id: str,
     job_id: str,
@@ -198,7 +197,7 @@ async def get_pipeline_board(
     
     # Verify job ownership
     job = await job_model.get_job(job_id)
-    if not job or str(job["recruiter_id"]) != str(recruiter["_id"]):
+    if not job or str(job.get("recruiter_id", "")) != str(recruiter["_id"]):
         raise HTTPException(status_code=404, detail="Job not found")
     
     # Get applications grouped by stage

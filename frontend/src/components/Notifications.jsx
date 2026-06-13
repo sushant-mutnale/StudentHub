@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationService } from '../services/notificationService';
+import SidebarLeft from './SidebarLeft';
 import { FiBell, FiAward, FiBriefcase, FiUsers, FiCalendar, FiMessageSquare, FiCheckCircle } from 'react-icons/fi';
 import '../App.css';
 
@@ -89,8 +90,8 @@ const Notifications = () => {
   if (!user) return null;
 
   return (
-    <>
-      
+    <div className="dashboard-container">
+      <SidebarLeft />
       <div className="dashboard-main">
         <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 className="dashboard-title">Notifications</h1>
@@ -141,54 +142,8 @@ const Notifications = () => {
                       <div className="notification-message">
                         {notification.kind === 'interview_proposed' ? 'New interview proposal received.' :
                           notification.kind === 'offer_sent' ? 'Congratulations! You received a new job offer.' :
-                          notification.kind === 'connection_request' ? `${notification.payload.sender_name} ${notification.payload.message}.` :
-                          notification.kind === 'connection_accepted' ? `${notification.payload.receiver_name} ${notification.payload.message}.` :
                             'System update regarding your account activity.'}
                       </div>
-
-                      {notification.kind === 'connection_request' && !notification.is_read && (
-                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-                          <button 
-                            className="btn-primary" 
-                            style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
-                            onClick={async () => {
-                              try {
-                                const requests = await userService.getPendingRequests();
-                                const req = requests.find(r => r.sender.id === notification.payload.sender_id);
-                                if (req) {
-                                  await userService.acceptRequest(req.request_id);
-                                  await handleMarkAsRead(notification.id);
-                                  alert('Connection accepted!');
-                                }
-                              } catch (err) {
-                                console.error('Failed to accept:', err);
-                              }
-                            }}
-                          >
-                            Accept
-                          </button>
-                          <button 
-                            className="btn-ghost" 
-                            style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
-                            onClick={async () => {
-                                try {
-                                  const requests = await userService.getPendingRequests();
-                                  const req = requests.find(r => r.sender.id === notification.payload.sender_id);
-                                  if (req) {
-                                    await userService.declineRequest(req.request_id);
-                                    await handleMarkAsRead(notification.id);
-                                    alert('Connection declined.');
-                                  }
-                                } catch (err) {
-                                  console.error('Failed to decline:', err);
-                                }
-                            }}
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      )}
-
                       <div className="notification-time">
                         {formatTimestamp(notification.created_at)} • <span style={{ textTransform: 'capitalize' }}>{notification.category}</span>
                       </div>
@@ -200,7 +155,7 @@ const Notifications = () => {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

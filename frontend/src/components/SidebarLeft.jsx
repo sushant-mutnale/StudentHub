@@ -19,12 +19,9 @@ const SidebarLeft = () => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   const deepRoutes = [
-    '/research', '/learning', '/assessment', '/mock-interview',
-    '/interview/voice', '/interviews', '/opportunities', '/skill-gaps',
-    '/applications', '/profile/student', '/profile/', '/resume',
-    '/analytics', '/smart-notifications', '/messages', '/jobs/',
-    '/recruiter/pipeline', '/recruiter/search', '/recruiter/matches',
-    '/recruiter/jobs', '/recruiter/post-job', '/verify'
+    '/research', '/learning', '/assessment',
+    '/mock-interview', '/interview/voice', '/interviews',
+    '/recruiter/pipeline', '/recruiter/search', '/recruiter/matches'
   ];
   const isDeepRoute = deepRoutes.some(route => location.pathname.startsWith(route));
 

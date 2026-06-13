@@ -152,7 +152,11 @@ class JobsIngestionService:
             return dataset_items.items
             
         except Exception as e:
-            logger.error(f"Apify ingestion failed: {e}", exc_info=True)
+            from apify_client.errors import ApifyApiError
+            if isinstance(e, ApifyApiError) and "Insufficient permissions" in str(e):
+                logger.warning("Apify ingestion skipped: Insufficient permissions for the Internshala Actor. Check your API key.")
+            else:
+                logger.error(f"Apify ingestion failed: {e}", exc_info=True)
         
         return []
     
