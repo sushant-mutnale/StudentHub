@@ -178,3 +178,128 @@ async def test_get_agent_info(client):
     assert "agents" in data
     # Should have multiple agents
     assert len(data["agents"]) >= 3
+
+
+# ===== Test 8: DSA Stage-by-Stage Interview Flow =====
+
+@pytest.mark.asyncio
+async def test_dsa_stage_by_stage_flow(client, student_user, student_token):
+    # Start DSA interview
+    resp = await client.post(
+        "/agent-interview/start",
+        json={
+            "company": "Google",
+            "role": "Software Engineer",
+            "difficulty": "medium",
+            "interview_type": "dsa"
+        },
+        headers=auth_headers(student_token),
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    session_id = data["session_id"]
+    assert "session_id" in data
+    
+    # Verify stage starts at clarification by checking context
+    from backend.services.multi_agent_system import multi_agent_interview
+    context = await multi_agent_interview.get_context(session_id)
+    assert context.dsa_stage == "clarification"
+    
+    # 1. Answer clarification stage -> approach
+    resp = await client.post(
+        "/agent-interview/answer",
+        json={
+            "session_id": session_id,
+            "answer": "What are the input size limits? Can the array contain negative numbers?"
+        },
+        headers=auth_headers(student_token)
+    )
+    assert resp.status_code == 200, resp.text
+    res = resp.json()
+    assert "evaluation" in res
+    
+    context = await multi_agent_interview.get_context(session_id)
+    assert context.dsa_stage == "approach"
+    
+    # 2. Answer approach stage -> coding
+    resp = await client.post(
+        "/agent-interview/answer",
+        json={
+            "session_id": session_id,
+            "answer": "I will use a two-pointer approach with O(N) time complexity and O(1) space complexity."
+        },
+        headers=auth_headers(student_token)
+    )
+    assert resp.status_code == 200, resp.text
+    
+    context = await multi_agent_interview.get_context(session_id)
+    assert context.dsa_stage == "coding"
+    
+    # 3. Answer coding stage -> optimization
+    resp = await client.post(
+        "/agent-interview/answer",
+        json={
+            "session_id": session_id,
+            "answer": "def solve(arr):\n    left, right = 0, len(arr)-1\n    return arr"
+        },
+        headers=auth_headers(student_token)
+    )
+    assert resp.status_code == 200, resp.text
+    
+    context = await multi_agent_interview.get_context(session_id)
+    assert context.dsa_stage == "optimization"
+    
+    # 4. Answer optimization stage -> completed
+    resp = await client.post(
+        "/agent-interview/answer",
+        json={
+            "session_id": session_id,
+            "answer": "I would handle empty array by returning early, and null checks for safety."
+        },
+        headers=auth_headers(student_token)
+    )
+    assert resp.status_code == 200, resp.text
+    res = resp.json()
+    assert res["next_question"] == ""
+    
+    context = await multi_agent_interview.get_context(session_id)
+    assert context.dsa_stage == "completed"
+
+
+# ===== Test 9: Voice Interview Helper Logic =====
+
+@pytest.mark.asyncio
+async def test_voice_helper_logic(student_user):
+    from backend.routes.agent_routes import (
+        start_agent_interview_logic,
+        submit_answer_logic,
+        end_agent_interview_logic
+    )
+    
+    student_id = str(student_user["_id"])
+    
+    # Start voice agent interview
+    session = await start_agent_interview_logic(
+        student_id=student_id,
+        company="Microsoft",
+        role="Developer",
+        difficulty="easy",
+        interview_type="dsa"
+    )
+    assert "session_id" in session
+    assert "interviewer_message" in session
+    session_id = session["session_id"]
+    
+    # Submit answer
+    answer_res = await submit_answer_logic(
+        session_id=session_id,
+        answer="Does the array contain duplicates?"
+    )
+    assert answer_res["status"] == "active"
+    assert "evaluation" in answer_res
+    assert answer_res["dsa_stage"] == "approach"
+    
+    # End interview
+    final_res = await end_agent_interview_logic(session_id)
+    assert "final_score" in final_res
+    assert "career_coaching" in final_res

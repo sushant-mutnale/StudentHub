@@ -57,6 +57,8 @@ class InterviewContext:
     tested_topics: List[str] = field(default_factory=list) # Checklist of areas covered
     current_topic_followups: int = 0                       # Avoid infinite deep dives
     job_description: str = ""                             # Role requirements
+    dsa_stage: str = "clarification"                      # clarification | approach | coding | optimization | completed
+    dsa_question_details: Dict = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         from dataclasses import asdict
@@ -146,6 +148,35 @@ Your goal is to extract high-quality 'Signal' from the candidate's responses."""
                 metadata={"question_type": "opening", "difficulty": context.difficulty}
             )
         
+        elif message.message_type == "dsa_transition":
+            from_stage = message.metadata.get("from_stage")
+            to_stage = message.metadata.get("to_stage")
+            prompt = self._get_dsa_transition_prompt(context, from_stage, to_stage, message.content)
+            response = None
+            if llm:
+                try:
+                    response = await llm.generate(prompt, self.get_system_prompt())
+                    response = response.strip()
+                except Exception as e:
+                    logger.warning(f"Failed to generate DSA transition: {e}")
+            
+            if not response:
+                fallbacks = {
+                    "approach": "Got it. Now that we've clarified the constraints, what high-level approach or algorithm do you propose to solve this problem? Please explain the complexity as well.",
+                    "coding": "Makes sense. Let's move on to coding. Please write the complete code for your solution.",
+                    "optimization": "Okay, the code is down. How would you test this? Are there any potential edge cases or bugs you can identify and optimize?",
+                    "completed": "Perfect, we are all done with the coding portion. Thank you!"
+                }
+                response = fallbacks.get(to_stage, "Let's move to the next stage.")
+
+            return AgentMessage(
+                from_agent=self.role,
+                to_agent=AgentRole.COORDINATOR,
+                content=response,
+                message_type="question",
+                metadata={"question_type": f"dsa_{to_stage}", "difficulty": context.difficulty}
+            )
+
         elif message.message_type == "continue":
             # Generate follow-up or next question based on performance
             avg_score = sum(context.scores) / len(context.scores) if context.scores else 50
@@ -183,6 +214,71 @@ Your goal is to extract high-quality 'Signal' from the candidate's responses."""
             message_type="acknowledgment"
         )
     
+    async def _generate_vague_dsa_intro(self, question: Dict) -> str:
+        llm = self._get_llm()
+        if llm:
+            try:
+                prompt = f"""You are the interviewer. You want to present a coding problem to the candidate, but you want to do it vaguely to see if they ask clarifying questions.
+                
+Problem Title: {question.get('title')}
+Full Description: {question.get('description')}
+
+Write a 2-3 sentence verbal introduction. Tell them the name of the problem, give a very brief overview of the task, and ask them to raise any clarifying questions they have about inputs, outputs, constraints, or corner cases before we discuss the solution approach.
+Do NOT show examples, constraints, or the ideal complexity. Keep it voice-friendly and concise."""
+                response = await llm.generate(prompt, self.get_system_prompt())
+                return response.strip()
+            except Exception:
+                pass
+        
+        # Fallback
+        return f"Let's start with a coding problem: '{question.get('title', 'Coding Problem')}'. The task is: {question.get('description', '')[:150]}... Before writing code, what clarifying questions do you have about the inputs, outputs, or constraints?"
+
+    def _get_dsa_transition_prompt(
+        self,
+        context: InterviewContext,
+        from_stage: str,
+        to_stage: str,
+        prev_answer: str
+    ) -> str:
+        full_q = context.dsa_question_details
+        
+        prompt = f"""You are Alex, the senior tech lead and Interviewer at {context.company}.
+We are conducting an interactive DSA interview for the {context.role} role.
+
+Coding Problem: {full_q.get('title')}
+Problem Description: {full_q.get('description')}
+Constraints: {", ".join(full_q.get('constraints', []))}
+Ideal Approach: {full_q.get('ideal_approach')}
+Expected Complexity: Time {full_q.get('time_complexity')}, Space {full_q.get('space_complexity')}
+
+TRANSITION PATH: {from_stage.upper()} -> {to_stage.upper()}
+Candidate's response to the {from_stage} phase: "{prev_answer[:1000]}"
+
+Your instructions for this transition:"""
+
+        if from_stage == "clarification" and to_stage == "approach":
+            prompt += """
+1. Acknowledge and answer the candidate's clarifying questions based on the problem details (e.g. constraints, sorting properties). If they asked no questions or just started coding, politely guide them back.
+2. Ask them to explain their proposed approach/strategy to solve this problem, and analyze both the Time and Space complexity (Big-O) of their approach.
+3. Keep it voice-friendly and direct."""
+        elif from_stage == "approach" and to_stage == "coding":
+            prompt += """
+1. Brief critique of their approach (e.g. confirm if it is optimal or suggest how to optimize it if it's suboptimal. If they proposed an O(N^2) solution when an O(N) is possible, suggest a pointer or hash map hint).
+2. Prompt them to write the actual code solution for the problem.
+3. Keep it encouraging and direct."""
+        elif from_stage == "coding" and to_stage == "optimization":
+            prompt += """
+1. Check their code. Point out a potential bug, syntax issue, or edge case (e.g. empty arrays, large numbers, duplicates) that they should dry-run or verify.
+2. Ask them how they would test this code or handle this specific edge case.
+3. Keep it brief and focused."""
+        elif from_stage == "optimization" and to_stage == "completed":
+            prompt += """
+1. Thank them for the solution. Inform them that we have wrapped up the coding portion of the interview.
+2. Keep it warm and concise."""
+            
+        prompt += "\nWrite only what you (the interviewer, Alex) would say to the candidate."
+        return prompt
+
     async def _generate_opening(self, context: InterviewContext) -> str:
         """Generate opening — warm intro, interview overview, ask candidate to introduce themselves."""
         
@@ -194,26 +290,11 @@ Your goal is to extract high-quality 'Signal' from the candidate's responses."""
                     difficulty=context.difficulty,
                     company=context.company
                 )
-                
-                # Format exactly like a Leetcode problem description
-                formatted_question = f"### {question['title']}\n\n"
-                formatted_question += f"**Description:**\n{question['description']}\n\n"
-                
-                if question.get('examples'):
-                    formatted_question += "**Examples:**\n"
-                    for i, ex in enumerate(question['examples'], 1):
-                        formatted_question += f"*Example {i}:*\n"
-                        formatted_question += f"Input: {ex.get('input', '')}\n"
-                        formatted_question += f"Output: {ex.get('output', '')}\n\n"
-                
-                if question.get('constraints'):
-                    formatted_question += "**Constraints:**\n"
-                    for c in question['constraints']:
-                        formatted_question += f"- {c}\n"
-                        
-                return formatted_question
+                context.dsa_question_details = question
+                context.dsa_stage = "clarification"
+                return await self._generate_vague_dsa_intro(question)
             except Exception as e:
-                print(f"Error generating intro DSA question: {e}")
+                logger.error(f"Error generating intro DSA question: {e}")
                 pass
                 
         llm = self._get_llm()
@@ -459,8 +540,12 @@ Evaluation Tone: Objective, high-standards, and extremely precise. Identify exac
         
         answer = message.metadata.get("answer", "")
         question = message.metadata.get("question", context.current_question)
+        dsa_stage = message.metadata.get("dsa_stage")
         
-        evaluation = await self._evaluate_answer(question, answer, context)
+        if context.interview_type == "dsa" and dsa_stage:
+            evaluation = await self._evaluate_dsa_stage(question, answer, dsa_stage, context)
+        else:
+            evaluation = await self._evaluate_answer(question, answer, context)
         
         return AgentMessage(
             from_agent=self.role,
@@ -565,6 +650,164 @@ Be fair and constructive. Focus on specific, actionable feedback."""
             "feedback": feedback,
             "strengths": ["Attempted the question", "Showed engagement"],
             "improvements": ["Add more specific examples", "Discuss tradeoffs"],
+            "breakdown": {
+                "correctness": score,
+                "clarity": min(score + 10, 100),
+                "depth": max(score - 10, 30)
+            }
+        }
+
+    async def _evaluate_dsa_stage(
+        self,
+        question: Dict,
+        answer: str,
+        dsa_stage: str,
+        context: InterviewContext
+    ) -> Dict[str, Any]:
+        """Evaluate DSA answer for a specific stage (clarification, approach, coding, optimization)."""
+        llm = self._get_llm()
+        if llm:
+            try:
+                full_q = context.dsa_question_details
+                prompt = f"""Evaluate this candidate answer for a specific stage of a DSA interview.
+                
+Coding Problem: {full_q.get('title')}
+Problem Description: {full_q.get('description')}
+Constraints: {", ".join(full_q.get('constraints', [])) if isinstance(full_q.get('constraints'), list) else full_q.get('constraints', '')}
+Ideal Approach: {full_q.get('ideal_approach')}
+Expected Complexity: Time {full_q.get('time_complexity')}, Space {full_q.get('space_complexity')}
+
+CURRENT DSA STAGE: {dsa_stage.upper()}
+Candidate's response for this stage: "{answer[:2000]}"
+
+Criteria for {dsa_stage.upper()} stage:"""
+                if dsa_stage == "clarification":
+                    prompt += """
+- Did the candidate ask clarifying questions about inputs, outputs, constraints, or corner cases?
+- Did they confirm the problem statement and constraints?
+- Score highly if they asked smart clarifying questions. Score lower if they just skipped to writing code or didn't ask anything."""
+                elif dsa_stage == "approach":
+                    prompt += """
+- Did they describe a clear solution approach before coding?
+- Did they analyze Time and Space complexity (Big-O)?
+- Is the proposed approach correct and efficient?
+- Score highly if they explained a correct approach with correct Big-O analysis."""
+                elif dsa_stage == "coding":
+                    prompt += """
+- Did they write the actual code to implement the solution?
+- Is the code structured, clean, and logical?
+- Does it look like a valid attempt to solve the problem?
+- Score highly if they wrote clean code that implements the approach."""
+                elif dsa_stage == "optimization":
+                    prompt += """
+- Did they discuss edge cases (e.g. empty inputs, single element, negative numbers, duplicates)?
+- Did they try to dry-run or verify the code?
+- If the original approach was suboptimal, did they optimize it?
+- Score highly if they addressed edge cases and verified correctness."""
+                else:
+                    prompt += """
+- General DSA evaluation. Correctness, communication, and problem-solving."""
+
+                prompt += """
+
+Return JSON with this exact format:
+{{
+    "score": <0-100>,
+    "feedback": "<2-3 sentences of constructive feedback for this stage>",
+    "strengths": ["<strength1>", "<strength2>"],
+    "improvements": ["<improvement1>", "<improvement2>"],
+    "breakdown": {{
+        "correctness": <0-100>,
+        "clarity": <0-100>,
+        "depth": <0-100>
+    }}
+}}
+
+Be fair, constructive, and stage-appropriate. Return ONLY the JSON object."""
+                response = await llm.generate(prompt, self.get_system_prompt())
+                # Parse JSON
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', response)
+                if json_match:
+                    return json.loads(json_match.group())
+            except Exception as e:
+                logger.error(f"Error in LLM DSA stage evaluation: {e}")
+                pass
+                
+        # Fallback evaluation for DSA stage
+        return self._fallback_dsa_evaluate(answer, dsa_stage)
+
+    def _fallback_dsa_evaluate(self, answer: str, dsa_stage: str) -> Dict[str, Any]:
+        """Fallback evaluation for DSA stages based on simple heuristics."""
+        word_count = len(answer.split())
+        score = 50
+        feedback = ""
+        strengths = ["Responded to the interviewer"]
+        improvements = []
+        
+        if dsa_stage == "clarification":
+            # Check for question marks or key terms like "constraints", "input", "output", "null"
+            has_questions = "?" in answer
+            has_keywords = any(kw in answer.lower() for kw in ["constraint", "input", "output", "null", "empty", "limit", "edge"])
+            if has_questions and has_keywords:
+                score = 85
+                feedback = "Great job asking clarifying questions and confirming constraints before jumping into code."
+                strengths.append("Identified potential edge cases or constraints early")
+            elif has_questions or has_keywords:
+                score = 70
+                feedback = "Good effort trying to clarify. Try to ask more specifically about inputs/outputs limits and corner cases."
+                improvements.append("Ask more structured clarifying questions about constraints and null/empty states")
+            else:
+                score = 45
+                feedback = "You proceeded without asking clarifying questions or confirming constraints. It's always best to clarify first."
+                improvements.append("Always clarify inputs, outputs, constraints, and assumptions before planning")
+                
+        elif dsa_stage == "approach":
+            # Check for Big-O notation, "time", "space", "complexity"
+            has_big_o = any(o in answer for o in ["O(1)", "O(n)", "O(N)", "O(log", "O(n^2)", "O(N^2)"])
+            has_complexity = "complexity" in answer.lower() or "time" in answer.lower() or "space" in answer.lower()
+            if has_big_o and has_complexity:
+                score = 80
+                feedback = "Good explanation of your approach along with time and space complexity analysis."
+                strengths.append("Analyzed Time/Space complexity upfront")
+            elif has_complexity:
+                score = 65
+                feedback = "You described the approach, but make sure to state the exact Big-O Time and Space complexity explicitly."
+                improvements.append("Explicitly state Big-O time and space complexity")
+            else:
+                score = 50
+                feedback = "Please explain the algorithm/logic and analyze its Time and Space complexity before writing code."
+                improvements.append("Describe your strategy and trace complexity before jumping into coding")
+                
+        elif dsa_stage == "coding":
+            # Check if there is some code structure (def, class, function, return, variables, indentation/brackets)
+            is_code_like = any(kw in answer for kw in ["def ", "class ", "return", "function", "var ", "const ", "let ", "{", "}", "="])
+            if is_code_like and word_count > 15:
+                score = 75
+                feedback = "The code implementation has been provided. It matches the structure of a a standard code solution."
+                strengths.append("Translated approach into code")
+            else:
+                score = 40
+                feedback = "No code implementation was detected or the code was too brief. Please write out the full solution."
+                improvements.append("Write a complete, structured code implementation of your approach")
+                
+        elif dsa_stage == "optimization":
+            # Check for testing, edge cases, optimizations
+            has_edge = any(kw in answer.lower() for kw in ["edge", "null", "empty", "zero", "bound", "negative", "test", "verify", "dry run"])
+            if has_edge:
+                score = 80
+                feedback = "Solid analysis of edge cases and verification of the solution."
+                strengths.append("Addressed corner cases and edge conditions")
+            else:
+                score = 55
+                feedback = "Consider walking through specific test cases and edge cases (like empty/null inputs) to verify correctness."
+                improvements.append("Verify code correctness against standard edge cases and dry-run code")
+                
+        return {
+            "score": score,
+            "feedback": feedback,
+            "strengths": strengths,
+            "improvements": improvements,
             "breakdown": {
                 "correctness": score,
                 "clarity": min(score + 10, 100),
@@ -851,15 +1094,19 @@ class CoordinatorAgent(BaseAgent):
     ) -> Dict[str, Any]:
         """Process answer submission through evaluation and follow-up."""
         # First, evaluate the answer
+        eval_metadata = {
+            "answer": answer,
+            "question": context.current_question
+        }
+        if context.interview_type == "dsa":
+            eval_metadata["dsa_stage"] = context.dsa_stage
+
         eval_message = AgentMessage(
             from_agent=AgentRole.COORDINATOR,
             to_agent=AgentRole.EVALUATOR,
             content="Evaluate this answer",
             message_type="evaluate",
-            metadata={
-                "answer": answer,
-                "question": context.current_question
-            }
+            metadata=eval_metadata
         )
         
         eval_response = await self.agents[AgentRole.EVALUATOR].process(eval_message, context)
@@ -873,36 +1120,78 @@ class CoordinatorAgent(BaseAgent):
             "question_id": len(context.questions_asked)
         })
         
-        # Determine whether to ask a follow-up (drill-down) or pivot to a new topic (continue)
-        is_technical = context.interview_type in ("technical", "mixed", "dsa")
-        if is_technical and context.current_topic_followups == 0:
-            context.current_topic_followups = 1
-            msg_type = "follow_up"
+        if context.interview_type == "dsa":
+            from_stage = context.dsa_stage
+            
+            # clarification -> approach -> coding -> optimization -> completed
+            stage_order = ["clarification", "approach", "coding", "optimization", "completed"]
+            try:
+                current_idx = stage_order.index(from_stage)
+                to_stage = stage_order[current_idx + 1]
+            except (ValueError, IndexError):
+                to_stage = "completed"
+                
+            context.dsa_stage = to_stage
+            
+            # Send transition message to interviewer
+            next_message = AgentMessage(
+                from_agent=AgentRole.COORDINATOR,
+                to_agent=AgentRole.INTERVIEWER,
+                content=answer,
+                message_type="dsa_transition",
+                metadata={
+                    "from_stage": from_stage,
+                    "to_stage": to_stage
+                }
+            )
+            
+            next_response = await self.agents[AgentRole.INTERVIEWER].process(next_message, context)
+            next_question_content = next_response.content if to_stage != "completed" else ""
+            
+            return {
+                "evaluation": {
+                    "score": score,
+                    "feedback": eval_response.content,
+                    "breakdown": eval_response.metadata.get("breakdown", {}),
+                    "strengths": eval_response.metadata.get("strengths", []),
+                    "improvements": eval_response.metadata.get("improvements", [])
+                },
+                "next_question": next_question_content,
+                "agent": "evaluator",
+                "dsa_stage": to_stage
+            }
+            
         else:
-            context.current_topic_followups = 0
-            msg_type = "continue"
+            # Determine whether to ask a follow-up (drill-down) or pivot to a new topic (continue)
+            is_technical = context.interview_type in ("technical", "mixed")
+            if is_technical and context.current_topic_followups == 0:
+                context.current_topic_followups = 1
+                msg_type = "follow_up"
+            else:
+                context.current_topic_followups = 0
+                msg_type = "continue"
 
-        # Get next question
-        next_message = AgentMessage(
-            from_agent=AgentRole.COORDINATOR,
-            to_agent=AgentRole.INTERVIEWER,
-            content=answer,
-            message_type=msg_type
-        )
-        
-        next_response = await self.agents[AgentRole.INTERVIEWER].process(next_message, context)
-        
-        return {
-            "evaluation": {
-                "score": score,
-                "feedback": eval_response.content,
-                "breakdown": eval_response.metadata.get("breakdown", {}),
-                "strengths": eval_response.metadata.get("strengths", []),
-                "improvements": eval_response.metadata.get("improvements", [])
-            },
-            "next_question": next_response.content,
-            "agent": "evaluator"
-        }
+            # Get next question
+            next_message = AgentMessage(
+                from_agent=AgentRole.COORDINATOR,
+                to_agent=AgentRole.INTERVIEWER,
+                content=answer,
+                message_type=msg_type
+            )
+            
+            next_response = await self.agents[AgentRole.INTERVIEWER].process(next_message, context)
+            
+            return {
+                "evaluation": {
+                    "score": score,
+                    "feedback": eval_response.content,
+                    "breakdown": eval_response.metadata.get("breakdown", {}),
+                    "strengths": eval_response.metadata.get("strengths", []),
+                    "improvements": eval_response.metadata.get("improvements", [])
+                },
+                "next_question": next_response.content,
+                "agent": "evaluator"
+            }
     
     async def request_hint(
         self, 

@@ -402,3 +402,113 @@ async def get_agent_info():
             }
         ]
     }
+
+
+# ============ Voice Interview Helpers ============
+
+async def start_agent_interview_logic(
+    student_id: str,
+    company: str,
+    role: str,
+    difficulty: str,
+    interview_type: str = "mixed",
+    resume_text: str = ""
+) -> dict:
+    """Helper logic to start a multi-agent interview (used by voice_routes or other client channels)."""
+    from datetime import datetime
+    from ..database import get_database
+    
+    session_id = str(uuid.uuid4())
+    result = await multi_agent_interview.start(
+        session_id=session_id,
+        student_id=student_id,
+        company=company,
+        role=role,
+        difficulty=difficulty,
+        interview_type=interview_type,
+        resume_text=resume_text
+    )
+    
+    # Save the session to MongoDB agent_interviews collection
+    db = get_database()
+    await db.agent_interviews.insert_one({
+        "session_id": session_id,
+        "student_id": student_id,
+        "company": company,
+        "role": role,
+        "difficulty": difficulty,
+        "interview_type": interview_type,
+        "status": "active",
+        "questions_answered": 0,
+        "hints_used": 0,
+        "created_at": datetime.utcnow()
+    })
+    
+    return {
+        "session_id": session_id,
+        "interviewer_message": result.get("question", "")
+    }
+
+
+async def submit_answer_logic(
+    session_id: str,
+    answer: str
+) -> dict:
+    """Helper logic to submit an answer and advance the multi-agent session state."""
+    from ..database import get_database
+    
+    db = get_database()
+    agent_doc = await db.agent_interviews.find_one({"session_id": session_id})
+    if not agent_doc:
+        return {"error": "Session not found", "status": "failed"}
+
+    result = await multi_agent_interview.answer(session_id, answer)
+    if "error" in result:
+        return {"error": result["error"], "status": "failed"}
+        
+    # Increment questions answered in MongoDB
+    new_count = agent_doc.get("questions_answered", 0) + 1
+    update_data = {"questions_answered": new_count}
+    
+    # If the coordinator returned empty next_question or dsa_stage is completed, mark session as completed
+    status = "active"
+    next_question = result.get("next_question", "")
+    dsa_stage = result.get("dsa_stage")
+    
+    # If no next question or dsa_stage is completed/empty
+    if next_question == "" or dsa_stage == "completed":
+        status = "completed"
+        update_data["status"] = "completed"
+        
+    await db.agent_interviews.update_one(
+        {"session_id": session_id},
+        {"$set": update_data}
+    )
+    
+    return {
+        "status": status,
+        "evaluation": result.get("evaluation"),
+        "next_question": next_question,
+        "dsa_stage": dsa_stage
+    }
+
+
+async def end_agent_interview_logic(
+    session_id: str
+) -> dict:
+    """Helper logic to end a multi-agent interview and get the final evaluation/coaching."""
+    from ..database import get_database
+    
+    db = get_database()
+    result = await multi_agent_interview.finish(session_id)
+    
+    # Map 'coaching' to 'career_coaching' for compatibility with voice_routes
+    result["career_coaching"] = result.get("coaching", "")
+    
+    # Update MongoDB status to completed
+    await db.agent_interviews.update_one(
+        {"session_id": session_id},
+        {"$set": {"status": "completed"}}
+    )
+    
+    return result

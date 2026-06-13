@@ -116,18 +116,9 @@ def serialize_student_application(app: dict, job: dict) -> StudentApplicationRes
         status=app["status"],
         applied_at=app["applied_at"],
         last_updated=app["updated_at"],
-        stage_history=[
-            StageHistoryEntry(
-                stage_id=h.get("stage_id"),
-                stage_name=h["stage_name"] if "student_visible_stage" not in h else h.get("student_visible_stage", h["stage_name"]),
-                changed_by=h["changed_by"],
-                timestamp=h["timestamp"],
-                reason=h.get("reason")
-            ) for h in app.get("stage_history", [])
-        ],
+        stage_history=history,
         interview_count=len(app.get("interview_ids", [])),
         has_offer=app.get("offer_id") is not None,
-        stage_history=history,
         next_step=next_step
     )
 
