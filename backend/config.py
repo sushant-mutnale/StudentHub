@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     # Scrapers
     apify_api_key: Optional[str] = None
     
+    # Tesseract OCR
+    tesseract_cmd: Optional[str] = None
+    
     # LiveKit (WebRTC)
     livekit_api_key: str = "devkey"
     livekit_api_secret: str = "secret"

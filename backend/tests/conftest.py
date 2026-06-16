@@ -45,6 +45,7 @@ async def clean_collections(managed_app):
         "session_questions", "session_answers", "posts",
         "notifications", "activities", "outbox_events",
         "multi_agent_sessions", "opportunities_jobs",
+        "resume_uploads", "resume_cache",
     ]
     for col in collections_to_clean:
         await test_db[col].delete_many({})

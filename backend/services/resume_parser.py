@@ -137,21 +137,83 @@ class ResumeParser:
             logger.error(f"[PyMuPDF] Extraction failed: {e}")
             return ""
     
+    def is_text_valid(self, t: str) -> bool:
+        """Validate if extracted text has sufficient alphabetic density."""
+        if not t or not t.strip():
+            return False
+        letters = [c for c in t if c.isalpha()]
+        # If less than 50 letters or less than 15% alphabetic density, it's likely scanned or bad text
+        if len(letters) < 50 or (len(letters) / len(t)) < 0.15:
+            return False
+        return True
+
+    def extract_text_ocr(self, file_path: str) -> str:
+        """
+        Extract text using Tesseract OCR as a fallback.
+        Renders pages to images in memory via fitz (PyMuPDF) and runs pytesseract.
+        """
+        try:
+            import fitz
+            import pytesseract
+            from PIL import Image
+            import io
+            from ..config import settings
+            
+            # Configure custom Tesseract path if set in config
+            if hasattr(settings, "tesseract_cmd") and settings.tesseract_cmd:
+                pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd
+                
+            logger.info(f"Triggering OCR fallback for {file_path}")
+            doc = fitz.open(file_path)
+            ocr_text_parts = []
+            
+            for page_num, page in enumerate(doc):
+                try:
+                    # Render page as PNG image in memory (150 DPI)
+                    pix = page.get_pixmap(dpi=150)
+                    img_data = pix.tobytes("png")
+                    img = Image.open(io.BytesIO(img_data))
+                    page_text = pytesseract.image_to_string(img)
+                    if page_text:
+                        ocr_text_parts.append(page_text)
+                except Exception as page_err:
+                    logger.error(f"OCR failed for page {page_num}: {page_err}")
+            doc.close()
+            return "\n".join(ocr_text_parts)
+        except ImportError as imp_err:
+            logger.warning(f"OCR libraries not fully installed: {imp_err}")
+            return ""
+        except Exception as e:
+            logger.error(f"OCR fallback extraction failed: {e}")
+            return ""
+
     def extract_text(self, file_path: str) -> Tuple[str, str]:
         """
-        Extract text from PDF with fallback chain.
+        Extract text from PDF with fallback chain:
+        pdfplumber -> pymupdf -> pytesseract (OCR)
         Returns (text, method_used)
         """
         # Try pdfplumber first
         text = self.extract_text_pdfplumber(file_path)
-        if text.strip():
+        if self.is_text_valid(text):
             return text, "pdfplumber"
         
         # Fallback to PyMuPDF
-        text = self.extract_text_pymupdf(file_path)
-        if text.strip():
-            return text, "pymupdf"
+        text_fallback = self.extract_text_pymupdf(file_path)
+        if self.is_text_valid(text_fallback):
+            return text_fallback, "pymupdf"
         
+        # OCR Fallback
+        ocr_text = self.extract_text_ocr(file_path)
+        if ocr_text.strip():
+            return ocr_text, "tesseract_ocr"
+            
+        # Return whatever we extracted if OCR yielded nothing
+        if text.strip():
+            return text, "pdfplumber"
+        if text_fallback.strip():
+            return text_fallback, "pymupdf"
+            
         return "", "none"
     
     def extract_contact_info(self, text: str) -> Dict[str, Optional[str]]:
@@ -641,16 +703,16 @@ Output MUST be a valid JSON object matching the input structure. Do not output a
         return parsed_data
     
     def get_file_hash(self, file_path: str) -> str:
-        """Calculate MD5 hash of file for deduplication."""
-        hash_md5 = hashlib.md5()
+        """Calculate SHA-256 hash of file for deduplication."""
+        hash_sha = hashlib.sha256()
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
+                hash_sha.update(chunk)
+        return hash_sha.hexdigest()
     
     def get_file_hash_from_bytes(self, content: bytes) -> str:
-        """Calculate MD5 hash from bytes for deduplication."""
-        return hashlib.md5(content).hexdigest()
+        """Calculate SHA-256 hash from bytes for deduplication."""
+        return hashlib.sha256(content).hexdigest()
 
 
 # Singleton instance

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,10 @@ def resumes_collection():
     return get_database()["resume_uploads"]
 
 
+def resume_cache_collection():
+    return get_database()["resume_cache"]
+
+
 def ensure_upload_dir():
     """Ensure upload directory exists."""
     os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -70,18 +74,134 @@ def get_resume_path(student_id: str, filename: str) -> str:
 
 # ============ Upload Endpoint ============
 
+async def parse_resume_background_task(
+    resume_id: str,
+    file_path: str,
+    file_hash: str,
+    use_ai_enhancement: bool,
+    student_id: str
+):
+    """Background task to parse resume and update MongoDB collections."""
+    try:
+        # 1. Parse resume file
+        parsed_data = await resume_parser.parse_resume(
+            file_path,
+            use_ai_enhancement=use_ai_enhancement
+        )
+        
+        if not parsed_data.get("success"):
+            # Clean up file on failure
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            error_msg = parsed_data.get("error", "Failed to parse resume")
+            await resumes_collection().update_one(
+                {"_id": ObjectId(resume_id)},
+                {"$set": {
+                    "status": "failed",
+                    "error_message": error_msg,
+                    "updated_at": datetime.utcnow()
+                }}
+            )
+            return
+
+        # 2. Evaluate resume with AI
+        parsed_data_struct = {
+            "contact": parsed_data.get("contact", {}),
+            "skills": parsed_data.get("skills", []),
+            "experience": parsed_data.get("experience", []),
+            "education": parsed_data.get("education", []),
+            "projects": parsed_data.get("projects", [])
+        }
+        ai_feedback = await ai_resume_evaluator.evaluate_resume(parsed_data=parsed_data_struct)
+        
+        # 3. Save to global cache
+        cache_doc = {
+            "file_hash": file_hash,
+            "parsed_data": parsed_data_struct,
+            "feedback": ai_feedback or {},
+            "raw_text": parsed_data.get("raw_text", ""),
+            "parsing_confidence": parsed_data.get("parsing_confidence", 0.0),
+            "ai_enhanced": parsed_data.get("ai_enhanced", False),
+            "extraction_method": parsed_data.get("extraction_method", ""),
+            "created_at": datetime.utcnow()
+        }
+        await resume_cache_collection().update_one(
+            {"file_hash": file_hash},
+            {"$set": cache_doc},
+            upsert=True
+        )
+
+        # 4. Update the uploaded resume document
+        await resumes_collection().update_one(
+            {"_id": ObjectId(resume_id)},
+            {"$set": {
+                "parsed_data": parsed_data_struct,
+                "feedback": ai_feedback or {},
+                "raw_text": parsed_data.get("raw_text", "")[:10000],
+                "parsing_confidence": parsed_data.get("parsing_confidence", 0.0),
+                "ai_enhanced": parsed_data.get("ai_enhanced", False),
+                "extraction_method": parsed_data.get("extraction_method", ""),
+                "status": "completed",
+                "updated_at": datetime.utcnow()
+            }}
+        )
+
+        # 5. Merge skills into user profile for Gap Analysis
+        if parsed_data.get("skills"):
+            user = await user_model.get_user_by_id(student_id)
+            if user:
+                user_skills = user.get("skills", [])
+                existing_skill_names = set(
+                    s.get("name", "").lower() if isinstance(s, dict) else str(s).lower() 
+                    for s in user_skills
+                )
+                
+                new_skills = []
+                for skill in parsed_data["skills"]:
+                    if isinstance(skill, str) and skill.lower() not in existing_skill_names:
+                        new_skills.append(skill)
+                        existing_skill_names.add(skill.lower())
+                
+                if new_skills:
+                    all_skills = [
+                        s.get("name") if isinstance(s, dict) else str(s)
+                        for s in user_skills
+                    ] + new_skills
+                    await user_model.update_user(student_id, {"skills": all_skills})
+
+    except Exception as e:
+        logger.error(f"Error in background resume parsing task for {resume_id}: {e}", exc_info=True)
+        # Clean up file
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+        await resumes_collection().update_one(
+            {"_id": ObjectId(resume_id)},
+            {"$set": {
+                "status": "failed",
+                "error_message": str(e),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+
+
+# ============ Upload Endpoint ============
+
 @router.post("/upload", response_model=ResumeUploadResponse)
 async def upload_resume(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     use_ai_enhancement: bool = Query(False, description="Use AI to enhance parsing"),
     current_user=Depends(get_current_user)
 ):
     """
-    Upload and parse a resume PDF.
+    Upload and parse a resume PDF asynchronously.
     
-    - Stores file permanently with student_id + timestamp
-    - Extracts structured data: contact, skills, experience, education, projects
-    - Optionally uses AI to improve extraction accuracy
+    - Computes SHA-256 hash
+    - Checks global cache; if exists, returns immediately
+    - Otherwise, saves file and initiates background parsing task
     """
     student_id = str(current_user["_id"])
     
@@ -101,106 +221,34 @@ async def upload_resume(
         raise HTTPException(status_code=413, detail=f"File too large. Max size is {MAX_FILE_SIZE // (1024*1024)}MB")
     
     # Calculate file hash for deduplication
-    file_hash = resume_parser.get_file_hash_from_bytes(content) if hasattr(resume_parser, 'get_file_hash_from_bytes') else None
+    file_hash = resume_parser.get_file_hash_from_bytes(content)
     
-    # Check for duplicate
-    if file_hash:
-        existing = await resumes_collection().find_one({
-            "student_id": ObjectId(student_id),
-            "file_hash": file_hash
-        })
-        if existing:
-            # Return success for duplicate upload to refine UX
-            ai_feedback = existing.get("feedback", {})
-            parsed_data = existing.get("parsed_data", {})
-            
-            return ResumeUploadResponse(
-                resume_id=str(existing["_id"]),
-                file_name=existing.get("file_name", file.filename),
-                
-                overall_score=ai_feedback.get("overall_score", 0.0),
-                category_scores=ai_feedback.get("category_scores", {}),
-                executive_summary=ai_feedback.get("executive_summary", ""),
-                strengths=ai_feedback.get("strengths", []),
-                improvements=ai_feedback.get("improvements", []),
-                action_plan=ai_feedback.get("action_plan", []),
-                
-                extracted_skills=parsed_data.get("skills", []),
-                experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])],
-                education=[ParsedEducation(**e) for e in parsed_data.get("education", [])],
-                contact=ParsedContact(**parsed_data.get("contact", {})),
-                projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])],
-                
-                parsing_confidence=existing.get("parsing_confidence", 0),
-                ai_enhanced=existing.get("ai_enhanced", False),
-                message="Resume already exists. Retrieved existing data."
-            )
-    
-    # Save file
-    file_path = get_resume_path(student_id, file.filename)
-    with open(file_path, "wb") as f:
-        f.write(content)
-    
-    try:
-        # Parse resume
-        parsed_data = await resume_parser.parse_resume(
-            file_path,
-            use_ai_enhancement=use_ai_enhancement
-        )
+    # 1. Check global resume cache first
+    cache_hit = await resume_cache_collection().find_one({"file_hash": file_hash})
+    if cache_hit:
+        parsed_data = cache_hit.get("parsed_data", {})
+        ai_feedback = cache_hit.get("feedback", {})
         
-        if not parsed_data.get("success"):
-            # Clean up file on parsing failure
-            os.remove(file_path)
-            raise HTTPException(
-                status_code=422,
-                detail=parsed_data.get("error", "Failed to parse resume")
-            )
-        
-        # Store in MongoDB
+        # Save cache hit as a new document for this student in resume_uploads
         doc = {
             "student_id": ObjectId(student_id),
             "file_name": file.filename,
-            "file_path": file_path,
-            "file_hash": file_hash or "",
-            "parsed_data": {
-                "contact": parsed_data.get("contact", {}),
-                "skills": parsed_data.get("skills", []),
-                "experience": parsed_data.get("experience", []),
-                "education": parsed_data.get("education", []),
-                "projects": parsed_data.get("projects", []),
-            },
-            "raw_text": parsed_data.get("raw_text", "")[:10000],  # Limit stored text
-            "parsing_confidence": parsed_data.get("parsing_confidence", 0),
-            "ai_enhanced": parsed_data.get("ai_enhanced", False),
-            "extraction_method": parsed_data.get("extraction_method", ""),
+            "file_path": None,  # No new local file saved
+            "file_hash": file_hash,
+            "parsed_data": parsed_data,
+            "feedback": ai_feedback,
+            "raw_text": cache_hit.get("raw_text", ""),
+            "parsing_confidence": cache_hit.get("parsing_confidence", 0.0),
+            "ai_enhanced": cache_hit.get("ai_enhanced", False),
+            "extraction_method": cache_hit.get("extraction_method", ""),
+            "status": "completed",
             "uploaded_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
-        
         result = await resumes_collection().insert_one(doc)
         resume_id = str(result.inserted_id)
         
-        # Build response
-        # Build response base
-        parsed_skills=parsed_data.get("skills", [])
-        parsed_experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])]
-        parsed_education=[ParsedEducation(**e) for e in parsed_data.get("education", [])]
-        parsed_projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])]
-        parsed_contact=ParsedContact(**parsed_data.get("contact", {}))
-
-        # Generate Real AI Feedback
-        ai_feedback = await ai_resume_evaluator.evaluate_resume(
-            parsed_data={"contact": parsed_data.get("contact", {}), "skills": parsed_data.get("skills", []), "experience": parsed_data.get("experience", []), "education": parsed_data.get("education", []), "projects": parsed_data.get("projects", [])}
-        )
-        
-        # Save feedback back to document
-        if ai_feedback:
-            await resumes_collection().update_one(
-                {"_id": ObjectId(resume_id)},
-                {"$set": {"feedback": ai_feedback}}
-            )
-            
-        # Merge skills into user profile for Gap Analysis
+        # Merge skills to user profile
         if parsed_data.get("skills"):
             user = await user_model.get_user_by_id(student_id)
             if user:
@@ -217,47 +265,97 @@ async def upload_resume(
                         existing_skill_names.add(skill.lower())
                 
                 if new_skills:
-                    # User model update_user automatically formats string skills into dicts
                     all_skills = [
                         s.get("name") if isinstance(s, dict) else str(s)
                         for s in user_skills
                     ] + new_skills
                     await user_model.update_user(student_id, {"skills": all_skills})
-        
-        # Default empty AI fields if failed
-        ai_data = ai_feedback or {}
-        
+                    
         return ResumeUploadResponse(
+            status="completed",
             resume_id=resume_id,
             file_name=file.filename,
-            
-            # Merged flat AI fields
-            overall_score=ai_data.get("overall_score", 0.0),
-            category_scores=ai_data.get("category_scores", {}),
-            executive_summary=ai_data.get("executive_summary", ""),
-            strengths=ai_data.get("strengths", []),
-            improvements=ai_data.get("improvements", []),
-            action_plan=ai_data.get("action_plan", []),
-            
-            # Merged Parsed fields
-            extracted_skills=parsed_skills,
-            experience=parsed_experience,
-            education=parsed_education,
-            contact=parsed_contact,
-            projects=parsed_projects,
-
-            parsing_confidence=parsed_data.get("parsing_confidence", 0),
-            ai_enhanced=parsed_data.get("ai_enhanced", False),
-            message=f"Resume parsed with {parsed_data.get('parsing_confidence', 0):.1f}% confidence"
+            overall_score=ai_feedback.get("overall_score", 0.0),
+            category_scores=ai_feedback.get("category_scores", {}),
+            executive_summary=ai_feedback.get("executive_summary", ""),
+            strengths=ai_feedback.get("strengths", []),
+            improvements=ai_feedback.get("improvements", []),
+            action_plan=ai_feedback.get("action_plan", []),
+            extracted_skills=parsed_data.get("skills", []),
+            experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])],
+            education=[ParsedEducation(**e) for e in parsed_data.get("education", [])],
+            contact=ParsedContact(**parsed_data.get("contact", {})),
+            projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])],
+            parsing_confidence=cache_hit.get("parsing_confidence", 0.0),
+            ai_enhanced=cache_hit.get("ai_enhanced", False),
+            message="Retrieved existing parsed resume from cache."
         )
+
+    # 2. Check for student-specific upload duplicate
+    existing = await resumes_collection().find_one({
+        "student_id": ObjectId(student_id),
+        "file_hash": file_hash
+    })
+    if existing:
+        ai_feedback = existing.get("feedback", {})
+        parsed_data = existing.get("parsed_data", {})
+        status = existing.get("status", "completed")
         
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Clean up file on error
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        raise HTTPException(status_code=500, detail=f"Parsing error: {str(e)}")
+        return ResumeUploadResponse(
+            status=status,
+            resume_id=str(existing["_id"]),
+            file_name=existing.get("file_name", file.filename),
+            overall_score=ai_feedback.get("overall_score", 0.0),
+            category_scores=ai_feedback.get("category_scores", {}),
+            executive_summary=ai_feedback.get("executive_summary", ""),
+            strengths=ai_feedback.get("strengths", []),
+            improvements=ai_feedback.get("improvements", []),
+            action_plan=ai_feedback.get("action_plan", []),
+            extracted_skills=parsed_data.get("skills", []),
+            experience=[ParsedExperience(**e) for e in parsed_data.get("experience", [])],
+            education=[ParsedEducation(**e) for e in parsed_data.get("education", [])],
+            contact=ParsedContact(**parsed_data.get("contact", {})),
+            projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])],
+            parsing_confidence=existing.get("parsing_confidence", 0),
+            ai_enhanced=existing.get("ai_enhanced", False),
+            message=f"Resume already exists for this student. Status: {status}",
+            error_message=existing.get("error_message")
+        )
+    
+    # Save file
+    file_path = get_resume_path(student_id, file.filename)
+    with open(file_path, "wb") as f:
+        f.write(content)
+        
+    # Store in MongoDB with "processing" status
+    doc = {
+        "student_id": ObjectId(student_id),
+        "file_name": file.filename,
+        "file_path": file_path,
+        "file_hash": file_hash,
+        "status": "processing",
+        "uploaded_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+    result = await resumes_collection().insert_one(doc)
+    resume_id = str(result.inserted_id)
+    
+    # Dispatch background task
+    background_tasks.add_task(
+        parse_resume_background_task,
+        resume_id=resume_id,
+        file_path=file_path,
+        file_hash=file_hash,
+        use_ai_enhancement=use_ai_enhancement,
+        student_id=student_id
+    )
+    
+    return ResumeUploadResponse(
+        status="processing",
+        resume_id=resume_id,
+        file_name=file.filename,
+        message="Resume uploaded successfully. Parsing in progress."
+    )
 
 
 # ============ List Resumes ============
@@ -282,7 +380,8 @@ async def get_my_resumes(current_user=Depends(get_current_user)):
             name=contact.get("name"),
             parsing_confidence=doc.get("parsing_confidence", 0),
             skills_count=len(doc.get("parsed_data", {}).get("skills", [])),
-            uploaded_at=doc.get("uploaded_at", datetime.utcnow())
+            uploaded_at=doc.get("uploaded_at", datetime.utcnow()),
+            status=doc.get("status", "completed")
         ))
     
     return MyResumesResponse(
@@ -314,6 +413,7 @@ async def get_resume(resume_id: str, current_user=Depends(get_current_user)):
     ai_feedback = doc.get("feedback", {})
     
     return ResumeDetailResponse(
+        status=doc.get("status", "completed"),
         id=str(doc["_id"]),
         file_name=doc.get("file_name", ""),
         file_url=None,  # Can add file serving later
@@ -334,7 +434,8 @@ async def get_resume(resume_id: str, current_user=Depends(get_current_user)):
         projects=[ParsedProject(**p) for p in parsed_data.get("projects", [])],
         
         uploaded_at=doc.get("uploaded_at", datetime.utcnow()),
-        updated_at=doc.get("updated_at")
+        updated_at=doc.get("updated_at"),
+        error_message=doc.get("error_message")
     )
 
 

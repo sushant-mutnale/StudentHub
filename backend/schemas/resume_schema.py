@@ -64,7 +64,7 @@ class FeedbackItem(BaseModel):
 
 class ResumeUploadResponse(BaseModel):
     """Response after uploading a resume."""
-    status: str = "success"
+    status: str = "completed"
     resume_id: str
     file_name: str
     
@@ -87,6 +87,7 @@ class ResumeUploadResponse(BaseModel):
     parsing_confidence: float = 0.0
     ai_enhanced: bool = False
     message: str = "Resume parsed successfully"
+    error_message: Optional[str] = None
 
 
 class ResumeListItem(BaseModel):
@@ -97,6 +98,7 @@ class ResumeListItem(BaseModel):
     parsing_confidence: float
     skills_count: int
     uploaded_at: datetime
+    status: str = "completed"
 
 
 class MyResumesResponse(BaseModel):
@@ -108,7 +110,7 @@ class MyResumesResponse(BaseModel):
 
 class ResumeDetailResponse(BaseModel):
     """Detailed resume response."""
-    status: str = "success"
+    status: str = "completed"
     id: str
     file_name: str
     file_url: Optional[str] = None
@@ -131,6 +133,7 @@ class ResumeDetailResponse(BaseModel):
     # Meta
     uploaded_at: datetime
     updated_at: Optional[datetime] = None
+    error_message: Optional[str] = None
 
 
 class ReparseRequest(BaseModel):
