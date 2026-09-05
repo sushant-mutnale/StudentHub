@@ -24,7 +24,7 @@ export const applicationService = {
     moveStage: async (applicationId, stageId, note = "") => {
         const response = await api.put(
             `/applications/${applicationId}/stage`,
-            { new_stage_id: stageId, note }
+            { new_stage_id: stageId, reason: note }
         );
         return response.data;
     },

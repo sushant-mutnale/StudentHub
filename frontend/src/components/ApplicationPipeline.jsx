@@ -18,6 +18,10 @@ const ApplicationPipeline = () => {
     const [jobs, setJobs] = useState([]);
     const [selectedJobId, setSelectedJobId] = useState(urlJobId || null);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [dropTargetStageId, setDropTargetStageId] = useState(null);
+    const [draggingSource, setDraggingSource] = useState(null);
+    const [message, setMessage] = useState(null);
 
     useEffect(() => {
         loadInitialData();
@@ -83,6 +87,77 @@ const ApplicationPipeline = () => {
         return { background: 'rgba(239,68,68,0.1)', color: '#dc2626' };
     };
 
+    const handleDragStart = (e, candidate, sourceStageId) => {
+        const payload = JSON.stringify({ applicationId: candidate.application_id, sourceStageId });
+        e.dataTransfer.setData('text/plain', payload);
+        e.dataTransfer.effectAllowed = 'move';
+        setDraggingSource({ applicationId: candidate.application_id, sourceStageId });
+    };
+
+    const handleDragOver = (e, targetStageId) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDropTargetStageId(targetStageId);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        setDropTargetStageId(null);
+    };
+
+    const handleDrop = (e, targetStageId) => {
+        e.preventDefault();
+        setDropTargetStageId(null);
+        setDraggingSource(null);
+        try {
+            const payload = JSON.parse(e.dataTransfer.getData('text/plain'));
+            const { applicationId, sourceStageId } = payload;
+            if (targetStageId === sourceStageId) return;
+
+            let movedCandidate = null;
+            let prevStages = null;
+
+            setStages(prev => {
+                prevStages = prev;
+                const sourceStage = prev.find(s => s.stage_id === sourceStageId);
+                if (!sourceStage) return prev;
+                movedCandidate = sourceStage.candidates.find(c => c.application_id === applicationId);
+                if (!movedCandidate) return prev;
+                return prev.map(stage => {
+                    if (stage.stage_id === sourceStageId) {
+                        return { ...stage, candidates: stage.candidates.filter(c => c.application_id !== applicationId) };
+                    }
+                    if (stage.stage_id === targetStageId) {
+                        return { ...stage, candidates: [...stage.candidates, movedCandidate] };
+                    }
+                    return stage;
+                });
+            });
+
+            applicationService.moveStage(applicationId, targetStageId)
+                .then(() => {
+                    if (pipeline && selectedJobId) loadBoard(pipeline.id || pipeline._id, selectedJobId);
+                })
+                .catch(err => {
+                    console.error("Failed to move candidate", err);
+                    if (prevStages) setStages(prevStages);
+                    setMessage({ type: 'error', text: 'Failed to move candidate. Please try again.' });
+                    setTimeout(() => setMessage(null), 4000);
+                });
+        } catch (err) {
+            console.error("Invalid drag payload", err);
+        }
+    };
+
+    const filteredCandidates = (candidates) => {
+        const term = searchTerm.trim().toLowerCase();
+        if (!term) return candidates;
+        return candidates.filter(c =>
+            (c.student_name || '').toLowerCase().includes(term) ||
+            (c.email || '').toLowerCase().includes(term)
+        );
+    };
+
     if (loading && !pipeline) return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <div className="animate-spin" style={{ borderRadius: '50%', height: '48px', width: '48px', borderBottom: '2px solid #3b82f6' }}></div>
@@ -117,25 +192,68 @@ const ApplicationPipeline = () => {
                             </select>
                         </div>
                     </div>
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ display: 'flex', height: '8px', width: '8px', borderRadius: '50%', background: '#10b981' }}></span>
-                        Live Pipeline
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '6px 12px' }}>
+                            <FaUser style={{ color: '#9ca3af', marginRight: '8px', fontSize: '0.8rem' }} />
+                            <input
+                                type="text"
+                                placeholder="Search by name or email..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={{ background: 'transparent', border: 'none', fontSize: '0.875rem', color: '#374151', outline: 'none', width: '200px' }}
+                            />
+                            {searchTerm && (
+                                <span
+                                    onClick={() => setSearchTerm('')}
+                                    style={{ cursor: 'pointer', color: '#9ca3af', marginLeft: '6px', fontSize: '0.9rem' }}
+                                    title="Clear"
+                                >×</span>
+                            )}
+                        </div>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ display: 'flex', height: '8px', width: '8px', borderRadius: '50%', background: '#10b981' }}></span>
+                            Live Pipeline
+                        </div>
                     </div>
                 </div>
+
+                {/* Message Banner */}
+                {message && (
+                    <div style={{
+                        padding: '0.75rem 1rem',
+                        margin: '0 1.5rem',
+                        marginTop: '1rem',
+                        borderRadius: '8px',
+                        background: message.type === 'error' ? '#fef2f2' : '#ecfdf5',
+                        border: `1px solid ${message.type === 'error' ? '#fecaca' : '#a7f3d0'}`,
+                        color: message.type === 'error' ? '#dc2626' : '#059669',
+                        fontSize: '0.875rem',
+                        fontWeight: '500'
+                    }}>
+                        {message.text}
+                    </div>
+                )}
 
                 {/* Kanban Board */}
                 <div style={{ flex: 1, overflowX: 'auto', padding: '1.5rem', background: 'linear-gradient(135deg, #f9fafb 0%, #eef2ff 100%)' }}>
                     <div style={{ display: 'flex', height: '100%', gap: '1.5rem' }}>
                         {stages.map((stage, stageIdx) => {
                             const stStyle = getStageStyle(stage.stage_name);
+                            const isDropTarget = dropTargetStageId === stage.stage_id;
+                            const visibleCandidates = filteredCandidates(stage.candidates || []);
                             return (
                                 <div
                                     key={stage.stage_id}
+                                    onDragOver={(e) => handleDragOver(e, stage.stage_id)}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={(e) => handleDrop(e, stage.stage_id)}
                                     style={{
                                         width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column',
-                                        background: 'rgba(249,250,251,0.7)',
-                                        borderRadius: '12px', maxHeight: '100%', transition: 'background 0.2s ease',
-                                        animation: `fadeIn 0.5s ease-out ${stageIdx * 0.1}s backwards`
+                                        background: isDropTarget ? 'rgba(59,130,246,0.10)' : 'rgba(249,250,251,0.7)',
+                                        borderRadius: '12px', maxHeight: '100%', transition: 'background 0.2s ease, box-shadow 0.2s ease',
+                                        animation: `fadeIn 0.5s ease-out ${stageIdx * 0.1}s backwards`,
+                                        border: isDropTarget ? `2px dashed ${stStyle.borderColor}` : '2px dashed transparent',
+                                        boxShadow: isDropTarget ? `0 0 0 4px ${stStyle.borderColor}22` : 'none'
                                     }}
                                 >
                                     {/* Column Header */}
@@ -149,20 +267,32 @@ const ApplicationPipeline = () => {
                                             )}
                                         </div>
                                         <span style={{ background: `${stStyle.color}15`, color: stStyle.color, padding: '2px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700' }}>
-                                            {stage.candidates.length}
+                                            {visibleCandidates.length}
                                         </span>
                                     </div>
 
                                     {/* Column Content */}
                                     <div className="custom-scrollbar" style={{ padding: '0.75rem', flex: 1, overflowY: 'auto' }}>
-                                        {stage.candidates.map((candidate) => (
+                                        {visibleCandidates.length === 0 && (
+                                            <div style={{ padding: '1.5rem 0.75rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                                                {searchTerm ? 'No matching candidates' : 'No candidates'}
+                                            </div>
+                                        )}
+                                        {visibleCandidates.map((candidate) => {
+                                            const isDragging = draggingSource && draggingSource.applicationId === candidate.application_id;
+                                            return (
                                             <div
                                                 key={candidate.application_id}
+                                                draggable
+                                                onDragStart={(e) => handleDragStart(e, candidate, stage.stage_id)}
+                                                onDragEnd={() => { setDraggingSource(null); setDropTargetStageId(null); }}
                                                 style={{
                                                     background: 'white', padding: '1rem', marginBottom: '0.75rem', borderRadius: '10px',
-                                                    border: '1px solid #f0f0f0',
+                                                    border: isDragging ? `1px dashed ${stStyle.borderColor}` : '1px solid #f0f0f0',
                                                     boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                                                    transition: 'box-shadow 0.2s, border 0.2s'
+                                                    transition: 'box-shadow 0.2s, border 0.2s',
+                                                    opacity: isDragging ? 0.5 : 1,
+                                                    cursor: 'grab'
                                                 }}
                                             >
                                                 {/* Candidate Header */}
@@ -250,7 +380,8 @@ const ApplicationPipeline = () => {
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );
