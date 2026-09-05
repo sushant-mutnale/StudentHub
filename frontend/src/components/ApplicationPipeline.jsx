@@ -6,6 +6,7 @@ import { applicationService } from '../services/applicationService';
 import { jobService } from '../services/jobService';
 import { FaUser, FaEllipsisV, FaBriefcase, FaCalendarAlt, FaEnvelope } from 'react-icons/fa';
 import SidebarLeft from './SidebarLeft';
+import ApplicationDetailDrawer from './ApplicationDetailDrawer';
 import '../App.css';
 
 const ApplicationPipeline = () => {
@@ -22,6 +23,8 @@ const ApplicationPipeline = () => {
     const [dropTargetStageId, setDropTargetStageId] = useState(null);
     const [draggingSource, setDraggingSource] = useState(null);
     const [message, setMessage] = useState(null);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [activeCandidate, setActiveCandidate] = useState(null);
 
     useEffect(() => {
         loadInitialData();
@@ -234,10 +237,25 @@ const ApplicationPipeline = () => {
                     </div>
                 )}
 
-                {/* Kanban Board */}
-                <div style={{ flex: 1, overflowX: 'auto', padding: '1.5rem', background: 'linear-gradient(135deg, #f9fafb 0%, #eef2ff 100%)' }}>
-                    <div style={{ display: 'flex', height: '100%', gap: '1.5rem' }}>
-                        {stages.map((stage, stageIdx) => {
+{/* Drawer */}
+                 {drawerOpen && activeCandidate && (
+                     <ApplicationDetailDrawer
+                         isOpen={drawerOpen}
+                         candidate={activeCandidate}
+                         onClose={() => {
+                             setDrawerOpen(false);
+                             setActiveCandidate(null);
+                         }}
+                         pipelineId={pipeline?.id || pipeline?._id}
+                         jobId={selectedJobId}
+                         stages={stages}
+                         jobTitle={jobs.find(j => j.id === selectedJobId)?.title || ''}
+                     />
+                 )}
+                 {/* Kanban Board */}
+                 <div style={{ flex: 1, overflowX: 'auto', padding: '1.5rem', background: 'linear-gradient(135deg, #f9fafb 0%, #eef2ff 100%)' }}>
+                     <div style={{ display: 'flex', height: '100%', gap: '1.5rem' }}>
+                         {stages.map((stage, stageIdx) => {
                             const stStyle = getStageStyle(stage.stage_name);
                             const isDropTarget = dropTargetStageId === stage.stage_id;
                             const visibleCandidates = filteredCandidates(stage.candidates || []);
@@ -286,13 +304,14 @@ const ApplicationPipeline = () => {
                                                 draggable
                                                 onDragStart={(e) => handleDragStart(e, candidate, stage.stage_id)}
                                                 onDragEnd={() => { setDraggingSource(null); setDropTargetStageId(null); }}
+                                                onClick={() => { setActiveCandidate(candidate); setDrawerOpen(true); }}
                                                 style={{
                                                     background: 'white', padding: '1rem', marginBottom: '0.75rem', borderRadius: '10px',
                                                     border: isDragging ? `1px dashed ${stStyle.borderColor}` : '1px solid #f0f0f0',
                                                     boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                                                     transition: 'box-shadow 0.2s, border 0.2s',
                                                     opacity: isDragging ? 0.5 : 1,
-                                                    cursor: 'grab'
+                                                    cursor: 'pointer'
                                                 }}
                                             >
                                                 {/* Candidate Header */}
