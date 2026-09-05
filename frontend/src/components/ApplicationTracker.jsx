@@ -3,6 +3,19 @@ import { applicationService } from '../services/applicationService';
 import { FaCheckCircle, FaCircle, FaSpinner, FaTimesCircle } from 'react-icons/fa';
 import SidebarLeft from './SidebarLeft';
 
+const getNextActionGuidance = (stageName) => {
+    if (!stageName) return 'Your application is being processed.';
+    const lower = stageName.toLowerCase();
+    if (lower === 'applied') return 'Application received — our team is reviewing your profile.';
+    if (lower.includes('screen') || lower.includes('phone')) return 'Interview round active — prepare using our AI Mock Interviewer.';
+    if (lower.includes('technical') || lower.includes('interview')) return 'Technical interview in progress — review your skills and practice coding problems.';
+    if (lower.includes('offer') && !lower.includes('reject')) return 'Congratulations! An offer has been extended — review details.';
+    if (lower.includes('hired')) return 'Welcome aboard! 🎉';
+    if (lower.includes('reject') || lower.includes('not select')) return 'Unfortunately you were not selected. Keep applying — new opportunities arrive daily.';
+    if (lower.includes('withdraw')) return 'You withdrew from this application.';
+    return 'Your application is being processed.';
+};
+
 const ApplicationTracker = () => {
     const [applications, setApplications] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -133,15 +146,13 @@ const ApplicationTracker = () => {
                                     </div>
                                 </div>
 
-                                {app.next_step && (
-                                    <div className="mt-6 bg-blue-50 p-4 rounded-lg flex items-start border border-blue-100">
-                                        <span className="text-blue-500 mr-2">ℹ️</span>
-                                        <div>
-                                            <h4 className="text-sm font-semibold text-blue-800">Next Step</h4>
-                                            <p className="text-sm text-blue-700">{app.next_step}</p>
-                                        </div>
+                                <div className="mt-6 bg-blue-50 p-4 rounded-lg flex items-start border border-blue-100">
+                                    <span className="text-blue-500 mr-2">ℹ️</span>
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-blue-800">Next Step</h4>
+                                        <p className="text-sm text-blue-700">{getNextActionGuidance(app.current_stage_name)}</p>
                                     </div>
-                                )}
+                                </div>
                             </div>
                         ))}
                     </div>
