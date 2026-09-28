@@ -109,3 +109,56 @@ if __name__ == "__main__":
             assert "masked" in r["actual"].lower()
             assert r["error"] is None or "masked" in r["error"].lower()
     assert hidden_found is True
+
+
+# --- Security tests ---
+
+
+@pytest.mark.asyncio
+async def test_quick_test_requires_auth(client):
+    """quick-test endpoint must require authentication (was previously unauthenticated)."""
+    resp = await client.post(
+        "/sandbox/quick-test",
+        json={
+            "code": "print('hi')",
+            "language": "python"
+        }
+    )
+    assert resp.status_code in (401, 403), (
+        f"Expected 401/403 for unauthenticated quick-test, got {resp.status_code}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_quick_test_works_with_auth(client, student_token):
+    """quick-test works when authenticated."""
+    resp = await client.post(
+        "/sandbox/quick-test",
+        json={
+            "code": "print('Hello from quick-test')",
+            "language": "python"
+        },
+        headers=auth_headers(student_token)
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["success"] is True
+    assert "Hello from quick-test" in data["output"]
+
+
+@pytest.mark.asyncio
+async def test_code_size_limit(client, student_token):
+    """Code exceeding MAX_CODE_BYTES should be rejected."""
+    large_code = "print('x')" * 10000  # ~60KB, exceeds 50KB limit
+    resp = await client.post(
+        "/sandbox/execute",
+        json={
+            "code": large_code,
+            "language": "python"
+        },
+        headers=auth_headers(student_token)
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["status"] == "error"
+    assert "maximum size" in data["error"].lower() or "50KB" in data["error"]

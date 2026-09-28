@@ -125,22 +125,32 @@ async def update_user(user_id: str, updates: dict):
 
 
 async def list_students_by_skill_matches(skills: list[str]):
-    # Normalize input skills for searching
+    """Search students whose skills.name matches any of the given skills.
+
+    NOTE: The bio regex scan is intentionally kept as a secondary fallback for
+    natural-language skill mentions. It is NOT indexed and will do a collection
+    scan on large datasets. For >10k users, consider a text index on 'bio' or
+    removing the bio fallback entirely.
+    """
+    import re
     from bson.regex import Regex
+
     normalized_skills = [s.lower().strip() for s in skills if s.strip()]
     if not normalized_skills:
         return []
-        
-    # Match students who have ANY of the skills listed OR mention it in their bio
-    regex_pattern = "|".join([f".*{s}.*" for s in normalized_skills])
+
+    # Escape regex metacharacters to prevent ReDoS (e.g., 'C++', 'C#', '.NET')
+    safe_patterns = [re.escape(s) for s in normalized_skills]
+    regex_pattern = "|".join([f".*{p}.*" for p in safe_patterns])
+
     cursor = users_collection().find({
         "role": "student",
         "$or": [
             {"skills.name": {"$in": normalized_skills}},
             {"bio": Regex(regex_pattern, "i")}
         ]
-    })
-    students = await cursor.to_list(length=None)
+    }).limit(100)  # Bound the result set for safety
+    students = await cursor.to_list(length=100)
     return [migrate_user_skills(s) for s in students]
 
 

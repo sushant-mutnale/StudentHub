@@ -434,7 +434,8 @@ class NotificationService:
     async def check_deadline_reminders(self):
         """
         Check for approaching deadlines.
-        Trigger: Apply-by date within 3 days
+        Trigger: Apply-by date within 3 days.
+        Creates in-app notifications AND sends email reminders (if configured).
         """
         cutoff = datetime.utcnow() + timedelta(days=3)
         now = datetime.utcnow()
@@ -446,6 +447,7 @@ class NotificationService:
         }).to_list(length=100)
         
         notifications_created = 0
+        emails_sent = 0
         
         for job in expiring_jobs:
             # Find students who saved/clicked this job
@@ -481,8 +483,30 @@ class NotificationService:
                     }
                 )
                 notifications_created += 1
+                
+                # Send email reminder if user has email-channel enabled
+                try:
+                    from .email_service import email_service
+                    user = await users_collection().find_one({"_id": ObjectId(student_id)})
+                    if user and user.get("email"):
+                        settings = await self.get_user_settings(student_id)
+                        if settings.get("channels", {}).get("email", False):
+                            await email_service.send_email(
+                                to_email=user["email"],
+                                subject=f"⏰ Deadline in {days_left} day(s): {job.get('title')}",
+                                html_content=f"""
+                                <p>Hi {user.get('full_name') or user.get('username', '')},</p>
+                                <p>The application for <strong>{job.get('title')}</strong> at <strong>{job.get('company')}</strong> closes in <strong>{days_left} day(s)</strong>.</p>
+                                <p><a href="https://studenthub.example.com/jobs/{job.get('_id')}">View and Apply Now</a></p>
+                                <p>— StudentHub</p>
+                                """,
+                                text_content=f"Deadline in {days_left} day(s): {job.get('title')} at {job.get('company')}. Apply now at studenthub.example.com/jobs/{job.get('_id')}"
+                            )
+                            emails_sent += 1
+                except Exception as e:
+                    pass  # email sending is best-effort
         
-        return {"notifications_created": notifications_created}
+        return {"notifications_created": notifications_created, "emails_sent": emails_sent}
     
     async def check_learning_reminders(self):
         """

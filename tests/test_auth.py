@@ -33,7 +33,7 @@ def test_signup_duplicate_email(client: TestClient):
     payload = {
         "email": email,
         "username": fake.user_name(),
-        "password": "pass",
+        "password": "MyPassword123",  # meet min_length=8 so we reach the duplicate check
         "role": "student",
         "full_name": "Test User",
         "prn": "PRN999",

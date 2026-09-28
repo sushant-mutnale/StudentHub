@@ -4,6 +4,7 @@ import { FiMapPin, FiTrash2, FiUsers, FiLogOut, FiPlus, FiMessageSquare, FiCalen
 import { useAuth } from '../contexts/AuthContext';
 import { jobService } from '../services/jobService';
 import InterviewModal from './interviews/InterviewModal';
+import SavedSearchesSection from './SavedSearchesSection';
 import '../App.css';
 
 const RecruiterDashboard = () => {
@@ -280,7 +281,7 @@ const RecruiterDashboard = () => {
                   {matches[job.id]?.data && matches[job.id].data.length > 0 && (
                     <div className="matches-list">
                       {matches[job.id].data.map((student) => (
-                        <div key={student.id} className="match-item" style={{ borderLeft: `6px solid ${student.match_score > 0.7 ? '#2ecc71' : student.match_score > 0.4 ? '#f1c40f' : '#e74c3c'}`, padding: '1.5rem', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', marginBottom: '1.5rem' }}>
+                        <div key={student.id} className="match-item" style={{ borderLeft: `6px solid ${student.match_score > 70 ? '#2ecc71' : student.match_score > 40 ? '#f1c40f' : '#e74c3c'}`, padding: '1.5rem', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', marginBottom: '1.5rem' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                               <div>
@@ -288,7 +289,7 @@ const RecruiterDashboard = () => {
                                 <div className="match-username" style={{ color: '#7f8c8d' }}>@{student.username}</div>
                               </div>
                               <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#3498db', lineHeight: 1 }}>{Math.round(student.match_score * 100)}%</div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#3498db', lineHeight: 1 }}>{Math.round(student.match_score)}%</div>
                                 <div style={{ fontSize: '0.7rem', color: '#95a5a6', textTransform: 'uppercase', fontWeight: 'bold', marginTop: '4px' }}>AI Match Score</div>
                               </div>
                             </div>
@@ -299,20 +300,20 @@ const RecruiterDashboard = () => {
                               </div>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem' }}>
                                 <div>
-                                  <div style={{ fontSize: '0.7rem', color: '#718096' }}>Skills Overlap</div>
-                                  <div style={{ fontWeight: '600', color: '#2d3748' }}>{Math.round(student.explanation.skill_match_score * 100)}%</div>
+                                  <div style={{ fontSize: '0.7rem', color: '#718096' }}>Skill Match</div>
+                                  <div style={{ fontWeight: '600', color: '#2d3748' }}>{Math.round(student.explanation.skill_match_score)}%</div>
                                 </div>
                                 <div>
-                                  <div style={{ fontSize: '0.7rem', color: '#718096' }}>Proficiency</div>
-                                  <div style={{ fontWeight: '600', color: '#2d3748' }}>{Math.round(student.explanation.proficiency_score * 100)}%</div>
+                                  <div style={{ fontSize: '0.7rem', color: '#718096' }}>Proficiency Fit</div>
+                                  <div style={{ fontWeight: '600', color: '#2d3748' }}>{Math.round(student.explanation.proficiency_score)}%</div>
                                 </div>
                                 <div>
-                                  <div style={{ fontSize: '0.7rem', color: '#718096' }}>Platform Activity</div>
-                                  <div style={{ fontWeight: '600', color: '#2d3748' }}>{Math.round(student.explanation.activity_score * 100)}%</div>
+                                  <div style={{ fontSize: '0.7rem', color: '#718096' }}>AI Readiness</div>
+                                  <div style={{ fontWeight: '600', color: '#2d3748' }}>{Math.round(student.explanation.activity_score)}%</div>
                                 </div>
                                 <div>
-                                  <div style={{ fontSize: '0.7rem', color: '#718096' }}>Profile Quality</div>
-                                  <div style={{ fontWeight: '600', color: '#2d3748' }}>{Math.round(student.explanation.completeness_score * 100)}%</div>
+                                  <div style={{ fontSize: '0.7rem', color: '#718096' }}>Career Alignment</div>
+                                  <div style={{ fontWeight: '600', color: '#2d3748' }}>{Math.round(student.explanation.completeness_score)}%</div>
                                 </div>
                               </div>
                               <div style={{ marginTop: '0.8rem', paddingTop: '0.8rem', borderTop: '1px solid #e2e8f0', fontSize: '0.8rem' }}>
@@ -359,6 +360,8 @@ const RecruiterDashboard = () => {
               ))
             )}
           </div>
+
+          <SavedSearchesSection onError={setMessage} onSuccess={setMessage} />
         </div>
       </div>
       {showInterviewModal && (

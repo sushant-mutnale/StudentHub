@@ -42,7 +42,10 @@ const Login = () => {
         }
 
         if (result.user.role === 'student') {
-          navigate('/dashboard/student');
+          // New students who haven't completed onboarding go to the wizard
+          const hasCompletedOnboarding = result.user.onboarding_completed
+            || (result.user.skills && result.user.skills.length > 0);
+          navigate(hasCompletedOnboarding ? '/dashboard/student' : '/onboarding');
         } else {
           navigate('/dashboard/recruiter');
         }

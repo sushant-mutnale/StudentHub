@@ -40,6 +40,14 @@ const JobDetail = () => {
       const data = await jobService.getJob(jobId);
       setJob(data);
       setError('');
+      // Record "clicked" feedback so the recommendation engine learns from this view.
+      // Only for students — recruiters viewing jobs is not a recommendation signal.
+      if (user?.role === 'student' && data?.id) {
+        try {
+          const { recommendationService } = await import('../services/recommendationService');
+          await recommendationService.recordFeedback(data.id, 'job', 'clicked');
+        } catch { /* feedback is best-effort; never block the page */ }
+      }
     } catch (err) {
       setError(err.message || 'Unable to load job');
     } finally {

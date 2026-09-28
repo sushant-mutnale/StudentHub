@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx asgi-lifespan faker mongomock motor
+
+      - name: Run root test suite with coverage
+        env:
+          APP_ENV: testing
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: student_hub_test
+          REDIS_HOST: "127.0.0.1"
+          REDIS_PORT: "6379"
+          REDIS_USERNAME: ""
+          REDIS_PASSWORD: ""
+          REDIS_SSL: "false"
+        run: |
+          pytest tests/ \
+            --cov=backend \
+            --cov-report=term-missing \
+            --cov-report=html:coverage-root \
+            -q
+
+      - name: Run backend test suite with coverage
+        env:
+          APP_ENV: testing
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: student_hub_test
+          REDIS_HOST: "127.0.0.1"
+          REDIS_PORT: "6379"
+          REDIS_USERNAME: ""
+          REDIS_PASSWORD: ""
+          REDIS_SSL: "false"
+        run: |
+          pytest backend/tests/ \
+            --cov=backend \
+            --cov-append \
+            --cov-report=term-missing \
+            --cov-report=html:coverage-backend \
+            -q
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-root/
+          retention-days: 7

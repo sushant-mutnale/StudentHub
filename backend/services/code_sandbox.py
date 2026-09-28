@@ -1,12 +1,11 @@
 """
 Code Sandbox Service
-Executes student code safely using isolated Docker containers with strict limits,
-or falls back to secure local subprocess execution if Docker is unavailable.
+Executes student code safely using isolated Docker containers with strict limits.
+In production, Docker is REQUIRED — local subprocess fallback is disabled to prevent RCE.
 """
 
+import logging
 import os
-import sys
-import tempfile
 import shutil
 import time
 import json
@@ -14,10 +13,15 @@ import asyncio
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
+logger = logging.getLogger(__name__)
+
 # Define sandbox temp directory inside the workspace
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SANDBOX_TEMP_DIR = os.path.join(BASE_DIR, "sandbox_temp")
 os.makedirs(SANDBOX_TEMP_DIR, exist_ok=True)
+
+# Max code size: 50KB (prevents resource abuse)
+MAX_CODE_BYTES = 50 * 1024
 
 
 @dataclass
@@ -33,10 +37,21 @@ class ExecutionResult:
     timeout: bool = False
 
 
+class SandboxUnavailableError(Exception):
+    """Raised when sandbox cannot execute code (e.g., Docker not available in production)."""
+    pass
+
+
 class CodeSandbox:
     """
     Secure sandbox for executing untrusted student code.
     Supports: Python, JavaScript, Java, C++, Go, Rust.
+
+    Security model:
+    - Production: Docker REQUIRED. Local fallback disabled (prevents host RCE).
+    - Development: Local fallback allowed (convenience for local dev without Docker).
+    - Docker containers run with: no network, read-only FS, no new privileges,
+      dropped Linux capabilities, PID limit, memory+CPU caps.
     """
 
     # Language mappings and configuration
@@ -107,9 +122,11 @@ class CodeSandbox:
     }
 
     # Strict resource limits
-    MAX_TIMEOUT_MS = 5000  # 5 seconds
-    MAX_MEMORY_MB = 128    # 128 MB RAM limit
-    CPU_LIMIT = 0.5       # 0.5 CPU core limit
+    MAX_TIMEOUT_MS = 5000   # 5 seconds
+    MAX_MEMORY_MB = 128     # 128 MB RAM limit
+    CPU_LIMIT = 0.5         # 0.5 CPU core limit
+    PID_LIMIT = 64          # Max processes inside container
+    MAX_COMPILE_TIMEOUT_MS = 15000  # 15s compile limit
 
     def __init__(self):
         self._docker_available = None
@@ -167,6 +184,12 @@ class CodeSandbox:
                     pass
         return 0
 
+    @staticmethod
+    def _is_production() -> bool:
+        """Check if running in production mode."""
+        from ..config import settings
+        return settings.app_env.lower() == "production"
+
     async def execute_code(
         self,
         code: str,
@@ -175,7 +198,10 @@ class CodeSandbox:
         timeout_ms: int = 5000
     ) -> ExecutionResult:
         """
-        Execute student code safely, choosing Docker if available, otherwise local subprocess.
+        Execute student code safely using Docker isolation.
+
+        Production: Docker required. Raises SandboxUnavailableError if Docker unavailable.
+        Development: Falls back to local subprocess (less safe but acceptable for local dev).
         """
         lang_config = self.LANGUAGES.get(language.lower())
         if not lang_config:
@@ -188,18 +214,27 @@ class CodeSandbox:
                 exit_code=-1
             )
 
+        # Enforce code size limit
+        if len(code.encode("utf-8")) > MAX_CODE_BYTES:
+            return ExecutionResult(
+                success=False,
+                output="",
+                error=f"Code exceeds maximum size of {MAX_CODE_BYTES // 1024}KB",
+                run_time_ms=0,
+                memory_kb=0,
+                exit_code=-1
+            )
+
         # Enforce max timeout bounds
         timeout_ms = min(timeout_ms, self.MAX_TIMEOUT_MS)
 
-        # Create localized temporary directory in workspace
+        import tempfile
         temp_dir = tempfile.mkdtemp(dir=SANDBOX_TEMP_DIR)
         try:
-            # Write code file
             code_file_path = os.path.join(temp_dir, lang_config["file_name"])
             with open(code_file_path, "w", encoding="utf-8") as f:
                 f.write(code)
 
-            # Write stdin to file for redirection
             input_file_path = os.path.join(temp_dir, "input.txt")
             with open(input_file_path, "w", encoding="utf-8") as f:
                 f.write(stdin)
@@ -207,8 +242,24 @@ class CodeSandbox:
             docker_ok = await self.is_docker_available()
             if docker_ok:
                 return await self._execute_docker(temp_dir, lang_config, timeout_ms)
-            else:
-                return await self._execute_local(temp_dir, lang_config, timeout_ms)
+
+            # Docker unavailable
+            if self._is_production():
+                logger.error(
+                    "Sandbox execution refused: Docker unavailable in production. "
+                    "Code execution is NOT safe without container isolation."
+                )
+                raise SandboxUnavailableError(
+                    "Code execution is temporarily unavailable. "
+                    "Please try again later."
+                )
+
+            # Development-only: local fallback with warning
+            logger.warning(
+                "Executing code via local subprocess (Docker unavailable, "
+                "non-production mode). This is NOT safe for untrusted code."
+            )
+            return await self._execute_local(temp_dir, lang_config, timeout_ms)
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -218,25 +269,64 @@ class CodeSandbox:
         lang_config: dict,
         timeout_ms: int
     ) -> ExecutionResult:
-        """Execute inside Docker container with strict memory, CPU, and net blockades."""
+        """
+        Execute inside Docker container with strict isolation:
+        - No network access (--network=none)
+        - Read-only filesystem (writable only for /tmp and /app)
+        - Dropped ALL Linux capabilities
+        - No new privileges (--security-opt=no-new-privileges)
+        - PID limit (prevents fork bombs)
+        - Memory + CPU limits
+        - Execution timeout via docker wait + kill
+        """
         abs_temp_dir = os.path.abspath(temp_dir)
         container_mount = "/app"
         image = lang_config["image"]
 
-        # 1. Compilation Stage (if needed)
+        # Common hardened Docker flags
+        base_docker_flags = [
+            "--network=none",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+            "--cap-drop=ALL",
+            "--security-opt", "no-new-privileges",
+            "--pids-limit", str(self.PID_LIMIT),
+            "--memory", f"{self.MAX_MEMORY_MB}m",
+            "--cpus", str(self.CPU_LIMIT),
+            "-v", f"{abs_temp_dir}:{container_mount}",
+            "-w", container_mount,
+        ]
+
+        # 1. Compilation Stage (if needed) — with resource limits
         if lang_config["compile_cmd"]:
             compile_cmd = lang_config["compile_cmd"]
-            # Compile using a transient container
             proc = await asyncio.create_subprocess_exec(
                 "docker", "run", "--rm",
-                "-v", f"{abs_temp_dir}:{container_mount}",
-                "-w", container_mount,
+                *base_docker_flags,
                 image,
                 *compile_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout_bytes, stderr_bytes = await proc.communicate()
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=self.MAX_COMPILE_TIMEOUT_MS / 1000.0
+                )
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                return ExecutionResult(
+                    success=False,
+                    output="",
+                    error="Compilation timed out",
+                    run_time_ms=0,
+                    memory_kb=0,
+                    exit_code=-1,
+                    timeout=True
+                )
             if proc.returncode != 0:
                 return ExecutionResult(
                     success=False,
@@ -247,20 +337,14 @@ class CodeSandbox:
                     exit_code=proc.returncode
                 )
 
-        # 2. Execution Stage
-        # Prepare wrapped command utilizing sh redirecting input.txt to stdin
+        # 2. Execution Stage — same hardened flags
         exec_cmd = lang_config["exec_cmd"]
         exec_str = " ".join(exec_cmd)
         wrapped_command = f"exec {exec_str} < input.txt"
 
-        # Start background container
         proc = await asyncio.create_subprocess_exec(
             "docker", "run", "-d",
-            "--memory=128m",
-            "--cpus=0.5",
-            "--network=none",
-            "-v", f"{abs_temp_dir}:{container_mount}",
-            "-w", container_mount,
+            *base_docker_flags,
             image,
             "sh", "-c", wrapped_command,
             stdout=asyncio.subprocess.PIPE,

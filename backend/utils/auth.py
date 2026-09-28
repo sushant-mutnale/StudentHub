@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
+from bson import ObjectId
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -20,6 +21,11 @@ pwd_context = CryptContext(
 )
 
 _USER_CACHE_TTL = 60  # seconds
+
+
+class TokenBlacklistUnavailableError(Exception):
+    """Raised when the token blacklist cannot be checked (Redis down)."""
+    pass
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -43,7 +49,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 
 async def blacklist_token(jti: str, expires_at: datetime):
-    """Add token JTI to blacklist (e.g., on logout or password change)."""
+    """Add token JTI to blacklist (e.g., on logout or password change).
+
+    NOTE: If Redis is unavailable, the token cannot be revoked until Redis recovers.
+    Tokens will still expire naturally per their 'exp' claim.
+    """
     try:
         from ..redis_client import get_redis
         redis = get_redis()
@@ -51,16 +61,28 @@ async def blacklist_token(jti: str, expires_at: datetime):
         if remaining > 0:
             await redis.set(f"blacklist:jti:{jti}", "1", ex=remaining)
     except Exception as e:
-        logger.warning(f"Failed to blacklist token JTI: {e}")
+        logger.error(
+            f"Failed to blacklist token JTI {jti}: {e}. "
+            "Token remains valid until natural expiry."
+        )
 
 
 async def is_token_blacklisted(jti: str) -> bool:
+    """Check if a token JTI is blacklisted.
+
+    FAIL-CLOSED: When Redis is unavailable, raises TokenBlacklistUnavailableError
+    so callers can reject the request rather than silently accepting a potentially
+    revoked token. This trades availability during Redis outages for security.
+    """
     try:
         from ..redis_client import get_redis
         redis = get_redis()
         return await redis.exists(f"blacklist:jti:{jti}") > 0
-    except Exception:
-        return False  # Fail open on Redis error — can tighten later
+    except Exception as e:
+        logger.error(f"Token blacklist check failed (Redis unavailable): {e}")
+        raise TokenBlacklistUnavailableError(
+            "Token verification temporarily unavailable"
+        )
 
 
 def _user_to_serializable(user: dict) -> dict:
@@ -106,6 +128,13 @@ async def get_user_from_token(token: str):
 
     except JWTError:
         raise credentials_exception
+    except TokenBlacklistUnavailableError:
+        # Fail-closed: Redis blacklist unavailable → reject the request with 503
+        # rather than silently accepting a potentially revoked token.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is temporarily unavailable. Please try again.",
+        )
 
     # Try Redis cache first
     cache_key = f"auth:user:{user_id}"
@@ -114,7 +143,16 @@ async def get_user_from_token(token: str):
         redis = get_redis()
         cached = await redis.get(cache_key)
         if cached:
-            return json.loads(cached)
+            cached_user = json.loads(cached)
+            # Restore ObjectId from string — JSON serialization loses BSON types,
+            # so all routes that query by current_user["_id"] must get a consistent
+            # ObjectId, not a string.
+            if "_id" in cached_user and isinstance(cached_user["_id"], str):
+                try:
+                    cached_user["_id"] = ObjectId(cached_user["_id"])
+                except Exception:
+                    pass
+            return cached_user
     except Exception as e:
         logger.warning(f"Redis cache read failed, falling back to DB: {e}")
 

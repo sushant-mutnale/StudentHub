@@ -910,9 +910,32 @@ class RecommendationEngine:
         """
         Record user interaction with a recommendation.
         Used to improve future recommendations.
+
+        Deduplication: for high-frequency actions (clicked, saved, applied),
+        a duplicate is skipped if the same student+opportunity+action was
+        recorded within the last 24 hours. Dismiss/ignored are always recorded
+        since they represent an explicit user signal.
         """
         from bson import ObjectId
-        
+
+        # Deduplicate for high-signal actions (prevent score contamination)
+        dedup_actions = {"clicked", "saved", "applied"}
+        if action in dedup_actions:
+            cutoff = datetime.utcnow() - timedelta(hours=24)
+            existing = await recommendation_feedback_collection().find_one({
+                "student_id": ObjectId(student_id),
+                "opportunity_id": ObjectId(opportunity_id),
+                "action": action,
+                "timestamp": {"$gte": cutoff},
+            })
+            if existing:
+                return {
+                    "status": "skipped",
+                    "reason": "duplicate",
+                    "action": action,
+                    "opportunity_id": opportunity_id,
+                }
+
         # Get opportunity details for context
         if opportunity_type == "job":
             opp = await opportunities_jobs_collection().find_one(

@@ -1,7 +1,10 @@
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status, Depends
 from jose import jwt
+
+logger = logging.getLogger(__name__)
 
 from ..config import settings
 from ..models import user as user_model
@@ -34,6 +37,7 @@ def db_user_to_public(db_user: dict) -> UserPublic:
         avatar_url=db_user.get("avatar_url"),
         bio=db_user.get("bio"),
         skills=db_user.get("skills") or [],
+        onboarding_completed=db_user.get("onboarding_completed", False),
         created_at=db_user.get("created_at"),
         updated_at=db_user.get("updated_at"),
     )
@@ -89,25 +93,26 @@ async def signup_recruiter(payload: RecruiterCreate):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest):
-    print(f"Login Attempt: {payload.username} with role {payload.role}")
+    # NOTE: Never log the password or the identity of failed logins.
+    # Failed-login logging with identifiers can leak account existence/PII.
     user = await user_model.get_user_by_username(payload.username)
     if not user:
         # Try checking by email if username not found
         user = await user_model.get_user_by_email(payload.username)
 
     if not user:
-        print(f"Login Failed: User not found for {payload.username}")
+        logger.info("Login failed: user not found")
         raise HTTPException(status_code=401, detail="Invalid credentials")
         
     if user.get("role") != payload.role:
-        print(f"Login Failed: Role mismatch. Expected {payload.role}, got {user.get('role')}")
+        logger.info("Login failed: role mismatch")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not verify_password(payload.password, user.get("password_hash", "")):
-        print(f"Login Failed: Invalid password for {payload.username}")
+        logger.info("Login failed: invalid password")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    print(f"Login Success: {payload.username} ({user['_id']})")
+    logger.info("Login success", extra={"user_id": str(user["_id"]), "role": user.get("role")})
     token, expires_at = create_access_token(
         data={"sub": str(user["_id"]), "role": user["role"]},
         expires_delta=timedelta(minutes=60 * 24),

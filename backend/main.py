@@ -17,6 +17,9 @@ from .routes import (
     offer_routes,
     post_routes,
     thread_routes,
+    next_action_routes,
+    calendar_routes,
+    saved_search_routes,
     user_routes,
     notification_routes,
     learning_routes,
@@ -49,7 +52,7 @@ from .routes import (
 from .utils.auth import hash_password
 from .events.handlers import register_all_handlers
 from .workers import worker_manager, OutboxWorker, OutboxCleanupWorker, RecommendationWorker, RetentionWorker, IngestionWorker
-from .middleware import RateLimitMiddleware, CorrelationIdMiddleware, IdempotencyMiddleware
+from .middleware import RateLimitMiddleware, CorrelationIdMiddleware, IdempotencyMiddleware, SecurityHeadersMiddleware
 
 app = FastAPI(title="Student Hub API")
 
@@ -106,6 +109,9 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
                 status_code=504,
                 content={"detail": "Request timed out"}
             )
+
+# Security headers are applied in ALL environments including tests.
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Middlewares (Order matters: executed bottom-to-top for request, top-to-bottom for response)
 if settings.app_env != "testing":
@@ -254,7 +260,11 @@ app.include_router(verification_routes.router)
 app.include_router(admin_routes.router)
 app.include_router(hackathon_routes.router)
 app.include_router(analytics_routes.router)
+app.include_router(scorecard_routes.router)  # Recruiter interview scorecards
 app.include_router(voice_routes.router, prefix="/api", tags=["voice"])
+app.include_router(next_action_routes.router)
+app.include_router(calendar_routes.router)
+app.include_router(saved_search_routes.router)
 app.include_router(demo_routes.router, tags=["demo"])
 app.include_router(sidebar_routes.router)
 

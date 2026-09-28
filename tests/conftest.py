@@ -22,6 +22,15 @@ os.environ["MONGODB_DB"] = "student_hub_test"
 if not os.environ.get("MONGODB_URI"):
     os.environ["MONGODB_URI"] = "mongodb://localhost:27017"
 
+# Force LOCAL Redis for tests. The backend/.env points to a cloud Redis service
+# which tests must never depend on (and may be unreachable in CI). Tests are
+# hermetic: they connect to a local Redis on 127.0.0.1:6379.
+os.environ["REDIS_HOST"] = "127.0.0.1"
+os.environ["REDIS_PORT"] = "6380"
+os.environ["REDIS_USERNAME"] = ""
+os.environ["REDIS_PASSWORD"] = ""
+os.environ["REDIS_SSL"] = "false"
+
 from backend.main import app
 from backend.database import db
 from backend.config import settings
@@ -30,6 +39,11 @@ from backend.config import settings
 settings.app_env = "testing"
 settings.mongodb_db = "student_hub_test" 
 settings.mongodb_uri = os.environ["MONGODB_URI"]
+settings.redis_host = os.environ["REDIS_HOST"]
+settings.redis_port = int(os.environ["REDIS_PORT"])
+settings.redis_username = os.environ["REDIS_USERNAME"]
+settings.redis_password = os.environ["REDIS_PASSWORD"]
+settings.redis_ssl = False
 
 from backend.utils.auth import create_access_token
 
@@ -64,10 +78,25 @@ def mock_otp_service():
 
 @pytest.fixture(scope="function", autouse=True)
 def clear_db():
-    """Clean database between tests."""
+    """Clean database and all caches between tests for hermetic isolation."""
     import asyncio
     
     async def _clear():
+        # Clear application-level cache (Redis + in-memory fallback)
+        try:
+            from backend.services.cache_service import cache
+            await cache.clear()
+        except Exception:
+            pass
+
+        # Also flush Redis directly to catch any non-cacheService keys
+        try:
+            from backend.redis_client import get_redis
+            redis = get_redis()
+            await redis.flushdb()
+        except Exception:
+            pass
+
         try:
             client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=2000)
             database = client[settings.mongodb_db]

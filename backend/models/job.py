@@ -14,6 +14,10 @@ def job_applications_collection():
     return get_database()["job_applications"]
 
 
+def saved_jobs_collection():
+    return get_database()["saved_jobs"]
+
+
 async def create_job(recruiter: dict, data: dict):
     """Insert a new job for the given recruiter.
 
@@ -134,10 +138,21 @@ async def delete_job(job_id: str, recruiter_id: str):
 
 
 async def create_job_application(job_id: str, student: dict, data: dict):
-    """Create a job application for the given job by the given student."""
+    """Create a job application for the given job by the given student.
+
+    Server-side dedupe: a student may apply to a given job only once.
+    Returns ``None`` if the job does not exist, or ``"duplicate"`` if the
+    student has already applied to this job.
+    """
     job = await get_job(job_id)
     if not job:
         return None
+
+    existing = await job_applications_collection().find_one(
+        {"job_id": ObjectId(job_id), "student_id": ObjectId(student["_id"])}
+    )
+    if existing:
+        return "duplicate"
 
     now = datetime.utcnow()
     application = {
@@ -149,8 +164,64 @@ async def create_job_application(job_id: str, student: dict, data: dict):
         "resume_url": data.get("resume_url"),
         "created_at": now,
     }
-    result = await job_applications_collection().insert_one(application)
+    try:
+        result = await job_applications_collection().insert_one(application)
+    except Exception:
+        # Unique index race: a concurrent duplicate apply slipped through.
+        return "duplicate"
     return await job_applications_collection().find_one({"_id": result.inserted_id})
+
+
+async def get_saved_job(student_id: str, job_id: str):
+    return await saved_jobs_collection().find_one(
+        {"student_id": ObjectId(student_id), "job_id": ObjectId(job_id)}
+    )
+
+
+async def save_job(student_id: str, job_id: str):
+    """Save a job for a student (idempotent). Returns True if newly saved."""
+    existing = await get_saved_job(student_id, job_id)
+    if existing:
+        return False
+    try:
+        await saved_jobs_collection().insert_one(
+            {
+                "student_id": ObjectId(student_id),
+                "job_id": ObjectId(job_id),
+                "created_at": datetime.utcnow(),
+            }
+        )
+        return True
+    except Exception:
+        return False
+
+
+async def unsave_job(student_id: str, job_id: str):
+    result = await saved_jobs_collection().delete_one(
+        {"student_id": ObjectId(student_id), "job_id": ObjectId(job_id)}
+    )
+    return result.deleted_count > 0
+
+
+async def list_saved_jobs(student_id: str, limit: int = 100, skip: int = 0):
+    """Return saved job documents (with embedded job data) for a student."""
+    safe_limit = max(1, min(int(limit), 200))
+    safe_skip = max(0, int(skip))
+    cursor = (
+        saved_jobs_collection()
+        .find({"student_id": ObjectId(student_id)})
+        .sort("created_at", -1)
+        .skip(safe_skip)
+        .limit(safe_limit)
+    )
+    saved = await cursor.to_list(length=safe_limit)
+
+    results = []
+    for item in saved:
+        job = await get_job(str(item["job_id"]))
+        if job:
+            results.append(job)
+    return results
 
 
 async def list_applications_for_job(
@@ -194,4 +265,14 @@ async def ensure_job_indexes():
     await app_col.create_index("job_id")
     await app_col.create_index("student_id")
     await app_col.create_index("created_at")
+    # Compound indexes for common query patterns (sorted list + filter)
+    await app_col.create_index([("student_id", 1), ("created_at", -1)])   # "my applications" sorted
+    await app_col.create_index([("job_id", 1), ("created_at", -1)])       # recruiter: apps per job sorted
+
+    # Saved jobs: enforce one save per student+job
+    saved_col = saved_jobs_collection()
+    await saved_col.create_index(
+        [("student_id", 1), ("job_id", 1)], unique=True
+    )
+    await saved_col.create_index([("student_id", 1), ("created_at", -1)])
 

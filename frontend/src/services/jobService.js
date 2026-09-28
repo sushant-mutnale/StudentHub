@@ -28,6 +28,10 @@ export const jobService = {
     const { data } = await api.get(`/jobs/${jobId}/matches`);
     return data;
   },
+  getRankedCandidates: async (jobId, { limit = 50 } = {}) => {
+    const { data } = await api.get(`/jobs/${jobId}/ranked-candidates`, { params: { limit } });
+    return data;
+  },
   applyToJob: async (jobId, payload) => {
     const { data } = await api.post(`/jobs/${jobId}/apply`, payload);
     return data;
@@ -35,5 +39,16 @@ export const jobService = {
   getJobApplications: async (jobId) => {
     const { data } = await api.get(`/jobs/${jobId}/applications`);
     return data;
+  },
+  getSavedJobs: async ({ limit = 100, skip = 0 } = {}) => {
+    const { data } = await api.get('/jobs/saved', { params: { limit, skip } });
+    return data;
+  },
+  saveJob: async (jobId) => {
+    const { data } = await api.post(`/jobs/${jobId}/save`);
+    return data;
+  },
+  unsaveJob: async (jobId) => {
+    await api.delete(`/jobs/${jobId}/save`);
   },
 };

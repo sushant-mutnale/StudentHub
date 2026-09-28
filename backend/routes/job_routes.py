@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+import logging
+
 from ..models import job as job_model
 from ..models import application as application_model
 from ..models import pipeline as pipeline_model
@@ -13,6 +15,8 @@ from ..utils.dependencies import get_current_recruiter, get_current_student, get
 from ..utils.activity_logger import log_activity
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 def db_job_to_public(db_job: dict) -> JobResponse:
@@ -161,6 +165,55 @@ async def my_jobs(recruiter=Depends(get_current_recruiter)):
     return [db_job_to_public(job) for job in jobs]
 
 
+@router.get("/saved", response_model=list[JobResponse])
+async def list_saved_jobs(
+    limit: int = Query(default=100, ge=1, le=200),
+    skip: int = Query(default=0, ge=0),
+    current_student=Depends(get_current_student),
+):
+    """List the jobs the current student has saved."""
+    jobs = await job_model.list_saved_jobs(
+        str(current_student["_id"]), limit=limit, skip=skip
+    )
+    return [db_job_to_public(job) for job in jobs]
+
+
+@router.post("/{job_id}/save")
+async def save_job(
+    job_id: str,
+    current_student=Depends(get_current_student),
+):
+    """Save a job for later (idempotent)."""
+    job = await job_model.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    newly_saved = await job_model.save_job(
+        str(current_student["_id"]), job_id
+    )
+    if newly_saved:
+        try:
+            from ..services.recommendation_engine import recommendation_engine
+            await recommendation_engine.record_feedback(
+                student_id=str(current_student["_id"]),
+                opportunity_id=job_id,
+                opportunity_type="job",
+                action="saved",
+            )
+        except Exception as e:
+            logger.debug("Failed to record saved feedback for job %s: %s", job_id, e)
+    return {"saved": True, "first_time": newly_saved}
+
+
+@router.delete("/{job_id}/save", status_code=status.HTTP_204_NO_CONTENT)
+async def unsave_job(
+    job_id: str,
+    current_student=Depends(get_current_student),
+):
+    """Remove a job from the student's saved list."""
+    await job_model.unsave_job(str(current_student["_id"]), job_id)
+    return None
+
+
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str, current_user=Depends(get_current_user)):
     job = await job_model.get_job(job_id)
@@ -239,12 +292,17 @@ async def apply_to_job(
         raise HTTPException(status_code=404, detail="Job not found")
     
     app_doc = await job_model.create_job_application(job_id, current_student, payload.dict())
+    if app_doc == "duplicate":
+        raise HTTPException(
+            status_code=409,
+            detail="You have already applied to this job",
+        )
     if not app_doc:
         raise HTTPException(status_code=404, detail="Application failed")
     
     # Create ATS application record (Module 5)
     recruiter_id = str(job["recruiter_id"])
-    print(f"DEBUG: recruiter_id={recruiter_id} job={job.get('_id')}")
+    logger.info("Job application ATS pipeline setup for job_id=%s", job_id)
     pipeline = await pipeline_model.get_active_pipeline(recruiter_id)
     
     if not pipeline:
@@ -269,7 +327,7 @@ async def apply_to_job(
             )
         except Exception as e:
             # Application record might already exist (duplicate apply)
-            print(f"DEBUG Error creating ATS application record: {repr(e)}")
+            logger.warning("Failed to create ATS application record for job_id=%s (may be duplicate apply)", job_id)
             pass
     
     await log_activity(
@@ -277,6 +335,20 @@ async def apply_to_job(
         "JOB_APPLIED", 
         {"job_id": job_id}
     )
+
+    # Record "applied" feedback so the recommendation engine learns from outcomes.
+    # This is a critical signal: the student committed to this opportunity.
+    try:
+        from ..services.recommendation_engine import recommendation_engine
+        await recommendation_engine.record_feedback(
+            student_id=str(current_student["_id"]),
+            opportunity_id=job_id,
+            opportunity_type="job",
+            action="applied",
+        )
+    except Exception as e:
+        logger.debug("Failed to record applied feedback for job %s: %s", job_id, e)
+
     return db_application_to_public(app_doc)
 
 

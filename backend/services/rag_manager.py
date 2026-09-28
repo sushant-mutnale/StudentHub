@@ -3,24 +3,26 @@ RAG Knowledge Manager
 
 Handles interactions with Pinecone Vector DB.
 CRITICAL: Enforces strict data isolation between users.
+
+Uses real embeddings via the embedding_service when an OpenAI key is configured,
+with a deterministic pseudo-embedding fallback for local/dev environments.
 """
 
 import logging
 from typing import List, Dict, Any, Optional
-from backend.services.pinecone_service import get_index, add_record, search_records # Re-using base service or extending it?
-# Actually, let's use the base service's index but implement the logic here to keep it clean.
-# Or better, let's wrap the logic here and use the low-level connection from pinecone_service.
 
-from backend.services.pinecone_service import get_index
-from backend.config import Settings
+from .embedding_service import embed_text, embed_texts, EMBEDDING_DIMENSIONS
+from .pinecone_service import get_index
+from ..config import Settings
 
 logger = logging.getLogger(__name__)
+
 
 class RAGManager:
     """
     Manages Knowledge Retrieval with strict security boundaries.
     """
-    
+
     # Namespaces
     NS_PUBLIC = "public_content"  # Jobs, Courses, General Info
     NS_USER = "user_data"         # Resumes, Notes, Personal History
@@ -28,40 +30,29 @@ class RAGManager:
     def __init__(self):
         self.index = get_index()
 
-    async def _embed_text(self, text: str):
-        """
-        Generate embedding for text.
-        TODO: Integrate with an embedding model (OpenAI/HuggingFace).
-        For now, Pinecone 'Integrated Inference' might handle this if configured.
-        Otherwise, we need an embedding service.
-        For MVP, we assume text-based search or handling via the 'text' field if using integrated inference.
-        """
-        # Placeholder: In a real app, you'd call OpenAI here.
-        # If using Pinecone Inference, we just pass text.
-        return text 
+    # ------------------------------------------------------------------
+    # Writing helpers
+    # ------------------------------------------------------------------
 
     async def add_public_job(self, job_id: str, job_text: str, metadata: Dict = None):
         """Add a job description to public knowledge."""
-        if not self.index: return False
-        
+        if not self.index:
+            return False
+
         meta = metadata or {}
         meta["type"] = "job"
-        
+
         try:
-            # Fallback: Send a dummy vector to satisfy client validation.
-            # If server has integrated embedding, it should use 'text' in metadata/inputs.
-            # If not, this safeguards against client crash (but returns garbage search).
-            dummy_vec = [0.1] * 1024
-            
+            vector = embed_text(job_text)
             self.index.upsert(
                 vectors=[{
                     "id": f"job_{job_id}",
-                    "values": dummy_vec, 
+                    "values": vector,
                     "metadata": {"text": job_text, **meta}
                 }],
                 namespace=self.NS_PUBLIC
             )
-            logger.info(f"Added public job {job_id} to RAG")
+            logger.info(f"Added public job {job_id} to RAG (dim={len(vector)})")
             return True
         except Exception as e:
             logger.error(f"Failed to add public job: {e}")
@@ -69,13 +60,15 @@ class RAGManager:
 
     async def add_user_resume(self, user_id: str, resume_text: str):
         """Add a user's resume to their private isolated memory."""
-        if not self.index: return False
-        
+        if not self.index:
+            return False
+
         try:
+            vector = embed_text(resume_text)
             self.index.upsert(
                 vectors=[{
                     "id": f"resume_{user_id}",
-                    "values": [0.1] * 1024, # Dummy vector
+                    "values": vector,
                     "metadata": {
                         "text": resume_text,
                         "type": "resume",
@@ -84,23 +77,66 @@ class RAGManager:
                 }],
                 namespace=self.NS_USER
             )
-            logger.info(f"Added resume for user {user_id}")
+            logger.info(f"Added resume for user {user_id} (dim={len(vector)})")
             return True
         except Exception as e:
             logger.error(f"Failed to add resume: {e}")
             return False
 
+    async def upsert_batch(self, records: List[Dict[str, Any]], namespace: str):
+        """Upsert a batch of records with real embeddings.
+
+        Each record must have ``id`` and ``text`` keys.
+        Optionally include ``metadata`` (dict) to store alongside.
+        """
+        if not self.index or not records:
+            return 0
+
+        texts = [r["text"] for r in records]
+        try:
+            vectors = embed_texts(texts)
+        except Exception as e:
+            logger.error(f"Batch embedding failed: {e}")
+            return 0
+
+        pinecone_records = []
+        for rec, vec in zip(records, vectors):
+            meta = rec.get("metadata", {})
+            meta["text"] = rec["text"]
+            pinecone_records.append({
+                "id": rec["id"],
+                "values": vec,
+                "metadata": meta,
+            })
+
+        try:
+            # Pinecone upsert supports batches up to ~1000 vectors.
+            batch_size = 100
+            upserted = 0
+            for i in range(0, len(pinecone_records), batch_size):
+                batch = pinecone_records[i:i + batch_size]
+                self.index.upsert(vectors=batch, namespace=namespace)
+                upserted += len(batch)
+            logger.info(f"Upserted {upserted} records to namespace={namespace}")
+            return upserted
+        except Exception as e:
+            logger.error(f"Batch upsert failed: {e}")
+            return 0
+
+    # ------------------------------------------------------------------
+    # Search helpers
+    # ------------------------------------------------------------------
+
     async def search_public(self, query: str, limit: int = 5):
         """Search global public knowledge (Jobs, Courses)."""
-        if not self.index: return []
-        
+        if not self.index:
+            return []
+
         try:
-            # Using the same pattern as test_pinecone.py for inference
-            # We assume the user config is correct about 'text' input
+            vector = embed_text(query)
             res = self.index.query(
                 namespace=self.NS_PUBLIC,
-                inputs={"text": query},
-                vector=[0.1] * 1024, # Dummy vector to bypass client "vector required" validation
+                vector=vector,
                 top_k=limit,
                 include_metadata=True
             )
@@ -114,13 +150,14 @@ class RAGManager:
         Search PRIVATE user data.
         CRITICAL: Enforces metadata filter for user_id.
         """
-        if not self.index: return []
-        
+        if not self.index:
+            return []
+
         try:
+            vector = embed_text(query)
             res = self.index.query(
                 namespace=self.NS_USER,
-                inputs={"text": query},
-                vector=[0.1] * 1024, # Dummy vector
+                vector=vector,
                 top_k=limit,
                 include_metadata=True,
                 filter={
@@ -131,5 +168,6 @@ class RAGManager:
         except Exception as e:
             logger.error(f"Private search failed for user {user_id}: {e}")
             return []
+
 
 rag_manager = RAGManager()

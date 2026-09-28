@@ -18,9 +18,27 @@ from asgi_lifespan import LifespanManager
 os.environ["APP_ENV"] = "testing"
 os.environ["MONGODB_DB"] = "student_hub_test"
 
+# Force LOCAL Redis for hermetic tests (see root tests/conftest.py)
+os.environ["REDIS_HOST"] = "127.0.0.1"
+os.environ["REDIS_PORT"] = "6380"
+os.environ["REDIS_USERNAME"] = ""
+os.environ["REDIS_PASSWORD"] = ""
+os.environ["REDIS_SSL"] = "false"
+
 from backend.main import app
+from backend.config import settings
 from backend.database import get_database
 from backend.utils.auth import hash_password, create_access_token
+
+# Force settings to use local ephemeral infra (never the developer's cloud)
+settings.app_env = "testing"
+settings.mongodb_db = "student_hub_test"
+settings.mongodb_uri = os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
+settings.redis_host = os.environ["REDIS_HOST"]
+settings.redis_port = int(os.environ["REDIS_PORT"])
+settings.redis_username = os.environ["REDIS_USERNAME"]
+settings.redis_password = os.environ["REDIS_PASSWORD"]
+settings.redis_ssl = False
 
 
 # ---------- App + DB Lifecycle ----------
@@ -38,7 +56,7 @@ async def managed_app():
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_collections(managed_app):
-    """Clean relevant collections before each test."""
+    """Clean relevant collections and all caches before each test."""
     test_db = get_database()
     collections_to_clean = [
         "users", "jobs", "interviews", "interview_sessions",
@@ -46,9 +64,23 @@ async def clean_collections(managed_app):
         "notifications", "activities", "outbox_events",
         "multi_agent_sessions", "opportunities_jobs",
         "resume_uploads", "resume_cache",
+        "saved_searches", "saved_jobs", "recommendation_feedback",
     ]
     for col in collections_to_clean:
         await test_db[col].delete_many({})
+    # Clear application-level cache (Redis + in-memory fallback)
+    try:
+        from backend.services.cache_service import cache
+        await cache.clear()
+    except Exception:
+        pass
+    # Also flush Redis directly for non-cache keys
+    try:
+        from backend.redis_client import get_redis
+        redis = get_redis()
+        await redis.flushdb()
+    except Exception:
+        pass
     yield
 
 

@@ -4,10 +4,10 @@ API endpoints for code execution and validation.
 """
 
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from ..services.code_sandbox import code_sandbox
+from ..services.code_sandbox import code_sandbox, SandboxUnavailableError, MAX_CODE_BYTES
 from ..utils.dependencies import get_current_user
 
 
@@ -53,16 +53,22 @@ async def execute_code(
 ):
     """
     Execute code and return output.
-    
+
     Supported languages: python, javascript, java, cpp, go, rust
     """
-    result = await code_sandbox.execute_code(
-        code=payload.code,
-        language=payload.language,
-        stdin=payload.stdin,
-        timeout_ms=payload.timeout_ms
-    )
-    
+    try:
+        result = await code_sandbox.execute_code(
+            code=payload.code,
+            language=payload.language,
+            stdin=payload.stdin,
+            timeout_ms=payload.timeout_ms
+        )
+    except SandboxUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
+        )
+
     return {
         "status": "success" if result.success else "error",
         "output": result.output,
@@ -84,17 +90,23 @@ async def run_test_cases(
 ):
     """
     Run code against multiple test cases.
-    
+
     Returns pass/fail for each test and overall score.
     """
     test_cases = [{"input": t.input, "expected": t.expected} for t in payload.test_cases]
-    
-    result = await code_sandbox.run_test_cases(
-        code=payload.code,
-        test_cases=test_cases,
-        language=payload.language
-    )
-    
+
+    try:
+        result = await code_sandbox.run_test_cases(
+            code=payload.code,
+            test_cases=test_cases,
+            language=payload.language
+        )
+    except SandboxUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
+        )
+
     return {
         "status": "success",
         "passed": result["passed"],
@@ -114,18 +126,24 @@ async def validate_solution(
 ):
     """
     Validate solution against a known problem's test cases.
-    
+
     Supported problems: two_sum, valid_parentheses, reverse_string, fizzbuzz, palindrome
     """
-    result = await code_sandbox.validate_solution(
-        code=payload.code,
-        problem_id=payload.problem_id,
-        language=payload.language
-    )
-    
+    try:
+        result = await code_sandbox.validate_solution(
+            code=payload.code,
+            problem_id=payload.problem_id,
+            language=payload.language
+        )
+    except SandboxUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
+        )
+
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error"))
-    
+
     return result
 
 
@@ -142,21 +160,31 @@ async def get_languages():
 
 @router.post("/quick-test")
 async def quick_test(
-    code: str,
-    language: str = "python"
+    payload: ExecuteCodeRequest,
+    current_user=Depends(get_current_user)
 ):
-    """Quick code execution test (no auth required for demo)."""
-    # Limit code size for demo
-    if len(code) > 5000:
-        raise HTTPException(status_code=400, detail="Code too long for demo (max 5000 chars)")
-    
-    result = await code_sandbox.execute_code(
-        code=code,
-        language=language,
-        stdin="",
-        timeout_ms=3000
-    )
-    
+    """
+    Quick code execution test. Requires authentication.
+    """
+    if len(payload.code.encode("utf-8")) > MAX_CODE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Code exceeds maximum size of {MAX_CODE_BYTES // 1024}KB"
+        )
+
+    try:
+        result = await code_sandbox.execute_code(
+            code=payload.code,
+            language=payload.language,
+            stdin="",
+            timeout_ms=3000
+        )
+    except SandboxUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
+        )
+
     return {
         "output": result.output[:1000],
         "error": result.error[:500] if result.error else None,

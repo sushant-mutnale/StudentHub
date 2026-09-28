@@ -312,6 +312,21 @@ async def check_notifications():
         logger.error(f"Notification checks failed: {e}")
 
 
+async def check_saved_search_alerts():
+    """
+    Run saved-search alerts for recruiters.
+    Checks each alert-enabled saved search for new matching students
+    and creates notifications for recruiters. Idempotent via last_checked_at.
+    """
+    try:
+        from ..models.saved_search import run_saved_search_alerts
+
+        result = await run_saved_search_alerts()
+        logger.info(f"Saved-search alerts completed: {result}")
+    except Exception as e:
+        logger.error(f"Saved-search alert check failed: {e}")
+
+
 def register_default_jobs():
     """Register default background jobs."""
     scheduler = background_scheduler
@@ -367,9 +382,17 @@ def register_default_jobs():
         job_id="check_deadline_notifications_evening",
         func=check_notifications,
         hour=18,
+minute=0
+    )
+
+    # Check saved-search alerts daily at 9 AM UTC (after new students may have joined)
+    scheduler.add_cron_job(
+        job_id="check_saved_search_alerts",
+        func=check_saved_search_alerts,
+        hour=9,
         minute=0
     )
-    
+
     logger.info("Default background jobs registered")
 
 

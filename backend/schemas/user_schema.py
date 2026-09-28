@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Any
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from .base import MongoModel
 
@@ -13,6 +13,13 @@ class SkillSchema(BaseModel):
     confidence: int = 0  # 0-100
     evidence: List[str] = Field(default_factory=list)  # assessment IDs, project links
     last_updated: datetime = Field(default_factory=datetime.utcnow)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_from_string_or_dict(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"name": data}
+        return data
 
 class AIProfileSchema(BaseModel):
     overall_score: float = 0.0
@@ -80,6 +87,7 @@ class UserPublic(BaseModel):
     skills: List[SkillSchema] = Field(default_factory=list)
     ai_profile: Optional[AIProfileSchema] = None
     connections: List[str] = Field(default_factory=list)
+    onboarding_completed: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
 
@@ -95,6 +103,14 @@ class MatchExplanation(BaseModel):
     activity_score: float
     completeness_score: float
     total_score: float
+    # Full authoritative breakdown from the shared ScoringEngine.
+    # These fields use the same 6-component model for student and recruiter.
+    skill_match: Optional[float] = None
+    proficiency_fit: Optional[float] = None
+    freshness: Optional[float] = None
+    location_match: Optional[float] = None
+    career_alignment: Optional[float] = None
+    ai_readiness: Optional[float] = None
 
 
 class MatchResult(UserPublic):
@@ -117,5 +133,6 @@ class UserUpdate(MongoModel):
     contact_number: Optional[str] = None
     website: Optional[str] = None
     company_description: Optional[str] = None
+    onboarding_completed: Optional[bool] = None
 
 

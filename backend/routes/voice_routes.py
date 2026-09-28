@@ -6,6 +6,7 @@ Handles voice-based interview sessions with pre-recorded video states.
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional
+import logging
 import uuid
 
 from ..utils.dependencies import get_current_user
@@ -15,6 +16,8 @@ from ..services.interview_orchestrator import interview_orchestrator
 
 
 router = APIRouter(prefix="/voice", tags=["Voice Interview"])
+
+logger = logging.getLogger(__name__)
 
 
 class VoiceSessionCreate(BaseModel):
@@ -50,7 +53,7 @@ async def create_voice_session(
     Create a new voice interview session.
     Returns initial greeting with audio.
     """
-    print(f"Voice Session Create Request: {data}")
+    logger.info("Voice session create request received (method=create_voice_session)")
     student_id = str(current_user["_id"])
     print(f"User ID: {student_id}")
     

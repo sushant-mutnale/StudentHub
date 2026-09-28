@@ -61,5 +61,8 @@ websockets>=14.0
 # ===== Background Tasks =====
 apscheduler>=3.10.0
 
+# ===== Testing =====
+pytest-cov>=5.0.0
+
 # ===== Vercel Handler =====
 mangum>=0.17.0

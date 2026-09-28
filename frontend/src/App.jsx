@@ -28,9 +28,13 @@ import MockInterview from './components/MockInterview';
 import CompanyResearch from './components/CompanyResearch';
 import Opportunities from './components/Opportunities';
 import SmartNotifications from './components/SmartNotifications';
+import OnboardingWizard from './components/OnboardingWizard';
+import NextBestAction from './components/NextBestAction';
+import CalendarView from './components/CalendarView';
 // Module 5 Components
 import ApplicationPipeline from './components/ApplicationPipeline';
 import ApplicationTracker from './components/ApplicationTracker';
+import SavedJobs from './components/SavedJobs';
 import AdminDashboard from './components/AdminDashboard';
 import VerificationStatus from './components/VerificationStatus';
 import AnalyticsDashboard from './components/Analytics/AnalyticsDashboard';
@@ -88,6 +92,24 @@ function App() {
               element={
                 <ProtectedRoute allowedType="student">
                   <StudentDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <OnboardingWizard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/next-best-action"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <NextBestAction />
                 </ProtectedRoute>
               }
             />
@@ -299,6 +321,24 @@ function App() {
               element={
                 <ProtectedRoute allowedType="student">
                   <ApplicationTracker />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/saved-jobs"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <SavedJobs />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/calendar"
+              element={
+                <ProtectedRoute allowedType="student">
+                  <CalendarView />
                 </ProtectedRoute>
               }
             />

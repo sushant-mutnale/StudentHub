@@ -5,6 +5,7 @@ import SidebarLeft from './SidebarLeft';
 import SidebarRight from './SidebarRight';
 import PostBox from './PostBox';
 import PostFeed from './PostFeed';
+import NextBestAction from './NextBestAction';
 import { FiHome, FiGrid } from 'react-icons/fi';
 import '../App.css';
 
@@ -55,6 +56,10 @@ const StudentDashboard = () => {
         </div>
 
         <div className="dashboard-content" style={{ maxWidth: '800px', margin: '0 auto' }}>
+
+          <div className="animate-fade-in-up delay-0" style={{ marginBottom: '1.5rem' }}>
+            <NextBestAction />
+          </div>
 
           <div className="animate-fade-in-up delay-100">
             <h3 style={{

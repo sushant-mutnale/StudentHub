@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { setAuthToken } from '../api/client';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { setAuthToken, setOnSessionExpired, setOnTokenRefreshed } from '../api/client';
 import { authService } from '../services/authService';
 import { userService } from '../services/userService';
 import { clearAllPersistedState } from '../hooks/usePersistedState';
@@ -25,12 +25,47 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
+  const tokenRef = useRef(null);
+
+  const logout = () => {
+    setUser(null);
+    setToken(null);
+    setAuthToken(null);
+    tokenRef.current = null;
+    localStorage.removeItem(SESSION_KEY);
+    clearAllPersistedState();
+  };
+
+  useEffect(() => {
+    // When the silent refresh in client.js ultimately fails, end the session.
+    setOnSessionExpired(() => {
+      logout();
+    });
+
+    // Persist freshly-issued access tokens so reloads keep a valid session.
+    setOnTokenRefreshed((newToken) => {
+      tokenRef.current = newToken;
+      setToken(newToken);
+      const stored = localStorage.getItem(SESSION_KEY);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          parsed.token = newToken;
+          localStorage.setItem(SESSION_KEY, JSON.stringify(parsed));
+        } catch {
+          /* ignore malformed session */
+        }
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const storedSession = localStorage.getItem(SESSION_KEY);
     if (storedSession) {
       const parsed = JSON.parse(storedSession);
       if (parsed.token) {
+        tokenRef.current = parsed.token;
         setToken(parsed.token);
         setAuthToken(parsed.token);
         setUser(normalizeUser(parsed.user));
@@ -39,6 +74,7 @@ export const AuthProvider = ({ children }) => {
       }
     }
     setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const persistSession = (sessionToken, sessionUser) => {
@@ -52,7 +88,7 @@ export const AuthProvider = ({ children }) => {
     console.log('AuthContext: refreshUser called', { hasOverrideToken: !!overrideToken });
     try {
       const response = await userService.getMe();
-      console.log('AuthContext: refreshUser success', response);
+      console.log('AuthContext: refreshUser success');
       const normalized = normalizeUser(response);
       setUser(normalized);
       const activeToken = overrideToken || token;
@@ -71,8 +107,9 @@ export const AuthProvider = ({ children }) => {
     console.log('AuthContext: login attempt', { username, role });
     try {
       const response = await authService.login({ username, password, role });
-      console.log('AuthContext: login success', response);
+      console.log('AuthContext: login success');
       const normalized = normalizeUser(response.user);
+      tokenRef.current = response.access_token;
       setToken(response.access_token);
       setAuthToken(response.access_token);
       setUser(normalized);
@@ -116,14 +153,6 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       return { success: false, error: error.message };
     }
-  };
-
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    setAuthToken(null);
-    localStorage.removeItem(SESSION_KEY);
-    clearAllPersistedState();
   };
 
   const updateUser = (updates) => {

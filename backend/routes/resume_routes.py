@@ -4,6 +4,7 @@ API endpoints for resume upload, parsing, and management.
 """
 
 import os
+import uuid
 import shutil
 import logging
 from datetime import datetime
@@ -57,19 +58,42 @@ def ensure_upload_dir():
     return UPLOAD_DIR
 
 
-def get_resume_path(student_id: str, filename: str) -> str:
-    """Generate unique file path for resume."""
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-")
-    final_path = os.path.join(
-        ensure_upload_dir(),
-        f"{student_id}_{timestamp}_{safe_filename}"
-    )
+def get_resume_path(filename: str) -> str:
+    """Generate a UUID-based file path for resume storage.
+
+    Filenames are NOT derived from user input or student IDs.
+    This prevents:
+    - Predictable file paths (information disclosure)
+    - Directory traversal (no user-controlled path components)
+    - Filename collisions (UUID v4)
+    """
+    file_ext = os.path.splitext(filename)[1].lower()
+    unique_name = f"{uuid.uuid4().hex}{file_ext}"
+    final_path = os.path.join(ensure_upload_dir(), unique_name)
     final_path = os.path.abspath(final_path)
     base_dir = os.path.abspath(UPLOAD_DIR)
     if not final_path.startswith(base_dir + os.sep):
         raise HTTPException(status_code=400, detail="Invalid filename")
     return final_path
+
+
+async def _verify_resume_owner(resume_id: str, current_user: dict) -> dict:
+    """Fetch a resume and verify the current user owns it.
+
+    Returns the resume document on success.
+    Raises 400/403/404 as appropriate.
+    """
+    if not ObjectId.is_valid(resume_id):
+        raise HTTPException(status_code=400, detail="Invalid resume ID")
+
+    doc = await resumes_collection().find_one({"_id": ObjectId(resume_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    if str(doc["student_id"]) != str(current_user["_id"]):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return doc
 
 
 # ============ Upload Endpoint ============
@@ -323,7 +347,7 @@ async def upload_resume(
         )
     
     # Save file
-    file_path = get_resume_path(student_id, file.filename)
+    file_path = get_resume_path(file.filename)
     with open(file_path, "wb") as f:
         f.write(content)
         
@@ -395,19 +419,7 @@ async def get_my_resumes(current_user=Depends(get_current_user)):
 @router.get("/{resume_id}", response_model=ResumeDetailResponse)
 async def get_resume(resume_id: str, current_user=Depends(get_current_user)):
     """Get detailed parsed resume by ID."""
-    if not ObjectId.is_valid(resume_id):
-        raise HTTPException(status_code=400, detail="Invalid resume ID")
-    
-    doc = await resumes_collection().find_one({
-        "_id": ObjectId(resume_id)
-    })
-    
-    if not doc:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    
-    # Verify ownership
-    if str(doc["student_id"]) != str(current_user["_id"]):
-        raise HTTPException(status_code=403, detail="Access denied")
+    doc = await _verify_resume_owner(resume_id, current_user)
     
     parsed_data = doc.get("parsed_data", {})
     ai_feedback = doc.get("feedback", {})
@@ -451,19 +463,7 @@ async def reparse_resume(
     Reparse an existing resume with AI enhancement.
     User can choose to enable/disable AI for the reparse.
     """
-    if not ObjectId.is_valid(resume_id):
-        raise HTTPException(status_code=400, detail="Invalid resume ID")
-    
-    doc = await resumes_collection().find_one({
-        "_id": ObjectId(resume_id)
-    })
-    
-    if not doc:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    
-    # Verify ownership
-    if str(doc["student_id"]) != str(current_user["_id"]):
-        raise HTTPException(status_code=403, detail="Access denied")
+    doc = await _verify_resume_owner(resume_id, current_user)
     
     file_path = doc.get("file_path", "")
     
@@ -560,19 +560,7 @@ async def reparse_resume(
 @router.delete("/{resume_id}", response_model=DeleteResponse)
 async def delete_resume(resume_id: str, current_user=Depends(get_current_user)):
     """Delete a resume and its file."""
-    if not ObjectId.is_valid(resume_id):
-        raise HTTPException(status_code=400, detail="Invalid resume ID")
-    
-    doc = await resumes_collection().find_one({
-        "_id": ObjectId(resume_id)
-    })
-    
-    if not doc:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    
-    # Verify ownership
-    if str(doc["student_id"]) != str(current_user["_id"]):
-        raise HTTPException(status_code=403, detail="Access denied")
+    doc = await _verify_resume_owner(resume_id, current_user)
     
     file_path = doc.get("file_path", "")
     # Delete DB record first (atomic), then file
@@ -591,19 +579,7 @@ async def delete_resume(resume_id: str, current_user=Depends(get_current_user)):
 @router.get("/{resume_id}/skills")
 async def get_resume_skills(resume_id: str, current_user=Depends(get_current_user)):
     """Get just the skills from a parsed resume."""
-    if not ObjectId.is_valid(resume_id):
-        raise HTTPException(status_code=400, detail="Invalid resume ID")
-    
-    doc = await resumes_collection().find_one({
-        "_id": ObjectId(resume_id)
-    })
-    
-    if not doc:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    
-    # Verify ownership
-    if str(doc["student_id"]) != str(current_user["_id"]):
-        raise HTTPException(status_code=403, detail="Access denied")
+    doc = await _verify_resume_owner(resume_id, current_user)
     
     skills = doc.get("parsed_data", {}).get("skills", [])
     
