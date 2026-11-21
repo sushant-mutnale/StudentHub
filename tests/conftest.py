@@ -9,6 +9,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pathlib import Path
 from dotenv import load_dotenv
 
+_REDIS_PORT_OVERRIDE = os.environ.get("REDIS_PORT")
+
 # Load .env first
 _dotenv_path = Path(__file__).resolve().parent.parent / "backend" / ".env"
 if not _dotenv_path.exists():
@@ -18,15 +20,14 @@ load_dotenv(_dotenv_path, override=True)
 # Override env settings for testing
 os.environ["APP_ENV"] = "testing"
 os.environ["MONGODB_DB"] = "student_hub_test" 
-# Keep MONGODB_URI from .env if present, otherwise default to localhost
-if not os.environ.get("MONGODB_URI"):
-    os.environ["MONGODB_URI"] = "mongodb://localhost:27017"
+# Tests must never inherit a cloud database from backend/.env.
+os.environ["MONGODB_URI"] = "mongodb://localhost:27017"
 
 # Force LOCAL Redis for tests. The backend/.env points to a cloud Redis service
 # which tests must never depend on (and may be unreachable in CI). Tests are
 # hermetic: they connect to a local Redis on 127.0.0.1:6379.
 os.environ["REDIS_HOST"] = "127.0.0.1"
-os.environ["REDIS_PORT"] = "6380"
+os.environ["REDIS_PORT"] = _REDIS_PORT_OVERRIDE or "6379"
 os.environ["REDIS_USERNAME"] = ""
 os.environ["REDIS_PASSWORD"] = ""
 os.environ["REDIS_SSL"] = "false"

@@ -17,10 +17,11 @@ from asgi_lifespan import LifespanManager
 # Force testing mode BEFORE importing app
 os.environ["APP_ENV"] = "testing"
 os.environ["MONGODB_DB"] = "student_hub_test"
+os.environ["MONGODB_URI"] = "mongodb://localhost:27017"
 
 # Force LOCAL Redis for hermetic tests (see root tests/conftest.py)
 os.environ["REDIS_HOST"] = "127.0.0.1"
-os.environ["REDIS_PORT"] = "6380"
+os.environ.setdefault("REDIS_PORT", "6379")
 os.environ["REDIS_USERNAME"] = ""
 os.environ["REDIS_PASSWORD"] = ""
 os.environ["REDIS_SSL"] = "false"
