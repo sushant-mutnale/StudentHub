@@ -3,6 +3,13 @@ from typing import List, Optional, Tuple
 
 from ..contracts.enums import InterviewType, Mode, NextAction, SessionStatus
 from ..contracts.messages import (
+    EndSessionCommand,
+    EndSessionResult,
+    HintResult,
+    PauseSessionCommand,
+    RequestHintCommand,
+    ResumeSessionCommand,
+    ResumeSessionResult,
     SessionView,
     StartSessionCommand,
     StartSessionResult,
@@ -13,6 +20,7 @@ from ..contracts.records import (
     ConsentSnapshot,
     EventRecord,
     EvidenceRecord,
+    HintRecord,
     OutboxRecord,
     QuestionRecord,
     ReportRecord,
@@ -21,20 +29,33 @@ from ..contracts.records import (
     TurnRecord,
 )
 from ..domain.behavioral_blueprint import build_behavioral_blueprint
+from ..domain.scoring import InstanceFact, confidence_for, counts_for_scoring, level_for
 from ..domain.session import Session, is_terminal_status
 from ..errors import (
+    CommandIdRequired,
     DeviceConflict,
+    HintLimitReached,
+    HintUnavailable,
     InvalidState,
+    NoReport,
     NotOwner,
+    PauseLimitReached,
     QuestionMismatch,
     QuestionPendingConflict,
+    QuestionSuperseded,
     SessionExists,
     SessionNotFound,
     UnsupportedInterviewType,
     UnsupportedMode,
     VersionConflict,
 )
-from ..ports.capabilities import AnalysisRequest, QuestionRequest
+from ..ports.capabilities import (
+    AnalysisRequest,
+    CompetencyEvaluationInput,
+    EvaluationRequest,
+    QuestionRequest,
+)
+from .report_builder import build_report
 
 _MAX_QUESTION_CHARS = 400
 
@@ -580,3 +601,357 @@ class InterviewEngine:
                 cmd.session_id, cmd.turn_idempotency_key, result.dict()
             )
         return result
+
+    async def request_hint(self, cmd: RequestHintCommand) -> HintResult:
+        record = await self.load_owned(cmd.session_id, cmd.candidate_id)
+        await self._assert_lease(record, cmd.device_id, cmd.fencing_token)
+        if record.mode != Mode.PRACTICE.value:
+            raise HintUnavailable()
+        existing = await self.store.get_hint_by_key(
+            cmd.session_id, cmd.hint_idempotency_key
+        )
+        if existing is not None:
+            fresh = await self.store.load(cmd.session_id) or record
+            return HintResult(
+                hint=existing.text,
+                hints_used=existing.hints_used,
+                remaining=max(fresh.hint_budget - existing.hints_used, 0),
+                version=fresh.version,
+                question_id=existing.question_id,
+            )
+        if record.question_pending:
+            raise QuestionPendingConflict()
+        if record.status != SessionStatus.IN_PROGRESS.value:
+            raise InvalidState()
+        if cmd.question_id is not None and cmd.question_id != record.current_question_id:
+            raise QuestionSuperseded()
+        if record.hint_count >= record.hint_budget:
+            raise HintLimitReached()
+        if not record.current_slot_id:
+            raise InvalidState()
+        slot = record.blueprint.slot(record.current_slot_id)
+        hint = HintRecord(
+            hint_id=self.ids.new_id(),
+            session_id=record.session_id,
+            hint_idempotency_key=cmd.hint_idempotency_key,
+            question_id=record.current_question_id or "",
+            text=slot.hint_text,
+            hints_used=record.hint_count + 1,
+            created_at=self.clock.now(),
+        )
+        async with self.store.transaction():
+            current = await self.store.load(cmd.session_id)
+            if current is None:
+                raise SessionNotFound()
+            existing = await self.store.get_hint_by_key(
+                cmd.session_id, cmd.hint_idempotency_key
+            )
+            if existing is not None:
+                return HintResult(
+                    hint=existing.text,
+                    hints_used=existing.hints_used,
+                    remaining=max(current.hint_budget - existing.hints_used, 0),
+                    version=current.version,
+                    question_id=existing.question_id,
+                )
+            session = Session.from_record(current)
+            if session.record.hint_count >= session.record.hint_budget:
+                raise HintLimitReached()
+            session.record.hint_count += 1
+            session.bump()
+            event = self._event(
+                session,
+                "HintProvided",
+                {"question_id": hint.question_id, "hints_used": session.record.hint_count},
+            )
+            await self.store.put_hint(hint)
+            if not await self.store.replace(
+                session.to_record(), expected_version=current.version
+            ):
+                raise VersionConflict()
+            await self.store.append_event(event)
+        return HintResult(
+            hint=hint.text,
+            hints_used=session.record.hint_count,
+            remaining=max(session.record.hint_budget - session.record.hint_count, 0),
+            version=session.record.version,
+            question_id=hint.question_id,
+        )
+
+    async def pause(self, cmd: PauseSessionCommand) -> SessionView:
+        record = await self.load_owned(cmd.session_id, cmd.candidate_id)
+        await self._assert_lease(record, cmd.device_id, cmd.fencing_token)
+        existing = await self.store.get_turn_command(
+            cmd.session_id, f"pause:{cmd.command_id}"
+        )
+        if existing is not None and existing.status == "complete":
+            return SessionView(**existing.result)
+        if record.question_pending:
+            raise QuestionPendingConflict()
+        if record.status != SessionStatus.IN_PROGRESS.value:
+            raise InvalidState()
+        if record.mode == Mode.FORMAL.value and record.pause_count >= 1:
+            raise PauseLimitReached()
+        async with self.store.transaction():
+            current = await self.store.load(cmd.session_id)
+            if current is None:
+                raise SessionNotFound()
+            session = Session.from_record(current)
+            session.mark_paused()
+            event = self._event(session, "SessionPaused", {"reason": cmd.reason})
+            if not await self.store.replace(
+                session.to_record(), expected_version=current.version
+            ):
+                raise VersionConflict()
+            await self.store.append_event(event)
+            view = await self.session_view(session.to_record())
+            await self.store.put_turn_command(
+                TurnCommandRecord(
+                    session_id=cmd.session_id,
+                    idempotency_key=f"pause:{cmd.command_id}",
+                    status="complete",
+                    result=view.dict(),
+                    created_at=self.clock.now(),
+                    updated_at=self.clock.now(),
+                )
+            )
+        return view
+
+    async def resume(self, cmd: ResumeSessionCommand) -> ResumeSessionResult:
+        record = await self.load_owned(cmd.session_id, cmd.candidate_id)
+        if is_terminal_status(record.status):
+            raise InvalidState()
+        paused = record.status == SessionStatus.PAUSED.value
+        if paused and not cmd.command_id:
+            raise CommandIdRequired()
+        if cmd.command_id:
+            existing = await self.store.get_turn_command(
+                cmd.session_id, f"resume:{cmd.command_id}"
+            )
+            if existing is not None and existing.status == "complete":
+                return ResumeSessionResult(**existing.result)
+        token = self.ids.new_token()
+        await self.lease.takeover(
+            cmd.session_id, cmd.device_id, token, self.lease_ttl_seconds
+        )
+        async with self.store.transaction():
+            current = await self.store.load(cmd.session_id)
+            if current is None:
+                raise SessionNotFound()
+            if current.device_id != cmd.device_id:
+                current.disconnect_count += 1
+            current.device_id = cmd.device_id
+            current.fencing_token = token
+            current.updated_at = self.clock.now()
+            events = []
+            if current.status == SessionStatus.PAUSED.value:
+                session = Session.from_record(current)
+                session.mark_resumed()
+                current = session.to_record()
+                events.append(
+                    EventRecord(
+                        event_id=self.ids.new_id(),
+                        session_id=cmd.session_id,
+                        event_sequence=current.event_sequence + 1,
+                        event_type="SessionResumed",
+                        payload={"command_id": cmd.command_id},
+                        created_at=self.clock.now(),
+                    )
+                )
+                current.event_sequence += 1
+                current.last_applied_sequence = current.event_sequence
+            events.append(
+                EventRecord(
+                    event_id=self.ids.new_id(),
+                    session_id=cmd.session_id,
+                    event_sequence=current.event_sequence + 1,
+                    event_type="SessionLeaseTakenOver",
+                    payload={"device_id": cmd.device_id},
+                    created_at=self.clock.now(),
+                )
+            )
+            current.event_sequence += 1
+            current.last_applied_sequence = current.event_sequence
+            if not await self.store.replace(current, expected_version=record.version):
+                raise VersionConflict()
+            for event in events:
+                await self.store.append_event(event)
+            if paused and cmd.command_id:
+                result = ResumeSessionResult(
+                    session_id=current.session_id,
+                    status=current.status,
+                    fencing_token=current.fencing_token,
+                    question=current.outstanding_question,
+                    question_id=current.current_question_id,
+                    version=current.version,
+                    question_pending=current.question_pending,
+                )
+                await self.store.put_turn_command(
+                    TurnCommandRecord(
+                        session_id=cmd.session_id,
+                        idempotency_key=f"resume:{cmd.command_id}",
+                        status="complete",
+                        result=result.dict(),
+                        created_at=self.clock.now(),
+                        updated_at=self.clock.now(),
+                    )
+                )
+        if current.question_pending and current.pending_question_request:
+            await self.ensure_question(cmd.session_id, current.pending_question_request)
+            current = await self.store.load(cmd.session_id) or current
+        return ResumeSessionResult(
+            session_id=current.session_id,
+            status=current.status,
+            fencing_token=current.fencing_token,
+            question=current.outstanding_question,
+            question_id=current.current_question_id,
+            version=current.version,
+            question_pending=current.question_pending,
+        )
+
+    async def end(self, cmd: EndSessionCommand) -> EndSessionResult:
+        record = await self.load_owned(cmd.session_id, cmd.candidate_id)
+        await self._assert_lease(record, cmd.device_id, cmd.fencing_token)
+        if is_terminal_status(record.status):
+            return EndSessionResult(
+                session_id=record.session_id,
+                status=record.status,
+                report_id=record.report_id,
+                report_outcome=record.report_outcome,
+            )
+        async with self.store.transaction():
+            current = await self.store.load(cmd.session_id)
+            if current is None:
+                raise SessionNotFound()
+            session = Session.from_record(current)
+            report_id = current.report_id or self.ids.new_id()
+            outcome = "suppressed" if not current.consent.evaluation else "evaluating"
+            session.begin_completion(report_id, outcome)
+            await self.store.put_report(
+                ReportRecord(
+                    report_id=report_id,
+                    session_id=current.session_id,
+                    outcome=outcome,
+                    created_at=self.clock.now(),
+                    updated_at=self.clock.now(),
+                )
+            )
+            event = self._event(
+                session,
+                "SessionCompleted",
+                {"report_id": report_id, "reason": cmd.reason},
+            )
+            if not await self.store.replace(
+                session.to_record(), expected_version=current.version
+            ):
+                raise VersionConflict()
+            await self.store.append_event(event)
+            result = EndSessionResult(
+                session_id=session.record.session_id,
+                status=session.record.status,
+                report_id=session.record.report_id,
+                report_outcome=session.record.report_outcome,
+            )
+            await self.store.put_turn_command(
+                TurnCommandRecord(
+                    session_id=cmd.session_id,
+                    idempotency_key=f"end:{cmd.end_command_id}",
+                    status="complete",
+                    result=result.dict(),
+                    created_at=self.clock.now(),
+                    updated_at=self.clock.now(),
+                )
+            )
+            if outcome == "evaluating":
+                await self.store.append_outbox(
+                    self._outbox(
+                        "interview_engine.report.requested",
+                        {"session_id": current.session_id, "report_id": report_id},
+                    )
+                )
+        return result
+
+    async def get_report(
+        self, candidate_id: str, report_id: Optional[str]
+    ) -> ReportRecord:
+        if not report_id:
+            raise NoReport()
+        report = await self.store.get_report(report_id)
+        if report is None:
+            raise NoReport()
+        record = await self.store.load(report.session_id)
+        if record is None:
+            raise NoReport()
+        if record.candidate_id != candidate_id:
+            raise NotOwner()
+        return report
+
+    async def build_report_body(self, report_id: str) -> Optional[dict]:
+        report = await self.store.get_report(report_id)
+        if report is None:
+            return None
+        record = await self.store.load(report.session_id)
+        if record is None:
+            return None
+        evidence = await self.store.evidence_for_session(record.session_id)
+        turns = await self.store.turns_for_session(record.session_id)
+        inputs = []
+        for group in record.blueprint.groups:
+            items = [item for item in evidence if item.competency == group.competency]
+            facts = [
+                InstanceFact(
+                    competency=item.competency,
+                    question_id=item.question_id,
+                    signal=item.signal,
+                    contradiction=item.contradiction,
+                )
+                for item in items
+                if counts_for_scoring(item.signal, item.instance)
+            ]
+            inputs.append(
+                CompetencyEvaluationInput(
+                    competency=group.competency,
+                    level=level_for(facts).value,
+                    confidence=confidence_for(facts).value,
+                    instances=len(facts),
+                )
+            )
+        output = await self.evaluator.evaluate(
+            EvaluationRequest(
+                session_id=record.session_id,
+                report_id=report_id,
+                role=record.role,
+                company=record.company,
+                competencies=inputs,
+            )
+        )
+        body = build_report(record, evidence, turns, output)
+        return body.dict()
+
+    async def drain_outbox(self, limit: int = 10) -> int:
+        claimed = await self.store.claim_outbox(self.worker_id, limit)
+        processed = 0
+        for item in claimed:
+            try:
+                if item.event_type == "interview_engine.report.requested":
+                    await self._handle_report_requested(item.payload)
+                await self.store.mark_outbox_processed(item.outbox_id)
+                processed += 1
+            except Exception as exc:
+                await self.store.mark_outbox_failed(item.outbox_id, str(exc))
+        return processed
+
+    async def _handle_report_requested(self, payload: dict) -> None:
+        report_id = payload["report_id"]
+        report = await self.store.get_report(report_id)
+        if report is None or report.outcome != "evaluating":
+            return
+        body = await self.build_report_body(report_id)
+        if body is None:
+            raise InvalidState("report body could not be assembled")
+        report.outcome = "ready"
+        report.body = body
+        report.attempts += 1
+        report.updated_at = self.clock.now()
+        if not await self.store.update_report(report, expected_outcome="evaluating"):
+            raise InvalidState("report is no longer evaluating")

@@ -49,6 +49,11 @@ class VersionConflict(EngineError):
     status_code = 409
 
 
+class CommandIdRequired(EngineError):
+    code = "command_id_required"
+    status_code = 409
+
+
 class QuestionPendingConflict(EngineError):
     code = "question_pending"
     status_code = 409
