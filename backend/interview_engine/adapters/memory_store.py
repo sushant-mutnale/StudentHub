@@ -1,6 +1,6 @@
 import copy
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ..contracts.records import (
     EventRecord,
@@ -14,6 +14,21 @@ from ..contracts.records import (
     TurnRecord,
 )
 
+_MAX_ATTEMPTS = 5
+
+_Snapshot = Tuple[
+    Dict[str, SessionRecord],
+    List[EventRecord],
+    List[TurnRecord],
+    List[EvidenceRecord],
+    Dict[str, QuestionRecord],
+    Dict[str, HintRecord],
+    Dict[str, TurnCommandRecord],
+    Dict[str, ReportRecord],
+    List[OutboxRecord],
+    Dict[str, str],
+]
+
 
 class InMemorySessionStore:
     def __init__(self):
@@ -26,22 +41,26 @@ class InMemorySessionStore:
         self._commands: Dict[str, TurnCommandRecord] = {}
         self._reports: Dict[str, ReportRecord] = {}
         self._outbox: List[OutboxRecord] = []
-        self._snapshot = None
+        self._outbox_errors: Dict[str, str] = {}
+        self._snapshots: List[_Snapshot] = []
 
     @asynccontextmanager
     async def transaction(self):
-        self._snapshot = copy.deepcopy(
-            (self._sessions, self._events, self._turns, self._evidence, self._questions,
-             self._hints, self._commands, self._reports, self._outbox)
+        self._snapshots.append(
+            copy.deepcopy(
+                (self._sessions, self._events, self._turns, self._evidence, self._questions,
+                 self._hints, self._commands, self._reports, self._outbox, self._outbox_errors)
+            )
         )
         try:
             yield self
         except Exception:
             (self._sessions, self._events, self._turns, self._evidence, self._questions,
-             self._hints, self._commands, self._reports, self._outbox) = self._snapshot
+             self._hints, self._commands, self._reports, self._outbox,
+             self._outbox_errors) = self._snapshots[-1]
             raise
         finally:
-            self._snapshot = None
+            self._snapshots.pop()
 
     async def load(self, session_id: str) -> Optional[SessionRecord]:
         record = self._sessions.get(session_id)
@@ -120,20 +139,28 @@ class InMemorySessionStore:
             return copy.deepcopy(hint)
         return None
 
+    def _command_key(self, session_id: str, key: str) -> str:
+        return f"{session_id}:{key}"
+
     async def get_turn_command(self, session_id: str, key: str) -> Optional[TurnCommandRecord]:
-        command = self._commands.get(key)
+        command = self._commands.get(self._command_key(session_id, key))
         if command and command.session_id == session_id:
             return copy.deepcopy(command)
         return None
 
     async def put_turn_command(self, command: TurnCommandRecord) -> None:
-        self._commands[command.idempotency_key] = copy.deepcopy(command)
+        self._commands[self._command_key(command.session_id, command.idempotency_key)] = (
+            copy.deepcopy(command)
+        )
 
     async def complete_turn_command(self, session_id: str, key: str, result: dict) -> None:
-        command = self._commands.get(key)
-        if command and command.session_id == session_id:
-            command.status = "complete"
-            command.result = copy.deepcopy(result)
+        command = self._commands.get(self._command_key(session_id, key))
+        if command is None or command.session_id != session_id:
+            return
+        if command.status == "complete":
+            return
+        command.status = "complete"
+        command.result = copy.deepcopy(result)
 
     async def put_report(self, report: ReportRecord) -> None:
         self._reports[report.report_id] = copy.deepcopy(report)
@@ -152,12 +179,16 @@ class InMemorySessionStore:
     async def append_outbox(self, record: OutboxRecord) -> None:
         self._outbox.append(copy.deepcopy(record))
 
+    @property
+    def outbox_errors(self) -> Dict[str, str]:
+        return dict(self._outbox_errors)
+
     async def claim_outbox(self, worker_id: str, limit: int) -> List[OutboxRecord]:
         claimed = []
         for record in self._outbox:
             if len(claimed) >= limit:
                 break
-            if record.status in ("pending", "failed") and record.attempts < 5:
+            if record.status in ("pending", "failed") and record.attempts < _MAX_ATTEMPTS:
                 record.status = "processing"
                 record.attempts += 1
                 record.worker_id = worker_id
@@ -173,3 +204,4 @@ class InMemorySessionStore:
         for record in self._outbox:
             if record.outbox_id == outbox_id:
                 record.status = "failed"
+                self._outbox_errors[outbox_id] = error
