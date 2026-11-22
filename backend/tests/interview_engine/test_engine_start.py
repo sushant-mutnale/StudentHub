@@ -88,6 +88,9 @@ async def test_start_is_idempotent_by_client_request_id():
     assert first.session_id == second.session_id
     assert second.first_question == first.first_question
     assert len(store._sessions) == 1
+    events = [e for e in store._events if e.session_id == first.session_id]
+    assert [e.event_type for e in events] == ["SessionCreated", "SessionStarted", "QuestionAsked"]
+    assert len(store._questions) == 1
 
 
 @pytest.mark.asyncio
@@ -230,16 +233,78 @@ async def test_invalid_generated_text_falls_back():
 
 
 @pytest.mark.asyncio
-async def test_lease_conflict_raises_device_conflict():
-    class ConflictingLease(InMemoryLease):
-        async def acquire(self, session_id, device_id, token, ttl_seconds):
-            return False
+async def test_overlong_generated_text_falls_back():
+    class LongGenerator:
+        async def generate(self, request):
+            return GeneratedQuestion(text="Why " + "x" * 500 + "?", source="generated")
 
+    engine, store = _engine(generator=LongGenerator())
+    result = await engine.start(_start())
+    record = await store.load(result.session_id)
+    assert result.first_question == record.blueprint.slot("problem_solving-1").fallback_question
+
+
+@pytest.mark.asyncio
+async def test_empty_generated_text_falls_back():
+    class EmptyGenerator:
+        async def generate(self, request):
+            return GeneratedQuestion(text="   ", source="generated")
+
+    engine, store = _engine(generator=EmptyGenerator())
+    result = await engine.start(_start())
+    record = await store.load(result.session_id)
+    assert result.first_question == record.blueprint.slot("problem_solving-1").fallback_question
+
+
+@pytest.mark.asyncio
+async def test_generator_returning_none_falls_back():
+    class NoneGenerator:
+        async def generate(self, request):
+            return None
+
+    engine, store = _engine(generator=NoneGenerator())
+    result = await engine.start(_start())
+    record = await store.load(result.session_id)
+    assert result.first_question == record.blueprint.slot("problem_solving-1").fallback_question
+
+
+class _DenyingLease(InMemoryLease):
+    def __init__(self):
+        super().__init__()
+        self.calls = 0
+
+    async def acquire(self, session_id, device_id, token, ttl_seconds):
+        self.calls += 1
+        return False
+
+
+@pytest.mark.asyncio
+async def test_lease_is_acquired_once_for_a_fresh_start():
     engine, store = _engine()
-    engine.lease = ConflictingLease()
+    lease = engine.lease
+    await engine.start(_start())
+    assert len(lease._leases) == 1
+
+
+@pytest.mark.asyncio
+async def test_active_session_raises_session_exists_before_touching_the_lease():
+    engine, store = _engine()
+    first = await engine.start(_start("req-1"))
+    lease = _DenyingLease()
+    engine.lease = lease
+    with pytest.raises(SessionExists) as exc:
+        await engine.start(_start("req-2"))
+    assert exc.value.session_id == first.session_id
+    assert lease.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_lease_acquire_failure_raises_device_conflict_and_creates_no_session():
+    engine, store = _engine()
+    engine.lease = _DenyingLease()
     with pytest.raises(DeviceConflict):
         await engine.start(_start())
-    assert len(store._sessions) == 0
+    assert store._sessions == {}
 
 
 @pytest.mark.asyncio

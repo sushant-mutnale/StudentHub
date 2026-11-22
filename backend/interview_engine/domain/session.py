@@ -49,7 +49,7 @@ class Session:
         return self.record
 
     def is_terminal(self) -> bool:
-        return self.record.status in _TERMINAL
+        return is_terminal_status(self.record.status)
 
     def can_accept_turn(self) -> bool:
         return (

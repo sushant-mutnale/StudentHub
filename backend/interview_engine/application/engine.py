@@ -215,11 +215,13 @@ class InterviewEngine:
                 ),
                 timeout=self.generation_timeout_seconds,
             )
+            text = getattr(generated, "text", None)
+            source = getattr(generated, "source", "generated")
         except Exception:
             return slot.fallback_question, "fallback"
-        if not _valid_question_text(generated.text):
+        if not _valid_question_text(text):
             return slot.fallback_question, "fallback"
-        return generated.text.strip(), generated.source
+        return text.strip(), source
 
     async def ensure_question(self, session_id: str, request: dict) -> Optional[QuestionRecord]:
         key = self._request_value(request, "question_generation_key")

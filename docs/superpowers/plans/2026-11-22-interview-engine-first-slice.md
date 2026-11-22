@@ -2515,7 +2515,7 @@ def _engine(store=None, generator=None, generation_timeout_seconds=None):
     )
 
 
-def _start(client_request_id="req-1", interview_type="behavioral"):
+def _start(client_request_id="req-1", interview_type="behavioral", mode="practice"):
     return StartSessionCommand(
         candidate_id="c1",
         interview_type=interview_type,
@@ -2594,7 +2594,13 @@ Additional tests in the same file:
 - `test_start_retry_recovers_crashed_planned_session`
 - `test_generator_timeout_falls_back_to_blueprint_question`
 - `test_invalid_generated_text_falls_back`
-- `test_lease_conflict_raises_device_conflict`
+- `test_lease_is_acquired_once_for_a_fresh_start`
+- `test_active_session_raises_session_exists_before_touching_the_lease`
+- `test_lease_acquire_failure_raises_device_conflict_and_creates_no_session`
+- `test_overlong_generated_text_falls_back`
+- `test_empty_generated_text_falls_back`
+- `test_generator_returning_none_falls_back`
+- `test_start_is_idempotent_by_client_request_id`
 - `test_lease_is_released_when_session_write_fails`
 - `test_ensure_question_rejects_malformed_request`
 
@@ -2699,7 +2705,6 @@ class NoReport(EngineError):
 ```python
 # backend/interview_engine/application/engine.py
 import asyncio
-from datetime import datetime
 from typing import List, Optional, Tuple
 
 from ..contracts.enums import InterviewType, Mode, NextAction, SessionStatus
