@@ -1,22 +1,40 @@
 import asyncio
 from typing import List, Optional, Tuple
 
-from ..contracts.enums import InterviewType, Mode, SessionStatus
-from ..contracts.messages import StartSessionCommand, StartSessionResult
-from ..contracts.records import ConsentSnapshot, EventRecord, OutboxRecord, QuestionRecord, SessionRecord
+from ..contracts.enums import InterviewType, Mode, NextAction, SessionStatus
+from ..contracts.messages import (
+    SessionView,
+    StartSessionCommand,
+    StartSessionResult,
+    SubmitTurnCommand,
+    SubmitTurnResult,
+)
+from ..contracts.records import (
+    ConsentSnapshot,
+    EventRecord,
+    EvidenceRecord,
+    OutboxRecord,
+    QuestionRecord,
+    ReportRecord,
+    SessionRecord,
+    TurnCommandRecord,
+    TurnRecord,
+)
 from ..domain.behavioral_blueprint import build_behavioral_blueprint
 from ..domain.session import Session, is_terminal_status
 from ..errors import (
     DeviceConflict,
     InvalidState,
     NotOwner,
+    QuestionMismatch,
+    QuestionPendingConflict,
     SessionExists,
     SessionNotFound,
     UnsupportedInterviewType,
     UnsupportedMode,
     VersionConflict,
 )
-from ..ports.capabilities import QuestionRequest
+from ..ports.capabilities import AnalysisRequest, QuestionRequest
 
 _MAX_QUESTION_CHARS = 400
 
@@ -283,3 +301,255 @@ class InterviewEngine:
             for event in events:
                 await self.store.append_event(event)
         return question
+
+    async def session_view(self, record: SessionRecord) -> SessionView:
+        answered = await self.store.count_turns(record.session_id, kind="answer")
+        return SessionView(
+            session_id=record.session_id,
+            status=record.status,
+            version=record.version,
+            question_pending=record.question_pending,
+            outstanding_question=record.outstanding_question,
+            question_id=record.current_question_id,
+            report_id=record.report_id,
+            report_outcome=record.report_outcome,
+            fencing_token=record.fencing_token,
+            hints_used=record.hint_count,
+            hints_remaining=max(record.hint_budget - record.hint_count, 0),
+            plan_position=record.plan_position,
+            current_slot_id=record.current_slot_id,
+            questions_answered=answered,
+        )
+
+    async def _assert_lease(
+        self, record: SessionRecord, device_id: str, token: Optional[str]
+    ) -> None:
+        if record.device_id != device_id:
+            raise DeviceConflict()
+        if token is not None and token != record.fencing_token:
+            raise DeviceConflict()
+        if not await self.lease.confirm(record.session_id, device_id, record.fencing_token):
+            raise DeviceConflict()
+
+    async def _complete_pending_turn(
+        self, cmd: SubmitTurnCommand, record: SessionRecord
+    ) -> SubmitTurnResult:
+        request = record.pending_question_request or {}
+        if not request:
+            raise InvalidState()
+        question = await self.ensure_question(cmd.session_id, request)
+        if question is None:
+            raise InvalidState()
+        fresh = await self.store.load(cmd.session_id)
+        result = SubmitTurnResult(
+            session_id=cmd.session_id,
+            status=fresh.status,
+            next_action="follow_up" if request.get("purpose") == "follow_up" else "next_slot",
+            question=question.text,
+            question_id=question.question_id,
+            version=fresh.version,
+        )
+        async with self.store.transaction():
+            await self.store.complete_turn_command(
+                cmd.session_id, cmd.turn_idempotency_key, result.dict()
+            )
+        return result
+
+    async def submit_turn(self, cmd: SubmitTurnCommand) -> SubmitTurnResult:
+        record = await self.load_owned(cmd.session_id, cmd.candidate_id)
+        await self._assert_lease(record, cmd.device_id, cmd.fencing_token)
+
+        existing = await self.store.get_turn_command(cmd.session_id, cmd.turn_idempotency_key)
+        if existing is not None and existing.status == "complete":
+            return SubmitTurnResult(**existing.result)
+        if existing is not None and existing.status == "pending":
+            return await self._complete_pending_turn(cmd, record)
+
+        if is_terminal_status(record.status):
+            raise InvalidState()
+        if record.status != SessionStatus.IN_PROGRESS.value:
+            raise InvalidState()
+        if record.question_pending:
+            raise QuestionPendingConflict()
+        if cmd.question_id is not None and cmd.question_id != record.current_question_id:
+            raise QuestionMismatch()
+        if cmd.expected_version is not None and cmd.expected_version != record.version:
+            raise VersionConflict()
+
+        session = Session.from_record(record)
+        slot = session.slot()
+        turn = TurnRecord(
+            turn_id=self.ids.new_id(),
+            session_id=record.session_id,
+            sequence=await self.store.count_turns(record.session_id) + 1,
+            kind=cmd.kind,
+            question_id=record.current_question_id or "",
+            slot_id=slot.slot_id,
+            text=cmd.text,
+            idempotency_key=cmd.turn_idempotency_key,
+            device_id=cmd.device_id,
+            created_at=self.clock.now(),
+        )
+
+        if cmd.kind == "clarification_request":
+            reply = slot.clarification_text
+            async with self.store.transaction():
+                current = await self.store.load(cmd.session_id)
+                if current is None:
+                    raise SessionNotFound()
+                current_session = Session.from_record(current)
+                current_session.apply_clarification(turn, reply)
+                await self.store.append_turn(turn)
+                result = SubmitTurnResult(
+                    session_id=cmd.session_id,
+                    status=current_session.record.status,
+                    next_action="await_answer",
+                    question=current_session.record.outstanding_question,
+                    question_id=current_session.record.current_question_id,
+                    version=current_session.record.version,
+                )
+                await self.store.put_turn_command(
+                    TurnCommandRecord(
+                        session_id=cmd.session_id,
+                        idempotency_key=cmd.turn_idempotency_key,
+                        status="complete",
+                        result=result.dict(),
+                        created_at=self.clock.now(),
+                        updated_at=self.clock.now(),
+                    )
+                )
+                events = [
+                    self._event(current_session, "TurnSubmitted", {"turn_id": turn.turn_id}),
+                    self._event(
+                        current_session,
+                        "ClarificationReplied",
+                        {"question_id": current_session.record.current_question_id},
+                    ),
+                ]
+                if not await self.store.replace(
+                    current_session.to_record(), expected_version=current.version
+                ):
+                    raise VersionConflict()
+                for event in events:
+                    await self.store.append_event(event)
+            return result
+
+        analysis = await self.analyzer.analyze(
+            AnalysisRequest(
+                session_id=record.session_id,
+                turn_id=turn.turn_id,
+                question_id=turn.question_id,
+                slot_id=slot.slot_id,
+                competency=slot.competency,
+                text=cmd.text,
+            )
+        )
+        evidence = None
+        if analysis.instance == "new" and analysis.signal in ("sufficient", "incomplete"):
+            evidence = EvidenceRecord(
+                evidence_id=self.ids.new_id(),
+                session_id=record.session_id,
+                turn_id=turn.turn_id,
+                question_id=turn.question_id,
+                slot_id=slot.slot_id,
+                competency=slot.competency,
+                signal=analysis.signal,
+                instance=analysis.instance,
+                contradiction=analysis.contradiction,
+                difficulty=slot.difficulty,
+                created_at=self.clock.now(),
+            )
+
+        terminal = None
+        async with self.store.transaction():
+            current = await self.store.load(cmd.session_id)
+            if current is None:
+                raise SessionNotFound()
+            current_session = Session.from_record(current)
+            if current_session.is_terminal():
+                raise InvalidState()
+            action = current_session.apply_answer(turn, analysis, evidence, slot.competency)
+            await self.store.append_turn(turn)
+            if evidence is not None:
+                await self.store.append_evidence(evidence)
+            events = [
+                self._event(current_session, "TurnSubmitted", {"turn_id": turn.turn_id}),
+                self._event(current_session, "TurnAnalysisRequested", {"turn_id": turn.turn_id}),
+            ]
+            if action == NextAction.END:
+                report = ReportRecord(
+                    report_id=current_session.record.report_id,
+                    session_id=cmd.session_id,
+                    outcome=current_session.record.report_outcome or "evaluating",
+                    created_at=self.clock.now(),
+                    updated_at=self.clock.now(),
+                )
+                await self.store.put_report(report)
+                events.append(
+                    self._event(
+                        current_session, "SessionCompleted", {"report_id": report.report_id}
+                    )
+                )
+                if report.outcome == "evaluating":
+                    await self.store.append_outbox(
+                        self._outbox(
+                            "interview_engine.report.requested",
+                            {"session_id": cmd.session_id, "report_id": report.report_id},
+                        )
+                    )
+                terminal = SubmitTurnResult(
+                    session_id=cmd.session_id,
+                    status=current_session.record.status,
+                    next_action="end",
+                    report_id=current_session.record.report_id,
+                    report_outcome=current_session.record.report_outcome,
+                    version=current_session.record.version,
+                )
+                await self.store.put_turn_command(
+                    TurnCommandRecord(
+                        session_id=cmd.session_id,
+                        idempotency_key=cmd.turn_idempotency_key,
+                        status="complete",
+                        result=terminal.dict(),
+                        created_at=self.clock.now(),
+                        updated_at=self.clock.now(),
+                    )
+                )
+            else:
+                await self.store.put_turn_command(
+                    TurnCommandRecord(
+                        session_id=cmd.session_id,
+                        idempotency_key=cmd.turn_idempotency_key,
+                        status="pending",
+                        created_at=self.clock.now(),
+                        updated_at=self.clock.now(),
+                    )
+                )
+            if not await self.store.replace(
+                current_session.to_record(), expected_version=current.version
+            ):
+                raise VersionConflict()
+            for event in events:
+                await self.store.append_event(event)
+
+        if terminal is not None:
+            return terminal
+
+        request = current_session.record.pending_question_request or {}
+        question = await self.ensure_question(cmd.session_id, request)
+        if question is None:
+            raise InvalidState()
+        fresh = await self.store.load(cmd.session_id)
+        result = SubmitTurnResult(
+            session_id=cmd.session_id,
+            status=fresh.status,
+            next_action=action.value,
+            question=question.text,
+            question_id=question.question_id,
+            version=fresh.version,
+        )
+        async with self.store.transaction():
+            await self.store.complete_turn_command(
+                cmd.session_id, cmd.turn_idempotency_key, result.dict()
+            )
+        return result
