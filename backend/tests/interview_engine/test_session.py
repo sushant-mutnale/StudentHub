@@ -232,3 +232,79 @@ def test_illegal_transition_is_rejected():
         session.mark_paused()
     with pytest.raises(ValueError):
         session.mark_resumed()
+
+
+def test_started_sessions_never_expire():
+    session = _session()
+    with pytest.raises(ValueError):
+        session._require_transition("expired")
+
+    session.mark_paused()
+    with pytest.raises(ValueError):
+        session._require_transition("expired")
+
+
+def test_planned_session_may_expire_or_be_abandoned():
+    session = _session()
+    session.record.status = "planned"
+    session._require_transition("expired")
+    session._require_transition("abandoned")
+
+
+def test_in_progress_and_paused_may_be_abandoned_or_completed():
+    session = _session()
+    session._require_transition("abandoned")
+    session._require_transition("completed")
+
+    session.mark_paused()
+    session._require_transition("abandoned")
+    session._require_transition("completed")
+
+
+def test_paused_session_completes_and_in_progress_cannot_resume():
+    paused = _session()
+    paused.mark_paused()
+    paused.begin_completion("r1", "evaluating")
+    assert paused.record.status == "completed"
+
+    running = _session()
+    with pytest.raises(ValueError):
+        running.mark_resumed()
+
+    planned = _session()
+    planned.record.status = "planned"
+    with pytest.raises(ValueError):
+        planned.mark_resumed()
+
+
+def test_terminal_statuses_have_no_outgoing_transitions():
+    for status in ("completed", "abandoned", "expired"):
+        session = _session()
+        session.record.status = status
+        for target in ("in_progress", "paused", "completed", "abandoned", "expired"):
+            with pytest.raises(ValueError):
+                session._require_transition(target)
+
+
+def test_set_question_alone_does_not_bump_but_apply_answer_bumps_once():
+    session = _session()
+    session.set_question("q2", "question a2", "a2", pending=False)
+    session.set_question_pending(None)
+    session.advance_slot()
+    assert session.record.version == 1
+
+    session = _session()
+    session.apply_answer(_turn(), Analysis(signal="sufficient", instance="new"), _evidence(), "a")
+    assert session.record.version == 2
+
+
+def test_clarification_rejected_when_session_cannot_accept_a_turn():
+    pending = _session()
+    pending.set_question_pending(None)
+    with pytest.raises(ValueError):
+        pending.apply_clarification(_turn(kind="clarification_request"), "clarify")
+
+    paused = _session()
+    paused.mark_paused()
+    with pytest.raises(ValueError):
+        paused.apply_clarification(_turn(kind="clarification_request"), "clarify")
