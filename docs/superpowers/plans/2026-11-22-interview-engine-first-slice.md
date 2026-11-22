@@ -25,7 +25,7 @@
 - Next action: clarification → `await_answer`; slot complete and further slot → `next_slot`; slot complete and no further slot → `end`; not complete with allowance and signal `incomplete|off_topic` → `follow_up`.
 - Practice hint budget is 2 per session; hints never reduce a score.
 - Device identity: client-generated `device_id`, required on every compatibility call; missing → `400 device_id_required`. Another device holding the lease → `409 device_conflict`.
-- Mongo collection names are prefixed `interview_engine_`; the shared outbox collection is `outbox_events` with event types prefixed `interview_engine.`.
+- Mongo collection names are prefixed `interview_engine_`; the dedicated outbox collection is `interview_engine_outbox` with event types prefixed `interview_engine.`. The legacy `outbox_events` collection and worker are untouched.
 - Python commands run with `venv\Scripts\python.exe` from the repo root. Never run a command without a timeout budget; test suites here take 60–90s.
 - Do not add code comments. Follow existing repo style (`datetime.utcnow()`, Pydantic 2 models with `.dict()`/`.parse_obj()` compatibility calls, module-level `logger`).
 
@@ -3880,7 +3880,7 @@ async def store():
     await database["interview_engine_sessions"].delete_many({})
     await database["interview_engine_events"].delete_many({})
     await database["interview_engine_turns"].delete_many({})
-    await database["outbox_events"].delete_many({})
+    await database["interview_engine_outbox"].delete_many({})
     yield MongoSessionStore(database, client)
     client.close()
 
@@ -3956,7 +3956,7 @@ _QUESTIONS = "interview_engine_questions"
 _HINTS = "interview_engine_hints"
 _COMMANDS = "interview_engine_turn_commands"
 _REPORTS = "interview_engine_reports"
-_OUTBOX = "outbox_events"
+_OUTBOX = "interview_engine_outbox"
 
 _ACTIVE = {
     "planned",
@@ -4318,8 +4318,11 @@ class FakeRedis:
         self.values.pop(key, None)
 
     async def eval(self, script, numkeys, *args):
-        key, raw = args[0], args[1]
-        if self.values.get(key) == raw:
+        key, token = args[0], args[1]
+        raw = self.values.get(key)
+        if raw is None:
+            return 0
+        if json.loads(raw).get("token") == token:
             self.values.pop(key, None)
             return 1
         return 0
@@ -4358,7 +4361,12 @@ import json
 _KEY = "interview_engine:lease:{session_id}"
 
 _RELEASE = """
-if redis.call('get', KEYS[1]) == ARGV[1] then
+local raw = redis.call('get', KEYS[1])
+if not raw then
+  return 0
+end
+local held = cjson.decode(raw)
+if held['token'] == ARGV[1] then
   return redis.call('del', KEYS[1])
 end
 return 0
@@ -4391,7 +4399,7 @@ class RedisLease:
         return bool(await self._redis.set(self._key(session_id), value, ex=ttl_seconds))
 
     async def release(self, session_id: str, token: str) -> None:
-        await self._redis.eval(_RELEASE, 1, self._key(session_id), json.dumps({"token": token}))
+        await self._redis.eval(_RELEASE, 1, self._key(session_id), token)
 ```
 
 ```python
@@ -5097,7 +5105,7 @@ def mongo_engine():
 async def test_start_persists_session_and_outbox_atomically(mongo_engine):
     engine, database = mongo_engine
     await database.interview_engine_sessions.delete_many({})
-    await database.outbox_events.delete_many({})
+    await database.interview_engine_outbox.delete_many({})
     result = await engine.start(StartSessionCommand(
         candidate_id="c1", interview_type="behavioral", mode="practice",
         device_id="d1", client_request_id="req-1", role="Senior Engineer",
@@ -5105,7 +5113,7 @@ async def test_start_persists_session_and_outbox_atomically(mongo_engine):
     session = await database.interview_engine_sessions.find_one({"_id": result.session_id})
     assert session["status"] == "in_progress"
     assert session["version"] == 1
-    outbox = await database.outbox_events.find_one(
+    outbox = await database.interview_engine_outbox.find_one(
         {"event_type": "interview_engine.question.requested"}
     )
     assert outbox is not None
