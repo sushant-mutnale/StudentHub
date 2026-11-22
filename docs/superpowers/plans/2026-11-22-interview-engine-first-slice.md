@@ -2464,12 +2464,13 @@ git commit -m "feat(interview-engine): build competency reports from evidence"
 
 **Interfaces:**
 - Consumes: all Task 1–6 interfaces; `build_behavioral_blueprint`.
-- Produces: `InterviewEngine(store, lease, clock, ids, analyzer, generator, evaluator, lease_ttl_seconds=120, worker_id="engine-worker")`, `InterviewEngine.start(cmd: StartSessionCommand) -> StartSessionResult`, `InterviewEngine.ensure_question(session_id, request: dict)`, `InterviewEngine.load_owned(session_id, candidate_id) -> SessionRecord`; errors `EngineError`, `UnsupportedInterviewType`, `SessionExists`, `SessionNotFound`, `NotOwner`, `InvalidState`, `DeviceConflict`, `VersionConflict`, `QuestionPendingConflict`, `QuestionMismatch`, `ConsentRequired`, `PauseLimitReached`, `NoReport`, `HintLimitReached`, `HintUnavailable`, `QuestionSuperseded`.
+- Produces: `InterviewEngine(store, lease, clock, ids, analyzer, generator, evaluator, lease_ttl_seconds=120, worker_id="engine-worker", generation_timeout_seconds=8.0)`, `InterviewEngine.start(cmd: StartSessionCommand) -> StartSessionResult`, `InterviewEngine.ensure_question(session_id, request: dict)`, `InterviewEngine.load_owned(session_id, candidate_id) -> SessionRecord`; errors `EngineError`, `UnsupportedInterviewType`, `SessionExists`, `SessionNotFound`, `NotOwner`, `InvalidState`, `DeviceConflict`, `VersionConflict`, `QuestionPendingConflict`, `QuestionMismatch`, `ConsentRequired`, `PauseLimitReached`, `NoReport`, `HintLimitReached`, `HintUnavailable`, `QuestionSuperseded`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # backend/tests/interview_engine/test_engine_start.py
+import asyncio
 from datetime import datetime
 
 import pytest
@@ -2483,12 +2484,22 @@ from backend.interview_engine.adapters.scripted import (
 )
 from backend.interview_engine.adapters.system import InMemoryLease, SystemClock, UuidIds
 from backend.interview_engine.contracts.messages import StartSessionCommand
-from backend.interview_engine.errors import SessionExists, UnsupportedInterviewType
+from backend.interview_engine.contracts.records import EventRecord, SessionRecord
+from backend.interview_engine.domain.behavioral_blueprint import build_behavioral_blueprint
+from backend.interview_engine.errors import (
+    DeviceConflict,
+    InvalidState,
+    SessionExists,
+    UnsupportedInterviewType,
+)
 from backend.interview_engine.ports.capabilities import GeneratedQuestion
 
 
-def _engine(store=None, generator=None):
+def _engine(store=None, generator=None, generation_timeout_seconds=None):
     store = store or InMemorySessionStore()
+    kwargs = {}
+    if generation_timeout_seconds is not None:
+        kwargs["generation_timeout_seconds"] = generation_timeout_seconds
     return (
         InterviewEngine(
             store=store,
@@ -2498,6 +2509,7 @@ def _engine(store=None, generator=None):
             analyzer=ScriptedAnalyzer([]),
             generator=generator or ScriptedQuestionGenerator(),
             evaluator=DeterministicEvaluator(),
+            **kwargs,
         ),
         store,
     )
@@ -2530,8 +2542,8 @@ async def test_start_creates_session_question_event_and_outbox():
     assert record.blueprint.blueprint_version == "behavioral-v1"
     assert record.fencing_token == result.fencing_token
     events = [e for e in store._events if e.session_id == result.session_id]
-    assert [e.event_type for e in events] == ["SessionCreated", "QuestionAsked"]
-    assert [e.event_sequence for e in events] == [1, 2]
+    assert [e.event_type for e in events] == ["SessionCreated", "SessionStarted", "QuestionAsked"]
+    assert [e.event_sequence for e in events] == [1, 2, 3]
     outbox = [o for o in store._outbox if o.event_type == "interview_engine.question.requested"]
     assert len(outbox) == 1
     assert outbox[0].payload["question_generation_key"].endswith(":0:first_question")
@@ -2576,6 +2588,15 @@ async def test_generator_failure_persists_fallback_question():
     assert record.question_pending is False
     assert record.status == "in_progress"
 ```
+
+Additional tests in the same file:
+
+- `test_start_retry_recovers_crashed_planned_session`
+- `test_generator_timeout_falls_back_to_blueprint_question`
+- `test_invalid_generated_text_falls_back`
+- `test_lease_conflict_raises_device_conflict`
+- `test_lease_is_released_when_session_write_fails`
+- `test_ensure_question_rejects_malformed_request`
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -2677,8 +2698,9 @@ class NoReport(EngineError):
 
 ```python
 # backend/interview_engine/application/engine.py
+import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from ..contracts.enums import InterviewType, Mode, NextAction, SessionStatus
 from ..contracts.messages import (
@@ -2709,7 +2731,7 @@ from ..contracts.records import (
     TurnRecord,
 )
 from ..domain.behavioral_blueprint import build_behavioral_blueprint
-from ..domain.session import Session
+from ..domain.session import Session, is_terminal_status
 from ..errors import (
     ConsentRequired,
     DeviceConflict,
@@ -2732,11 +2754,14 @@ from ..errors import (
 from ..ports.capabilities import AnalysisRequest, QuestionRequest
 from .report_builder import build_report
 
-_TERMINAL = {
-    SessionStatus.COMPLETED.value,
-    SessionStatus.ABANDONED.value,
-    SessionStatus.EXPIRED.value,
-}
+_MAX_QUESTION_CHARS = 400
+
+
+def _valid_question_text(text: Optional[str]) -> bool:
+    if not text:
+        return False
+    stripped = text.strip()
+    return 0 < len(stripped) <= _MAX_QUESTION_CHARS and stripped.endswith("?")
 
 
 class InterviewEngine:
@@ -2752,6 +2777,7 @@ class InterviewEngine:
         evaluator,
         lease_ttl_seconds: int = 120,
         worker_id: str = "engine-worker",
+        generation_timeout_seconds: float = 8.0,
     ):
         self.store = store
         self.lease = lease
@@ -2762,6 +2788,7 @@ class InterviewEngine:
         self.evaluator = evaluator
         self.lease_ttl_seconds = lease_ttl_seconds
         self.worker_id = worker_id
+        self.generation_timeout_seconds = generation_timeout_seconds
 
     def _event(self, session: Session, event_type: str, payload: dict) -> EventRecord:
         return EventRecord(
@@ -2803,7 +2830,8 @@ class InterviewEngine:
                 existing.session_id,
                 self._first_question_request(existing),
             )
-            return self._start_result(existing, question)
+            fresh = await self.store.load(existing.session_id)
+            return self._start_result(fresh or existing, question)
 
         active = await self.store.find_active(cmd.candidate_id, cmd.interview_type, cmd.mode)
         if active is not None:
@@ -2812,9 +2840,6 @@ class InterviewEngine:
         token = self.ids.new_token()
         session_id = self.ids.new_id()
         if not await self.lease.acquire(session_id, cmd.device_id, token, self.lease_ttl_seconds):
-            active = await self.store.find_active(cmd.candidate_id, cmd.interview_type, cmd.mode)
-            if active is not None:
-                raise SessionExists(active.session_id)
             raise DeviceConflict()
 
         now = self.clock.now()
@@ -2838,30 +2863,34 @@ class InterviewEngine:
             created_at=now,
             updated_at=now,
         )
-        async with self.store.transaction():
-            await self.store.insert(record)
-            await self.store.append_event(
-                EventRecord(
-                    event_id=self.ids.new_id(),
-                    session_id=session_id,
-                    event_sequence=1,
-                    event_type="SessionCreated",
-                    payload={"mode": cmd.mode, "interview_type": cmd.interview_type},
-                    created_at=now,
+        try:
+            async with self.store.transaction():
+                await self.store.insert(record)
+                await self.store.append_event(
+                    EventRecord(
+                        event_id=self.ids.new_id(),
+                        session_id=session_id,
+                        event_sequence=1,
+                        event_type="SessionCreated",
+                        payload={"mode": cmd.mode, "interview_type": cmd.interview_type},
+                        created_at=now,
+                    )
                 )
-            )
-            await self.store.append_outbox(
-                self._outbox(
-                    "interview_engine.question.requested",
-                    {
-                        "session_id": session_id,
-                        "question_generation_key": f"{session_id}:0:first_question",
-                        "purpose": "first_question",
-                        "slot_id": record.blueprint.ordered_slots()[0].slot_id,
-                        "session_version_at_request": 0,
-                    },
+                await self.store.append_outbox(
+                    self._outbox(
+                        "interview_engine.question.requested",
+                        {
+                            "session_id": session_id,
+                            "question_generation_key": f"{session_id}:0:first_question",
+                            "purpose": "first_question",
+                            "slot_id": record.blueprint.ordered_slots()[0].slot_id,
+                            "session_version_at_request": 0,
+                        },
+                    )
                 )
-            )
+        except Exception:
+            await self.lease.release(session_id, token)
+            raise
 
         question = await self.ensure_question(session_id, self._first_question_request(record))
         fresh = await self.store.load(session_id)
@@ -2890,39 +2919,56 @@ class InterviewEngine:
             client_request_id=record.client_request_id,
         )
 
+    def _request_value(self, request: dict, field: str) -> str:
+        value = request.get(field)
+        if not isinstance(value, str) or not value:
+            raise InvalidState(f"question request is missing {field}")
+        return value
+
+    async def _generate_question(
+        self, record: SessionRecord, slot, purpose: str, prior: List[str]
+    ) -> Tuple[str, str]:
+        try:
+            generated = await asyncio.wait_for(
+                self.generator.generate(
+                    QuestionRequest(
+                        session_id=record.session_id,
+                        slot=slot,
+                        purpose=purpose,
+                        role=record.role,
+                        company=record.company,
+                        prior_questions=prior,
+                    )
+                ),
+                timeout=self.generation_timeout_seconds,
+            )
+        except Exception:
+            return slot.fallback_question, "fallback"
+        if not _valid_question_text(generated.text):
+            return slot.fallback_question, "fallback"
+        return generated.text.strip(), generated.source
+
     async def ensure_question(self, session_id: str, request: dict) -> Optional[QuestionRecord]:
-        key = request["question_generation_key"]
+        key = self._request_value(request, "question_generation_key")
+        slot_id = self._request_value(request, "slot_id")
+        purpose = self._request_value(request, "purpose")
         existing = await self.store.get_question_by_key(session_id, key)
         if existing is not None:
             return existing
         record = await self.store.load(session_id)
         if record is None:
             raise SessionNotFound()
-        if record.status in _TERMINAL:
+        if is_terminal_status(record.status):
             return None
-        slot = record.blueprint.slot(request["slot_id"])
-        try:
-            generated = await self.generator.generate(
-                QuestionRequest(
-                    session_id=session_id,
-                    slot=slot,
-                    purpose=request["purpose"],
-                    role=record.role,
-                    company=record.company,
-                    prior_questions=[
-                        q.text for q in await self.store.turns_for_session(session_id)
-                    ],
-                )
-            )
-            text, source = generated.text, generated.source
-        except Exception:
-            text, source = slot.fallback_question, "fallback"
+        slot = record.blueprint.slot(slot_id)
+        prior = [turn.text for turn in await self.store.turns_for_session(session_id)]
+        text, source = await self._generate_question(record, slot, purpose, prior)
         question = QuestionRecord(
             question_id=self.ids.new_id(),
             session_id=session_id,
             slot_id=slot.slot_id,
             question_generation_key=key,
-            purpose=request["purpose"],
+            purpose=purpose,
             text=text,
             source=source,
             created_at=self.clock.now(),
@@ -2931,23 +2977,36 @@ class InterviewEngine:
             current = await self.store.load(session_id)
             if current is None:
                 raise SessionNotFound()
-            if current.status in _TERMINAL:
+            if is_terminal_status(current.status):
                 return None
             existing = await self.store.get_question_by_key(session_id, key)
             if existing is not None:
                 return existing
             await self.store.put_question(question)
             session = Session.from_record(current)
+            started = current.status == SessionStatus.PLANNED.value
             session.set_question(question.question_id, question.text, slot.slot_id, pending=False)
             session.record.pending_question_request = None
             session.bump()
-            event = self._event(session, "QuestionAsked", {"question_id": question.question_id, "slot_id": slot.slot_id})
+            events = []
+            if started:
+                events.append(
+                    self._event(session, "SessionStarted", {"slot_id": slot.slot_id})
+                )
+            events.append(
+                self._event(
+                    session,
+                    "QuestionAsked",
+                    {"question_id": question.question_id, "slot_id": slot.slot_id},
+                )
+            )
             if not await self.store.replace(session.to_record(), expected_version=current.version):
                 existing = await self.store.get_question_by_key(session_id, key)
                 if existing is not None:
                     return existing
                 raise VersionConflict()
-            await self.store.append_event(event)
+            for event in events:
+                await self.store.append_event(event)
         return question
 ```
 

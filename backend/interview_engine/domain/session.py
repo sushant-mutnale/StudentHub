@@ -12,6 +12,11 @@ _TERMINAL = {
     SessionStatus.EXPIRED.value,
 }
 
+
+def is_terminal_status(status: str) -> bool:
+    return status in _TERMINAL
+
+
 _TRANSITIONS = {
     SessionStatus.PLANNED.value: {
         SessionStatus.IN_PROGRESS.value,
