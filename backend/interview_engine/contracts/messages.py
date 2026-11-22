@@ -45,6 +45,7 @@ class SubmitTurnResult(BaseModel):
     next_action: str
     question: Optional[str] = None
     question_id: Optional[str] = None
+    reply: Optional[str] = None
     version: int = 0
     report_id: Optional[str] = None
     report_outcome: Optional[str] = None

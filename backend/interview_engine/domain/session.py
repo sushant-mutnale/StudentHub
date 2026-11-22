@@ -126,6 +126,9 @@ class Session:
     def apply_clarification(self, turn: TurnRecord, reply: str) -> None:
         if not self.can_accept_turn():
             raise ValueError("session cannot accept a turn")
+        if not reply or not reply.strip():
+            raise ValueError("clarification reply is required")
+        turn.reply = reply
         self.bump()
 
     def apply_answer(

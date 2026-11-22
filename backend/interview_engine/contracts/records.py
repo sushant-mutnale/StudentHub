@@ -57,6 +57,7 @@ class TurnRecord(BaseModel):
     question_id: str
     slot_id: str
     text: str
+    reply: Optional[str] = None
     idempotency_key: str
     device_id: str
     created_at: datetime

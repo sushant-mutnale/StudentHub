@@ -335,16 +335,19 @@ class InterviewEngine:
         self, cmd: SubmitTurnCommand, record: SessionRecord
     ) -> SubmitTurnResult:
         request = record.pending_question_request or {}
-        if not request:
-            raise InvalidState()
-        question = await self.ensure_question(cmd.session_id, request)
+        if request:
+            question = await self.ensure_question(cmd.session_id, request)
+            purpose = request.get("purpose", "next_question")
+        else:
+            question = await self._outstanding_question(cmd.session_id, record)
+            purpose = question.purpose if question is not None else "next_question"
         if question is None:
             raise InvalidState()
         fresh = await self.store.load(cmd.session_id)
         result = SubmitTurnResult(
             session_id=cmd.session_id,
             status=fresh.status,
-            next_action="follow_up" if request.get("purpose") == "follow_up" else "next_slot",
+            next_action="follow_up" if purpose == "follow_up" else "next_slot",
             question=question.text,
             question_id=question.question_id,
             version=fresh.version,
@@ -355,15 +358,27 @@ class InterviewEngine:
             )
         return result
 
+    async def _outstanding_question(
+        self, session_id: str, record: SessionRecord
+    ) -> Optional[QuestionRecord]:
+        if not record.current_question_id:
+            return None
+        for question in await self.store.questions_for_session(session_id):
+            if question.question_id == record.current_question_id:
+                return question
+        return None
+
     async def submit_turn(self, cmd: SubmitTurnCommand) -> SubmitTurnResult:
         record = await self.load_owned(cmd.session_id, cmd.candidate_id)
         await self._assert_lease(record, cmd.device_id, cmd.fencing_token)
 
         existing = await self.store.get_turn_command(cmd.session_id, cmd.turn_idempotency_key)
-        if existing is not None and existing.status == "complete":
-            return SubmitTurnResult(**existing.result)
-        if existing is not None and existing.status == "pending":
-            return await self._complete_pending_turn(cmd, record)
+        if existing is not None:
+            record = await self.store.load(cmd.session_id) or record
+            if existing.status == "complete":
+                return SubmitTurnResult(**existing.result)
+            if existing.status == "pending":
+                return await self._complete_pending_turn(cmd, record)
 
         if is_terminal_status(record.status):
             raise InvalidState()
@@ -371,10 +386,10 @@ class InterviewEngine:
             raise InvalidState()
         if record.question_pending:
             raise QuestionPendingConflict()
-        if cmd.question_id is not None and cmd.question_id != record.current_question_id:
-            raise QuestionMismatch()
         if cmd.expected_version is not None and cmd.expected_version != record.version:
             raise VersionConflict()
+        if cmd.question_id is not None and cmd.question_id != record.current_question_id:
+            raise QuestionMismatch()
 
         session = Session.from_record(record)
         slot = session.slot()
@@ -393,6 +408,7 @@ class InterviewEngine:
 
         if cmd.kind == "clarification_request":
             reply = slot.clarification_text
+            turn = turn.copy(update={"reply": reply})
             async with self.store.transaction():
                 current = await self.store.load(cmd.session_id)
                 if current is None:
@@ -406,6 +422,7 @@ class InterviewEngine:
                     next_action="await_answer",
                     question=current_session.record.outstanding_question,
                     question_id=current_session.record.current_question_id,
+                    reply=reply,
                     version=current_session.record.version,
                 )
                 await self.store.put_turn_command(
@@ -423,7 +440,10 @@ class InterviewEngine:
                     self._event(
                         current_session,
                         "ClarificationReplied",
-                        {"question_id": current_session.record.current_question_id},
+                        {
+                            "question_id": current_session.record.current_question_id,
+                            "reply": reply,
+                        },
                     ),
                 ]
                 if not await self.store.replace(
@@ -477,17 +497,24 @@ class InterviewEngine:
                 self._event(current_session, "TurnAnalysisRequested", {"turn_id": turn.turn_id}),
             ]
             if action == NextAction.END:
+                if current_session.record.report_outcome is None:
+                    raise InvalidState()
                 report = ReportRecord(
                     report_id=current_session.record.report_id,
                     session_id=cmd.session_id,
-                    outcome=current_session.record.report_outcome or "evaluating",
+                    outcome=current_session.record.report_outcome,
                     created_at=self.clock.now(),
                     updated_at=self.clock.now(),
                 )
                 await self.store.put_report(report)
                 events.append(
                     self._event(
-                        current_session, "SessionCompleted", {"report_id": report.report_id}
+                        current_session,
+                        "SessionCompleted",
+                        {
+                            "report_id": report.report_id,
+                            "reason": "candidate_completed",
+                        },
                     )
                 )
                 if report.outcome == "evaluating":

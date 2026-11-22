@@ -130,6 +130,13 @@ class InMemorySessionStore:
             return copy.deepcopy(question)
         return None
 
+    async def questions_for_session(self, session_id: str) -> List[QuestionRecord]:
+        return [
+            copy.deepcopy(item)
+            for item in self._questions.values()
+            if item.session_id == session_id
+        ]
+
     async def put_hint(self, hint: HintRecord) -> None:
         self._hints[hint.hint_idempotency_key] = copy.deepcopy(hint)
 

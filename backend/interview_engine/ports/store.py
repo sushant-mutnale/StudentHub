@@ -61,6 +61,9 @@ class SessionStore(Protocol):
     async def get_question_by_key(self, session_id: str, key: str) -> Optional[QuestionRecord]:
         ...
 
+    async def questions_for_session(self, session_id: str) -> List[QuestionRecord]:
+        ...
+
     async def put_hint(self, hint: HintRecord) -> None:
         ...
 
