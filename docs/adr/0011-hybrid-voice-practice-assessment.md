@@ -2,7 +2,7 @@
 
 Practice interviews use browser speech recognition and synthesis with an explicit degraded mode when unsupported. Formal assessments use a server-side real-time voice pipeline that captures audio, produces the authoritative transcript, and enforces controlled turn-taking. Speech processing location is therefore a property of the session mode, not a global voice stack.
 
-**Status:** accepted — voice mode split and recording retention. Provider and transport remain open.
+**Status:** accepted — voice mode split and recording retention. Provider remains open; formal transport is WebSocket per ADR 0051.
 
 ## Consequences
 

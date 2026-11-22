@@ -10,5 +10,5 @@ A confident competency score requires at least two independent instances. One in
 - A single strong answer cannot produce a high-confidence score.
 - "Not assessed" is a first-class report value and must not be rendered as zero or averaged in.
 - Confidence bands derive from evidence sufficiency and consistency, not candidate likeability.
-- A competency with conflicting evidence cannot be marked high confidence.
+- A competency with conflicting evidence is capped at low confidence, never medium or high.
 - The blueprint must create enough opportunities for two independent instances per core competency.

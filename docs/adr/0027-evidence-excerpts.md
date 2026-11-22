@@ -4,6 +4,12 @@ Each competency carries two to three short verbatim excerpts, each at most two s
 
 **Status:** accepted — evidence excerpt policy. Redaction implementation and counter-evidence thresholds remain open.
 
+## Amendment (canonical engine)
+
+A competency with only one instance, or whose turn analysis failed, still carries two to three excerpts: they are drawn from the single turn, or from the verbatim turn text when analysis failed, and an insufficient-evidence limitation accompanies them. The count rule is never relaxed and no excerpt is ever invented.
+
+A `not_assessed` competency carries no excerpts at all, because there is no evidence to excerpt; it is rendered as `not_assessed` rather than as a scored competency.
+
 ## Consequences
 
 - Evidence selection must search the whole session, not just the answer that triggered a score.

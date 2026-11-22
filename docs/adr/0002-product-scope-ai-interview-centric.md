@@ -1,6 +1,6 @@
 # Product scope: AI interview-centric career development platform
 
-StudentHub is not a generic job board with an interview feature bolted on. The AI interview experience is the product: students move from signup and profile/resume through target role, interview preparation, AI interview, evaluation, skill-gap analysis, learning recommendations and progress tracking into subsequent interviews. Text, voice, coding/DSA, multi-agent orchestration, transcripts, structured evaluation, skill-gap analysis and cross-interview progress are first-class production capabilities, not experiments.
+StudentHub is not a generic job board with an interview feature bolted on. The AI interview experience is the product: students move from signup and profile/resume through target role, interview preparation, AI interview, evaluation, skill-gap analysis, learning recommendations and progress tracking into subsequent interviews. Text, voice, coding/DSA, orchestrated task workers, transcripts, structured evaluation, skill-gap analysis and cross-interview progress are first-class production capabilities, not experiments. ADR 0047 retires the legacy multi-agent loop as the conversational owner while preserving task orchestration through the canonical engine's worker ports.
 
 **Status:** accepted — product scope. Detailed product decisions are recorded in ADRs 0003–0046; remaining open items are tracked in requirements.
 

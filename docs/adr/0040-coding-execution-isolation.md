@@ -2,7 +2,7 @@
 
 Each run uses an isolated environment with no network, read-only root, CPU/memory/PID/time limits, an ephemeral workspace and no host mounts. Execution runs as a separate workload from the API and never exposes hidden tests.
 
-**Status:** accepted — isolation requirements. Runtime selection remains open.
+**Status:** accepted — isolation requirements. Runtime class is a dedicated worker with ephemeral containers per ADR 0052; image, harness, and per-language details remain open.
 
 ## Consequences
 

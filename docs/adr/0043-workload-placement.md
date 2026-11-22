@@ -1,6 +1,6 @@
 # Separate node pools by workload class
 
-Production uses separate node pools for general API/workers, latency-sensitive voice media, untrusted code execution, and stateful data services, with independent scaling and taints/tolerations.
+Production uses separate node pools for general API/workers, latency-sensitive voice media, untrusted code execution, and stateful data services, with independent scaling and taints/tolerations. The trusted evaluator runs in the general worker pool as a distinct deployment and never in the untrusted sandbox pool.
 
 **Status:** accepted — node-pool separation. Node sizes and autoscaling remain open.
 

@@ -4,6 +4,10 @@ Practice uses a blueprint that guarantees competency coverage while adapting top
 
 **Status:** accepted — adaptivity model and difficulty levels. Exact bounds, movement rules and audit rules remain open.
 
+## Amendment (canonical engine)
+
+The canonical engine is stricter than the "neutral clarification/follow-up" permission above: formal slots declare a zero substantive follow-up allowance, so formal sessions emit only clarification turns and never a `follow_up` action. This keeps formal turns comparable across candidates. Practice adaptivity is unchanged.
+
 ## Consequences
 
 - The blueprint is a coverage contract, not a rigid script; deviations must stay within declared bounds.
