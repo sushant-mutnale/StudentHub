@@ -19,6 +19,8 @@ def test_only_new_sufficient_or_incomplete_instances_count():
     assert counts_for_scoring("incomplete", "new") is True
     assert counts_for_scoring("off_topic", "new") is False
     assert counts_for_scoring("sufficient", "same") is False
+    assert counts_for_scoring("incomplete", "same") is False
+    assert counts_for_scoring("off_topic", "same") is False
 
 
 def test_slot_completes_on_sufficient_or_spent_allowance():
@@ -39,6 +41,28 @@ def test_next_action_end_on_last_complete_slot():
     assert decide_next_action(
         clarification=False, slot_complete=True, has_further_slot=False,
         signal="sufficient", allowance_remaining=0,
+    ) == NextAction.END
+
+
+def test_next_action_next_slot_on_complete_slot_with_further_slot():
+    assert decide_next_action(
+        clarification=False, slot_complete=True, has_further_slot=True,
+        signal="sufficient", allowance_remaining=1,
+    ) == NextAction.NEXT_SLOT
+
+
+def test_next_action_clarification_wins_while_incomplete():
+    assert decide_next_action(
+        clarification=True, slot_complete=False, has_further_slot=True,
+        signal="incomplete", allowance_remaining=1,
+    ) == NextAction.AWAIT_ANSWER
+
+
+def test_allowance_zero_boundary():
+    assert is_slot_complete("incomplete", 0, 0) is True
+    assert decide_next_action(
+        clarification=False, slot_complete=False, has_further_slot=False,
+        signal="incomplete", allowance_remaining=0,
     ) == NextAction.END
 
 
@@ -86,3 +110,8 @@ def test_difficulty_moves_one_step_and_never_reverses():
     assert move_difficulty("intermediate", "incomplete", True, 1) == ("intermediate", 1)
     assert move_difficulty("novice", "incomplete", True, 0) == ("novice", 0)
     assert move_difficulty("advanced", "sufficient", False, 0) == ("advanced", 0)
+
+
+def test_difficulty_up_move_suppressed_after_prior_down_move():
+    assert move_difficulty("intermediate", "sufficient", False, -1) == ("intermediate", -1)
+    assert move_difficulty("intermediate", "incomplete", True, -1) == ("novice", -1)
