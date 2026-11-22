@@ -80,3 +80,9 @@ htmlcov/
 # Database
 *.db
 *.sqlite3
+
+# Runtime uploaded resumes (keep the directory placeholder)
+backend/uploads/resumes/*.pdf
+!backend/uploads/resumes/.gitkeep
+
+.worktrees/
