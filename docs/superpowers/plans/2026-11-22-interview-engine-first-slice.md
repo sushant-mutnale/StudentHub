@@ -2013,7 +2013,7 @@ class HeuristicAnalyzer:
         if len(words) < 8:
             return Analysis(
                 signal="incomplete",
-                instance="new",
+                instance="same",
                 substantively_deficient=True,
                 limitation=_LIMITATION,
             )
