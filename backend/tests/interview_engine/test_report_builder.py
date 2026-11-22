@@ -235,6 +235,50 @@ def test_duplicate_groups_for_one_competency_emit_one_report_entry():
     assert report.competencies[0].level == "strong"
 
 
+def test_partial_transcript_loss_keeps_one_excerpt_and_flags_mode_technical():
+    turns = [_turn("t1", "ps-1", "Only one sentence here")]
+    evidence = [
+        _evidence("t1", "ps-1", "problem_solving"),
+        _evidence("t2", "ps-1", "problem_solving"),
+    ]
+    report = build_report(_record(), evidence, turns, EvaluatorOutput())
+    ps = _competency(report, "problem_solving")
+    assert len(ps.excerpts) == 1
+    assert any(l.category == "mode_technical" for l in ps.limitations)
+
+
+def test_two_facts_with_one_two_sentence_turn_reach_two_excerpts_without_flag():
+    turns = [_turn("t1", "ps-1", "First sentence here. Second sentence here.")]
+    evidence = [
+        _evidence("t1", "ps-1", "problem_solving"),
+        _evidence("t2", "ps-1", "problem_solving"),
+    ]
+    report = build_report(_record(), evidence, turns, EvaluatorOutput())
+    ps = _competency(report, "problem_solving")
+    assert len(ps.excerpts) == 2
+    assert not any(l.category == "mode_technical" for l in ps.limitations)
+
+
+def test_excerpted_non_scoring_contradiction_gets_neutral_limitation():
+    turns = [
+        _turn("t1", "ps-1", "Plain answer. With two sentences."),
+        _turn("t2", "ps-1", "Conflicting answer. With two sentences."),
+        _turn("t3", "ps-1", "Another answer. With two sentences."),
+    ]
+    evidence = [
+        _evidence("t1", "ps-1", "problem_solving"),
+        _evidence("t2", "ps-1", "problem_solving", contradiction=True, instance="same"),
+        _evidence("t3", "ps-1", "problem_solving"),
+    ]
+    report = build_report(_record(), evidence, turns, EvaluatorOutput())
+    ps = _competency(report, "problem_solving")
+    assert ps.confidence == "medium"
+    assert ps.excerpts[0].turn_id == "t2"
+    conflicting = [l for l in ps.limitations if l.category == "conflicting_evidence"]
+    assert len(conflicting) == 1
+    assert "low" not in conflicting[0].detail
+
+
 def test_report_limits_excerpts_to_three():
     turns = [_turn(f"t{i}", "ps-1", f"Sentence {i}. More {i}.") for i in range(1, 5)]
     evidence = [_evidence(f"t{i}", "ps-1", "problem_solving") for i in range(1, 5)]

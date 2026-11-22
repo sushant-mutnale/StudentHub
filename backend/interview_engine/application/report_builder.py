@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Tuple
 
 from ..contracts.records import EvidenceRecord, SessionRecord, TurnRecord
 from ..contracts.report import (
@@ -46,7 +46,7 @@ def _ordered_items(items: Sequence[EvidenceRecord]) -> List[EvidenceRecord]:
 
 def _excerpts_for(
     items: Sequence[EvidenceRecord], turns_by_id: Dict[str, TurnRecord]
-) -> List[Excerpt]:
+) -> Tuple[List[Excerpt], List[EvidenceRecord]]:
     usable = []
     for item in _ordered_items(items):
         turn = turns_by_id.get(item.turn_id)
@@ -56,21 +56,24 @@ def _excerpts_for(
         if sentences:
             usable.append((item, sentences))
     if not usable:
-        return []
+        return [], []
     if len(usable) == 1:
         item, sentences = usable[0]
         chunks = [sentences[0]] if len(sentences) == 1 else sentences[:_MIN_EXCERPTS]
-        return [
+        excerpts = [
             Excerpt(turn_id=item.turn_id, question_id=item.question_id, text=chunk)
             for chunk in chunks
         ]
+        return excerpts, [item]
     excerpts: List[Excerpt] = []
+    excerpted: List[EvidenceRecord] = []
     for item, _ in usable[:_MAX_EXCERPTS]:
         text = sentence_excerpt(turns_by_id[item.turn_id].text)
         excerpts.append(
             Excerpt(turn_id=item.turn_id, question_id=item.question_id, text=text)
         )
-    return excerpts
+        excerpted.append(item)
+    return excerpts, excerpted
 
 
 def _unique_limitations(limitations: Sequence[Limitation]) -> List[Limitation]:
@@ -113,6 +116,7 @@ def build_report(
         confidence = confidence_for(facts)
         limitations: List[Limitation] = []
         excerpts: List[Excerpt] = []
+        excerpted: List[EvidenceRecord] = []
         if not facts:
             limitations.append(
                 Limitation(
@@ -121,12 +125,12 @@ def build_report(
                 )
             )
         else:
-            excerpts = _excerpts_for(items, turns_by_id)
-            if not excerpts:
+            excerpts, excerpted = _excerpts_for(items, turns_by_id)
+            if len(excerpts) < _MIN_EXCERPTS:
                 limitations.append(
                     Limitation(
                         category=_MODE_TECHNICAL,
-                        detail="No transcript text was available for the recorded evidence, so no excerpt could be shown.",
+                        detail="Some supporting turns had no usable transcript text, so fewer excerpts than expected could be shown.",
                     )
                 )
             if len(facts) == 1:
@@ -136,13 +140,16 @@ def build_report(
                         detail="Only one independent instance supports this score.",
                     )
                 )
-        if any(fact.contradiction for fact in facts):
-            limitations.append(
-                Limitation(
-                    category=_CONFLICTING,
-                    detail="A synchronously flagged contradiction caps confidence at low.",
-                )
+        contradiction = any(fact.contradiction for fact in facts) or any(
+            item.contradiction for item in excerpted
+        )
+        if contradiction:
+            detail = (
+                "A synchronously flagged contradiction caps confidence at low."
+                if confidence.value == "low"
+                else "A contradicting answer was recorded for this competency."
             )
+            limitations.append(Limitation(category=_CONFLICTING, detail=detail))
         if any(item.signal == "off_topic" for item in items):
             limitations.append(
                 Limitation(
