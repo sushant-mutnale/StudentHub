@@ -125,3 +125,64 @@ async def test_fallback_limiter_logs_degradation_only_once():
     await limiter.reserve("kh", 1)
     await limiter.reserve("kh", 1)
     assert len(records) == 1
+
+
+async def test_redis_block_is_not_shortened_by_a_later_shorter_block():
+    import os
+
+    import redis.asyncio as aioredis
+
+    port = int(os.environ.get("REDIS_PORT", "6379"))
+    client = aioredis.Redis(host="localhost", port=port, decode_responses=True)
+    try:
+        await client.ping()
+    except Exception:
+        pytest.skip(f"no Redis reachable on localhost:{port}")
+
+    keyhash = f"test-{uuid.uuid4().hex[:12]}"
+    try:
+        limiter, _ = await _real_limiter(client)
+        await limiter.block(keyhash, seconds=30)
+        await limiter.block(keyhash, seconds=5)
+        denied = await limiter.reserve(keyhash, 1)
+        assert denied.reservation is None
+        assert denied.reason == "blocked"
+        assert denied.wait_ms > 25_000
+    finally:
+        await client.delete(f"llm:rl:{keyhash}:block")
+        await client.aclose()
+
+
+async def test_settle_twice_does_not_under_count_the_daily_bucket():
+    import os
+
+    import redis.asyncio as aioredis
+
+    port = int(os.environ.get("REDIS_PORT", "6379"))
+    client = aioredis.Redis(host="localhost", port=port, decode_responses=True)
+    try:
+        await client.ping()
+    except Exception:
+        pytest.skip(f"no Redis reachable on localhost:{port}")
+
+    keyhash = f"test-{uuid.uuid4().hex[:12]}"
+    prefix = f"llm:rl:{keyhash}:"
+    try:
+        limiter, clock = await _real_limiter(
+            client, rpm=100, rpd=1000, tpm=100000, tpd=1000
+        )
+        first = await limiter.reserve(keyhash, 700)
+        assert first.reservation is not None
+        await limiter.settle(first.reservation, actual_tokens=400)
+        await limiter.settle(first.reservation, actual_tokens=400)
+        clock.now_ms += 61_000
+        denied = await limiter.reserve(keyhash, 700)
+        assert denied.reservation is None
+        assert denied.reason == "daily"
+    finally:
+        keys = [
+            f"{prefix}{name}"
+            for name in ("min", "tokens", "tokamt", "day", "daytok", "block")
+        ]
+        await client.delete(*keys)
+        await client.aclose()

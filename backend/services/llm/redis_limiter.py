@@ -3,11 +3,8 @@ import time
 import uuid
 from typing import Callable, Optional
 
-from .limiter import Budgets, InMemoryRateLimiter, Reservation, ReserveResult
+from .limiter import Budgets, Reservation, ReserveResult
 
-logger = logging.getLogger(__name__)
-
-_MINUTE_MS = 60_000
 _HOUR_MS = 3_600_000
 
 _RESERVE = """
@@ -23,6 +20,9 @@ local minute_ms = 60000
 local day_buckets = 25
 
 local blocked = redis.call('PTTL', KEYS[6])
+if blocked == -1 then
+  return {0, 86400000, 'blocked'}
+end
 if blocked > 0 then
   return {0, blocked, 'blocked'}
 end
@@ -30,6 +30,10 @@ end
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - minute_ms)
 local minute_requests = redis.call('ZCARD', KEYS[1])
 
+local expired = redis.call('ZRANGEBYSCORE', KEYS[2], '-inf', now - minute_ms)
+if #expired > 0 then
+  redis.call('HDEL', KEYS[3], unpack(expired))
+end
 redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now - minute_ms)
 local members = redis.call('ZRANGE', KEYS[2], 0, -1)
 local minute_tokens = 0
@@ -84,9 +88,12 @@ return {1, 0, rid}
 
 _SETTLE = """
 local rid = ARGV[1]
-local reserved = tonumber(ARGV[2])
-local actual = tonumber(ARGV[3])
-local hour = ARGV[4]
+local actual = tonumber(ARGV[2])
+local hour = ARGV[3]
+if redis.call('HEXISTS', KEYS[1], rid) == 0 then
+  return 0
+end
+local reserved = tonumber(redis.call('HGET', KEYS[1], rid))
 if actual <= 0 then
   redis.call('HDEL', KEYS[1], rid)
 else
@@ -100,6 +107,19 @@ if delta ~= 0 then
   end
   redis.call('PEXPIRE', KEYS[2], 93600000)
 end
+return 1
+"""
+
+_BLOCK = """
+local requested = tonumber(ARGV[1])
+local current = redis.call('PTTL', KEYS[1])
+if current == -1 then
+  return 0
+end
+if current > 0 and current >= requested then
+  return 0
+end
+redis.call('SET', KEYS[1], '1', 'PX', requested)
 return 1
 """
 
@@ -158,16 +178,16 @@ class RedisRateLimiter:
             keys[2],
             keys[4],
             reservation.request_id,
-            reservation.tokens,
             actual,
             reservation.at_ms // _HOUR_MS,
         )
 
     async def block(self, keyhash: str, seconds: float) -> None:
-        await self._redis.set(
+        await self._redis.eval(
+            _BLOCK,
+            1,
             f"{_KEY_PREFIX.format(keyhash=keyhash)}block",
-            "1",
-            px=max(1, int(seconds * 1000)),
+            max(1, int(seconds * 1000)),
         )
 
 
