@@ -31,9 +31,9 @@ class RedisLease:
         raw = await self._redis.get(self._key(session_id))
         if not raw:
             return False
-        if isinstance(raw, bytes):
-            raw = raw.decode()
         try:
+            if isinstance(raw, bytes):
+                raw = raw.decode()
             held = json.loads(raw)
         except (ValueError, TypeError):
             return False

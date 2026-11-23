@@ -119,7 +119,15 @@ async def test_confirm_returns_false_for_a_corrupt_value():
 
 
 @pytest.mark.asyncio
-async def test_confirm_rejects_a_byte_value_that_parses_only_without_decoding():
+async def test_confirm_returns_false_for_non_utf8_bytes():
+    redis = FakeRedis()
+    lease = RedisLease(redis)
+    redis.values["interview_engine:lease:s1"] = b"\xff\xfe not json"
+    assert await lease.confirm("s1", "d1", "t1") is False
+
+
+@pytest.mark.asyncio
+async def test_confirm_decodes_before_parsing_so_a_bom_does_not_authenticate():
     redis = FakeRedis()
     lease = RedisLease(redis)
     redis.values["interview_engine:lease:s1"] = json.dumps(
