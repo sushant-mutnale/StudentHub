@@ -2,14 +2,16 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Dict, Optional
 
 from .keys import ApiKey, ApiKeyPool
-from .limiter import RateLimiter, Reservation
+from .limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
 _MAX_ATTEMPTS = 6
+_RETRY_BACKOFF_BASE = 2.0
+_RETRY_BACKOFF_CAP = 8.0
 
 
 class LLMUnavailable(Exception):
@@ -36,16 +38,19 @@ def _wall_clock_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _retry_after_seconds(exc: Exception) -> Optional[float]:
+def _retry_after_seconds(exc: Exception, attempt: int = 1) -> Optional[float]:
     if getattr(exc, "status_code", None) != 429:
         return None
     response = getattr(exc, "response", None)
     headers = getattr(response, "headers", None) or {}
     raw = headers.get("retry-after") or headers.get("Retry-After")
-    try:
-        return float(raw) if raw is not None else 2.0
-    except (TypeError, ValueError):
-        return 2.0
+    if raw is not None:
+        try:
+            return max(0.0, float(raw))
+        except (TypeError, ValueError):
+            pass
+    backoff = _RETRY_BACKOFF_BASE * (2 ** max(0, attempt - 1))
+    return min(_RETRY_BACKOFF_CAP, backoff)
 
 
 class GroqLLMClient:
@@ -62,7 +67,7 @@ class GroqLLMClient:
         max_attempts: int = _MAX_ATTEMPTS,
         client_factory: Optional[Callable[[ApiKey], object]] = None,
         clock: Optional[Callable[[], int]] = None,
-        sleep: Optional[Callable[[float], object]] = None,
+        sleep: Optional[Callable[[float], Awaitable[None]]] = None,
     ):
         self._pool = pool
         self._limiter = limiter
@@ -75,7 +80,7 @@ class GroqLLMClient:
         self._client_factory = client_factory
         self._clock = clock or _wall_clock_ms
         self._sleep = sleep or asyncio.sleep
-        self._clients: dict = {}
+        self._clients: Dict[str, object] = {}
 
     def _client_for(self, api_key: ApiKey):
         client = self._clients.get(api_key.keyhash)
@@ -108,6 +113,7 @@ class GroqLLMClient:
         reserved = estimate_tokens(system, user) + max_completion_tokens
         deadline_ms = self._clock() + int(self._max_wait_seconds * 1000)
         attempts_left = self._max_attempts
+        waits_left = self._max_attempts * 2
 
         while attempts_left > 0:
             key, reservation, wait_ms, reason = await self._reserve_any(reserved)
@@ -116,6 +122,9 @@ class GroqLLMClient:
                     raise LLMUnavailable("daily_exhausted")
                 if wait_ms <= 0 or self._clock() + wait_ms > deadline_ms:
                     raise LLMUnavailable("wait_budget_exceeded")
+                waits_left -= 1
+                if waits_left <= 0:
+                    raise LLMUnavailable("wait_budget_exceeded")
                 logger.info(
                     "LLM rate limit reached, waiting %sms (%s)", wait_ms, reason
                 )
@@ -123,6 +132,7 @@ class GroqLLMClient:
                 continue
 
             attempts_left -= 1
+            attempt_index = self._max_attempts - attempts_left
             try:
                 text, prompt_tokens, completion_tokens = await self._call(
                     key,
@@ -137,7 +147,7 @@ class GroqLLMClient:
                 raise
             except Exception as exc:
                 await self._limiter.settle(reservation, 0)
-                retry_after = _retry_after_seconds(exc)
+                retry_after = _retry_after_seconds(exc, attempt_index)
                 if retry_after is not None:
                     logger.warning(
                         "LLM key %s hit 429, rotating for %.1fs",
@@ -170,14 +180,23 @@ class GroqLLMClient:
     async def _reserve_any(self, tokens: int):
         best_wait = None
         best_reason = "exhausted"
+        daily_wait = None
         for key in self._pool:
             result = await self._limiter.reserve(key.keyhash, tokens)
             if result.reservation is not None:
                 return key, result.reservation, 0, "ok"
+            if result.reason == "daily":
+                if daily_wait is None or result.wait_ms < daily_wait:
+                    daily_wait = result.wait_ms
+                continue
             if best_wait is None or result.wait_ms < best_wait:
                 best_wait = result.wait_ms
                 best_reason = result.reason
-        return None, None, best_wait or 0, best_reason
+        if best_wait is not None:
+            return None, None, best_wait, best_reason
+        if daily_wait is not None:
+            return None, None, daily_wait, "daily"
+        return None, None, 0, best_reason
 
     async def _call(
         self,

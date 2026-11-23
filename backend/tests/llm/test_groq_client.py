@@ -1,4 +1,3 @@
-import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +8,7 @@ from backend.services.llm.groq import (
     estimate_tokens,
 )
 from backend.services.llm.keys import ApiKeyPool
-from backend.services.llm.limiter import Budgets, InMemoryRateLimiter, Reservation, ReserveResult
+from backend.services.llm.limiter import Budgets, InMemoryRateLimiter
 
 
 class FakeClock:
@@ -95,6 +94,8 @@ async def test_complete_returns_text_and_usage():
     assert kwargs["max_completion_tokens"] == 100
     assert "max_tokens" not in kwargs
     assert kwargs["reasoning_effort"] == "low"
+    assert kwargs["temperature"] == 0.2
+    assert "response_format" not in kwargs
 
 
 async def test_complete_passes_json_mode_when_requested():
@@ -150,12 +151,19 @@ async def test_429_rotates_to_the_next_key_and_blocks_the_first():
     rate_limited.response = SimpleNamespace(headers={"retry-after": "30"})
 
     pool = ApiKeyPool(["gsk_a", "gsk_b"])
-    first_hash = list(pool)[0].keyhash
+    first_key, second_key = list(pool)
     clock = FakeClock()
     limiter = InMemoryRateLimiter(
         Budgets(rpm=10, rpd=100, tpm=100000, tpd=1000000), clock=clock
     )
-    fake = FakeClient([rate_limited, _response("second key")])
+    served = []
+
+    def factory(api_key):
+        served.append(api_key.keyhash)
+        if api_key.keyhash == first_key.keyhash:
+            return FakeClient([rate_limited])
+        return FakeClient([_response("second key")])
+
     client = GroqLLMClient(
         pool,
         limiter,
@@ -163,14 +171,15 @@ async def test_429_rotates_to_the_next_key_and_blocks_the_first():
         base_url="https://example.invalid/openai/v1",
         request_timeout_seconds=5,
         max_wait_seconds=60,
-        client_factory=lambda api_key: fake,
+        client_factory=factory,
         clock=clock,
         sleep=NoSleep(clock),
     )
     completion = await client.complete(system="s", user="u", max_completion_tokens=10)
     assert completion.text == "second key"
-    assert len(fake.chat.completions.calls) == 2
-    blocked = await limiter.reserve(first_hash, 1)
+    assert completion.keyhash == second_key.keyhash
+    assert served == [first_key.keyhash, second_key.keyhash]
+    blocked = await limiter.reserve(first_key.keyhash, 1)
     assert blocked.reservation is None
     assert blocked.reason == "blocked"
 
@@ -220,3 +229,160 @@ async def test_successful_call_never_leaks_the_key_into_a_log(monkeypatch):
     client, _, _, _ = _client([_response("ok")], keys=("gsk_supersecret_value",))
     await client.complete(system="s", user="u", max_completion_tokens=10)
     assert all("gsk_supersecret_value" not in entry for entry in logged)
+
+
+async def test_complete_waits_for_the_minute_window_then_succeeds():
+    clock = FakeClock()
+    pool = ApiKeyPool(["gsk_a"])
+    limiter = InMemoryRateLimiter(
+        Budgets(rpm=1, rpd=100, tpm=100000, tpd=1000000), clock=clock
+    )
+    fake = FakeClient([_response("first"), _response("second")])
+    client = GroqLLMClient(
+        pool,
+        limiter,
+        model="openai/gpt-oss-120b",
+        base_url="https://example.invalid/openai/v1",
+        request_timeout_seconds=5,
+        max_wait_seconds=120,
+        client_factory=lambda api_key: fake,
+        clock=clock,
+        sleep=NoSleep(clock),
+    )
+    first = await client.complete(system="s", user="u", max_completion_tokens=10)
+    assert first.text == "first"
+    second = await client.complete(system="s", user="u", max_completion_tokens=10)
+    assert second.text == "second"
+    assert clock.now_ms == 1_060_000
+
+
+class FrozenSleep:
+    async def __call__(self, seconds: float) -> None:
+        return None
+
+
+async def test_wait_retries_are_bounded_when_the_clock_does_not_advance():
+    clock = FakeClock()
+    pool = ApiKeyPool(["gsk_a"])
+    limiter = InMemoryRateLimiter(
+        Budgets(rpm=0, rpd=100, tpm=100000, tpd=1000000), clock=clock
+    )
+    client = GroqLLMClient(
+        pool,
+        limiter,
+        model="openai/gpt-oss-120b",
+        base_url="https://example.invalid/openai/v1",
+        request_timeout_seconds=5,
+        max_wait_seconds=3600,
+        client_factory=lambda api_key: FakeClient([]),
+        clock=clock,
+        sleep=FrozenSleep(),
+    )
+    with pytest.raises(LLMUnavailable) as caught:
+        await client.complete(system="s", user="u", max_completion_tokens=10)
+    assert caught.value.reason == "wait_budget_exceeded"
+
+
+class RecordingLimiter:
+    def __init__(self, inner):
+        self._inner = inner
+        self.blocks = []
+
+    async def reserve(self, keyhash, tokens):
+        return await self._inner.reserve(keyhash, tokens)
+
+    async def settle(self, reservation, actual_tokens):
+        return await self._inner.settle(reservation, actual_tokens)
+
+    async def block(self, keyhash, seconds):
+        self.blocks.append(seconds)
+        return await self._inner.block(keyhash, seconds)
+
+
+async def test_missing_retry_after_uses_bounded_exponential_backoff():
+    first_429 = Exception("429")
+    first_429.status_code = 429
+    first_429.response = SimpleNamespace(headers={})
+    second_429 = Exception("429")
+    second_429.status_code = 429
+    second_429.response = SimpleNamespace(headers={})
+
+    pool = ApiKeyPool(["gsk_a", "gsk_b", "gsk_c"])
+    clock = FakeClock()
+    limiter = RecordingLimiter(
+        InMemoryRateLimiter(
+            Budgets(rpm=10, rpd=100, tpm=100000, tpd=1000000), clock=clock
+        )
+    )
+
+    def factory(api_key):
+        if api_key.keyhash == list(pool)[0].keyhash:
+            return FakeClient([first_429])
+        if api_key.keyhash == list(pool)[1].keyhash:
+            return FakeClient([second_429])
+        return FakeClient([_response("third key")])
+
+    client = GroqLLMClient(
+        pool,
+        limiter,
+        model="openai/gpt-oss-120b",
+        base_url="https://example.invalid/openai/v1",
+        request_timeout_seconds=5,
+        max_wait_seconds=60,
+        client_factory=factory,
+        clock=clock,
+        sleep=NoSleep(clock),
+    )
+    completion = await client.complete(system="s", user="u", max_completion_tokens=10)
+    assert completion.text == "third key"
+    assert limiter.blocks == [2.0, 4.0]
+
+
+async def test_429_path_never_leaks_a_key_into_a_log(monkeypatch):
+    rate_limited = Exception("429 rate limited")
+    rate_limited.status_code = 429
+    rate_limited.response = SimpleNamespace(headers={"retry-after": "30"})
+
+    logged = []
+
+    import backend.services.llm.groq as groq_module
+
+    class RecordingLogger:
+        def info(self, message, *args, **kwargs):
+            logged.append(str(message) + str(args) + str(kwargs))
+
+        def warning(self, message, *args, **kwargs):
+            logged.append(str(message) + str(args) + str(kwargs))
+
+        def exception(self, message, *args, **kwargs):
+            logged.append(str(message) + str(args) + str(kwargs))
+
+    monkeypatch.setattr(groq_module, "logger", RecordingLogger())
+
+    pool = ApiKeyPool(["gsk_secret_one", "gsk_secret_two"])
+    first_key = list(pool)[0]
+    clock = FakeClock()
+    limiter = InMemoryRateLimiter(
+        Budgets(rpm=10, rpd=100, tpm=100000, tpd=1000000), clock=clock
+    )
+
+    def factory(api_key):
+        if api_key.keyhash == first_key.keyhash:
+            return FakeClient([rate_limited])
+        return FakeClient([_response("ok")])
+
+    client = GroqLLMClient(
+        pool,
+        limiter,
+        model="openai/gpt-oss-120b",
+        base_url="https://example.invalid/openai/v1",
+        request_timeout_seconds=5,
+        max_wait_seconds=60,
+        client_factory=factory,
+        clock=clock,
+        sleep=NoSleep(clock),
+    )
+    await client.complete(system="s", user="u", max_completion_tokens=10)
+    assert logged
+    assert all("gsk_secret_one" not in entry for entry in logged)
+    assert all("gsk_secret_two" not in entry for entry in logged)
