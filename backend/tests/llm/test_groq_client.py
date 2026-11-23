@@ -386,3 +386,68 @@ async def test_429_path_never_leaks_a_key_into_a_log(monkeypatch):
     assert logged
     assert all("gsk_secret_one" not in entry for entry in logged)
     assert all("gsk_secret_two" not in entry for entry in logged)
+
+
+class ScriptedLimiter:
+    def __init__(self, results):
+        self._results = list(results)
+        self.blocks = []
+
+    async def reserve(self, keyhash, tokens):
+        for index, (wanted, result) in enumerate(self._results):
+            if wanted == keyhash:
+                self._results.pop(index)
+                return result
+        raise AssertionError(f"unexpected reserve for {keyhash}")
+
+    async def settle(self, reservation, actual_tokens):
+        return None
+
+    async def block(self, keyhash, seconds):
+        self.blocks.append(seconds)
+
+
+async def test_daily_failure_on_one_key_does_not_mask_a_shorter_minute_wait():
+    from backend.services.llm.limiter import Reservation, ReserveResult
+
+    pool = ApiKeyPool(["gsk_a", "gsk_b"])
+    daily_key, minute_key = list(pool)
+    limiter = ScriptedLimiter(
+        [
+            (
+                daily_key.keyhash,
+                ReserveResult(None, 5_000, "daily"),
+            ),
+            (
+                minute_key.keyhash,
+                ReserveResult(None, 40_000, "minute_requests"),
+            ),
+            (
+                daily_key.keyhash,
+                ReserveResult(None, 5_000, "daily"),
+            ),
+            (
+                minute_key.keyhash,
+                ReserveResult(
+                    Reservation(minute_key.keyhash, "rid-1", 13, 1_000_000), 0, "ok"
+                ),
+            ),
+        ]
+    )
+    fake = FakeClient([_response("after the wait")])
+    clock = FakeClock()
+    client = GroqLLMClient(
+        pool,
+        limiter,
+        model="openai/gpt-oss-120b",
+        base_url="https://example.invalid/openai/v1",
+        request_timeout_seconds=5,
+        max_wait_seconds=60,
+        client_factory=lambda api_key: fake,
+        clock=clock,
+        sleep=NoSleep(clock),
+    )
+    completion = await client.complete(system="s", user="u", max_completion_tokens=10)
+    assert completion.text == "after the wait"
+    assert completion.keyhash == minute_key.keyhash
+    assert clock.now_ms == 1_040_000
