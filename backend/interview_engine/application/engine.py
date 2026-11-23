@@ -999,9 +999,9 @@ class InterviewEngine:
             report.updated_at = self.clock.now()
             if report.attempts >= self.report_max_attempts:
                 report.outcome = "failed"
-            await self.store.update_report(report, expected_outcome="evaluating")
-            if report.outcome == "failed":
-                await self._mirror_report_outcome(report.session_id, "failed")
+            if await self.store.update_report(report, expected_outcome="evaluating"):
+                if report.outcome == "failed":
+                    await self._mirror_report_outcome(report.session_id, "failed")
             raise
         report.outcome = "ready"
         report.body = body

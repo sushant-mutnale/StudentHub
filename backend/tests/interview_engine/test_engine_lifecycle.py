@@ -449,23 +449,17 @@ async def test_end_completes_pending_turn_command():
 @pytest.mark.asyncio
 async def test_drain_outbox_handles_question_requested_rows():
     engine, store = _build()
-    start = await _started(engine)
-    store._outbox[:] = [
-        item
-        for item in store._outbox
-        if item.event_type == "interview_engine.question.requested"
-    ]
-    assert len(store._outbox) == 1
-    before = await store.questions_for_session(start.session_id)
-    assert len(before) == 1
-
+    await _started(engine)
+    rows = [o for o in store._outbox if o.event_type == "interview_engine.question.requested"]
+    assert len(rows) == 1
+    outbox_id = rows[0].outbox_id
+    questions_before = len(store._questions)
     processed = await engine.drain_outbox()
-
     assert processed == 1
-    persisted = store._outbox[0]
-    assert persisted.status == "processed"
-    after = await store.questions_for_session(start.session_id)
-    assert len(after) == 1
+    stored = next(o for o in store._outbox if o.outbox_id == outbox_id)
+    assert stored.status == "processed"
+    assert stored.worker_id == engine.worker_id
+    assert len(store._questions) == questions_before
 
 
 @pytest.mark.asyncio
@@ -539,13 +533,12 @@ async def test_hint_event_carries_hints_used():
     engine, store = _build()
     start = await _started(engine)
     await engine.request_hint(_hint(start))
-
-    events = _events(store, start.session_id, "HintProvided")
-
-    assert len(events) == 1
-    assert events[0].payload["hints_used"] == 1
-    hint = await store.get_hint_by_key(start.session_id, "hint-1")
+    hint = next(iter(store._hints.values()))
     assert hint.hints_used == 1
+    assert hint.question_id == start.question_id
+    events = [e for e in store._events if e.event_type == "HintProvided"]
+    assert len(events) == 1
+    assert events[0].payload == {"question_id": hint.question_id, "hints_used": hint.hints_used}
 
 
 @pytest.mark.asyncio
