@@ -50,10 +50,12 @@ class MongoSessionStore:
 
     @asynccontextmanager
     async def transaction(self):
+        if self._session.get() is not None:
+            raise RuntimeError("nested transactions are not supported")
         async with await self._client.start_session() as mongo_session:
             token = self._session.set(mongo_session)
-            mongo_session.start_transaction()
             try:
+                mongo_session.start_transaction()
                 yield self
                 await mongo_session.commit_transaction()
             except Exception:
@@ -256,6 +258,7 @@ class MongoSessionStore:
         cursor = self._db[_OUTBOX].find(
             {"status": "failed", "last_error": {"$ne": None}},
             {"_id": 0, "outbox_id": 1, "last_error": 1},
+            **self._opts(),
         )
         return {doc["outbox_id"]: doc["last_error"] async for doc in cursor}
 
@@ -263,10 +266,12 @@ class MongoSessionStore:
         await self._db[_OUTBOX].update_one(
             {"_id": outbox_id},
             {"$set": {"status": "processed", "processed_at": datetime.utcnow()}},
+            **self._opts(),
         )
 
     async def mark_outbox_failed(self, outbox_id: str, error: str) -> None:
         await self._db[_OUTBOX].update_one(
             {"_id": outbox_id},
             {"$set": {"status": "failed", "last_error": error}},
+            **self._opts(),
         )

@@ -19,8 +19,15 @@ def _port_open(port):
         return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
-def _run(args, timeout=180):
-    return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+def _run(args, timeout=120):
+    try:
+        return subprocess.run(
+            args, capture_output=True, text=True, timeout=timeout, check=False
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"{args[1]} timed out after {timeout}s") from exc
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"{args[0]} not found") from exc
 
 
 def _accepting_connections(uri, deadline):
@@ -37,32 +44,26 @@ def _accepting_connections(uri, deadline):
     return None
 
 
-def _initiate_replica_set(client, port, deadline):
-    last_error = None
+def _make_primary(client, port, deadline):
     while time.time() < deadline:
         try:
             client.admin.command(
                 "replSetInitiate",
                 {"_id": "rs0", "members": [{"_id": 0, "host": f"127.0.0.1:{port}"}]},
             )
-            return None
+            break
         except Exception as exc:
             if "already initialized" in str(exc):
-                return None
-            last_error = exc
+                break
             time.sleep(0.5)
-    return last_error
-
-
-def _await_primary(client, deadline):
     while time.time() < deadline:
         try:
             if client.admin.command("hello").get("isWritablePrimary"):
-                return True
+                return
         except Exception:
             pass
         time.sleep(0.5)
-    return False
+    raise RuntimeError("replica set did not become primary")
 
 
 def _start_local_mongod(port, uri, deadline):
@@ -83,6 +84,7 @@ def _start_docker_container(port):
     if not shutil.which("docker"):
         raise RuntimeError("docker not found")
     inspect = _run(["docker", "inspect", _CONTAINER], timeout=60)
+    created_here = False
     if inspect.returncode == 0:
         running = _run(
             ["docker", "inspect", "-f", "{{.State.Running}}", _CONTAINER], timeout=60
@@ -92,6 +94,7 @@ def _start_docker_container(port):
             if started.returncode != 0:
                 raise RuntimeError(f"docker start failed: {started.stderr.strip()}")
     else:
+        created_here = True
         created = _run(
             ["docker", "run", "-d", "--name", _CONTAINER, "-p", f"{port}:{port}",
              "mongo:7", "--replSet", "rs0", "--bind_ip_all", "--port", str(port)],
@@ -99,7 +102,14 @@ def _start_docker_container(port):
         )
         if created.returncode != 0:
             raise RuntimeError(f"docker run failed: {created.stderr.strip()}")
-    return _uri(port)
+    uri = _uri(port)
+    probe = _accepting_connections(uri, time.time() + 120)
+    if probe is None:
+        if created_here:
+            _run(["docker", "rm", "-f", _CONTAINER], timeout=120)
+        raise RuntimeError("docker container did not accept connections")
+    probe.close()
+    return uri
 
 
 def start_replica_set(port=_PORT):
@@ -122,11 +132,7 @@ def start_replica_set(port=_PORT):
             raise RuntimeError("replica set did not accept connections")
 
     try:
-        error = _initiate_replica_set(client, port, deadline)
-        if error is not None:
-            raise RuntimeError(f"replSetInitiate failed: {error}")
-        if not _await_primary(client, deadline):
-            raise RuntimeError("replica set did not elect a primary")
+        _make_primary(client, port, deadline)
     finally:
         client.close()
     return uri

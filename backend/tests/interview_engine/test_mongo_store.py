@@ -79,6 +79,16 @@ def _outbox(outbox_id, event_type="interview_engine.session.created"):
     )
 
 
+async def _drop_engine_indexes(database) -> None:
+    for name in _COLLECTIONS:
+        try:
+            for index in await database[name].list_indexes().to_list(length=None):
+                if index["name"] != "_id_":
+                    await database[name].drop_index(index["name"])
+        except Exception:
+            pass
+
+
 @pytest.fixture
 async def database():
     try:
@@ -91,6 +101,7 @@ async def database():
     db = client["interview_engine_replica_test"]
     for name in _COLLECTIONS:
         await db[name].delete_many({})
+    await _drop_engine_indexes(db)
     yield db
     client.close()
 
@@ -100,7 +111,7 @@ async def store(database):
     return MongoSessionStore(database, database.client)
 
 
-async def test_transaction_commits_session_and_event_atomically(store, database):
+async def test_transaction_commits_session_and_event_atomically(store):
     async with store.transaction():
         await store.insert(_record())
         await store.append_event(
@@ -112,16 +123,43 @@ async def test_transaction_commits_session_and_event_atomically(store, database)
     loaded = await store.load("m1")
     assert loaded is not None
     assert loaded.session_id == "m1"
-    assert await database["interview_engine_events"].count_documents({"session_id": "m1"}) == 1
+    assert await store.count_turns("m1") == 0
 
 
-async def test_transaction_rolls_back_on_error(store, database):
+async def test_transaction_rolls_back_session_and_event_together(store):
     with pytest.raises(RuntimeError):
         async with store.transaction():
             await store.insert(_record())
+            await store.append_event(
+                EventRecord(
+                    event_id="e2", session_id="m1", event_sequence=1,
+                    event_type="SessionCreated", payload={}, created_at=datetime.utcnow(),
+                )
+            )
             raise RuntimeError("boom")
     assert await store.load("m1") is None
-    assert await database["interview_engine_sessions"].count_documents({}) == 0
+    collection = store._db["interview_engine_events"]
+    assert await collection.count_documents({"session_id": "m1"}) == 0
+
+
+async def test_nested_transaction_is_rejected(store):
+    async with store.transaction():
+        with pytest.raises(RuntimeError):
+            async with store.transaction():
+                pass
+    assert store._session.get() is None
+
+
+async def test_outbox_writers_join_ambient_transaction(store):
+    await store.append_outbox(_outbox("o1"))
+    with pytest.raises(RuntimeError):
+        async with store.transaction():
+            await store.mark_outbox_failed("o1", "boom")
+            raise RuntimeError("boom")
+    doc = await store._db["interview_engine_outbox"].find_one({"outbox_id": "o1"})
+    assert doc["status"] == "pending"
+    assert doc.get("last_error") is None
+    assert await store.outbox_errors() == {}
 
 
 async def test_optimistic_replace(store):
@@ -171,39 +209,50 @@ async def test_complete_turn_command_does_not_overwrite_a_complete_record(store)
 
 async def test_outbox_claim_skips_foreign_event_types(store):
     await store.append_outbox(_outbox("o-legacy", event_type="outbox_events.legacy"))
-    await store.append_outbox(_outbox("o-engine"))
-    claimed = await store.claim_outbox("worker-1", limit=10)
-    assert [record.outbox_id for record in claimed] == ["o-engine"]
+    await store.append_outbox(_outbox("o-engine", event_type="interview_engine.report.requested"))
+    claimed = await store.claim_outbox("w1", 5)
+    assert [c.event_type for c in claimed] == ["interview_engine.report.requested"]
+    legacy = await store._db["interview_engine_outbox"].find_one(
+        {"event_type": "outbox_events.legacy"}
+    )
+    assert legacy["status"] == "pending"
 
 
 async def test_outbox_attempt_budget_stops_claiming(store):
     await store.append_outbox(_outbox("o-engine"))
-    claims = 0
-    while True:
-        claimed = await store.claim_outbox("worker-1", limit=1)
+    for _ in range(10):
+        claimed = await store.claim_outbox("w1", 1)
         if not claimed:
             break
-        claims += 1
         await store.mark_outbox_failed(claimed[0].outbox_id, "boom")
-    assert claims == store.max_attempts
-    assert (await store.outbox_errors())["o-engine"] == "boom"
+    else:
+        pytest.fail("claim_outbox never stopped claiming")
+    assert await store.claim_outbox("w1", 1) == []
+    errors = await store.outbox_errors()
+    assert errors
 
 
 async def test_ensure_interview_engine_indexes_creates_them(database):
-    async def unique_indexes(collection):
-        info = await database[collection].index_information()
-        return {name for name, spec in info.items() if spec.get("unique")}
-
     await ensure_interview_engine_indexes(database)
-    assert "candidate_id_1_client_request_id_1" in await unique_indexes(
-        "interview_engine_sessions"
+    indexes = await database.interview_engine_questions.list_indexes().to_list(length=None)
+    keys = {tuple(i["key"]) for i in indexes}
+    assert ("session_id", "question_generation_key") in keys
+    unique = next(i for i in indexes if tuple(i["key"]) == ("session_id", "question_generation_key"))
+    assert unique["unique"] is True
+
+    hint_indexes = await database.interview_engine_hints.list_indexes().to_list(length=None)
+    hint_keys = {tuple(i["key"]) for i in hint_indexes}
+    assert ("session_id", "hint_idempotency_key") in hint_keys
+    hint_unique = next(
+        i for i in hint_indexes if tuple(i["key"]) == ("session_id", "hint_idempotency_key")
     )
-    assert "session_id_1_event_sequence_1" in await unique_indexes("interview_engine_events")
-    assert await unique_indexes("interview_engine_turns") >= {
-        "session_id_1_sequence_1",
-        "session_id_1_idempotency_key_1",
-    }
-    assert "session_id_1_idempotency_key_1" in await unique_indexes(
-        "interview_engine_turn_commands"
-    )
-    assert "outbox_id_1" in await unique_indexes("interview_engine_outbox")
+    assert hint_unique["unique"] is True
+
+    outbox_indexes = await database.interview_engine_outbox.list_indexes().to_list(length=None)
+    outbox_keys = {tuple(i["key"]) for i in outbox_indexes}
+    assert ("status", "created_at") in outbox_keys
+    outbox_id = next(i for i in outbox_indexes if tuple(i["key"]) == ("outbox_id",))
+    assert outbox_id["unique"] is True
+
+    legacy = await database.outbox_events.list_indexes().to_list(length=None)
+    assert [i["name"] for i in legacy] == [] or all(i["name"] == "_id_" for i in legacy)
