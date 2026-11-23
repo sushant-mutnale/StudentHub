@@ -81,6 +81,7 @@ class InterviewEngine:
         lease_ttl_seconds: int = 120,
         worker_id: str = "engine-worker",
         generation_timeout_seconds: float = 8.0,
+        report_max_attempts: int = 5,
     ):
         self.store = store
         self.lease = lease
@@ -92,6 +93,7 @@ class InterviewEngine:
         self.lease_ttl_seconds = lease_ttl_seconds
         self.worker_id = worker_id
         self.generation_timeout_seconds = generation_timeout_seconds
+        self.report_max_attempts = report_max_attempts
 
     def _event(self, session: Session, event_type: str, payload: dict) -> EventRecord:
         return EventRecord(
@@ -355,6 +357,15 @@ class InterviewEngine:
     async def _complete_pending_turn(
         self, cmd: SubmitTurnCommand, record: SessionRecord
     ) -> SubmitTurnResult:
+        if is_terminal_status(record.status):
+            return SubmitTurnResult(
+                session_id=cmd.session_id,
+                status=record.status,
+                next_action="end",
+                report_id=record.report_id,
+                report_outcome=record.report_outcome,
+                version=record.version,
+            )
         request = record.pending_question_request or {}
         if request:
             question = await self.ensure_question(cmd.session_id, request)
@@ -364,7 +375,7 @@ class InterviewEngine:
             purpose = question.purpose if question is not None else "next_question"
         if question is None:
             raise InvalidState()
-        fresh = await self.store.load(cmd.session_id)
+        fresh = await self.store.load(cmd.session_id) or record
         result = SubmitTurnResult(
             session_id=cmd.session_id,
             status=fresh.status,
@@ -382,7 +393,7 @@ class InterviewEngine:
     async def _outstanding_question(
         self, session_id: str, record: SessionRecord
     ) -> Optional[QuestionRecord]:
-        if not record.current_question_id:
+        if is_terminal_status(record.status) or not record.current_question_id:
             return None
         for question in await self.store.questions_for_session(session_id):
             if question.question_id == record.current_question_id:
@@ -629,20 +640,12 @@ class InterviewEngine:
             raise HintLimitReached()
         if not record.current_slot_id:
             raise InvalidState()
-        slot = record.blueprint.slot(record.current_slot_id)
-        hint = HintRecord(
-            hint_id=self.ids.new_id(),
-            session_id=record.session_id,
-            hint_idempotency_key=cmd.hint_idempotency_key,
-            question_id=record.current_question_id or "",
-            text=slot.hint_text,
-            hints_used=record.hint_count + 1,
-            created_at=self.clock.now(),
-        )
         async with self.store.transaction():
             current = await self.store.load(cmd.session_id)
             if current is None:
                 raise SessionNotFound()
+            if current.hint_count >= current.hint_budget:
+                raise HintLimitReached()
             existing = await self.store.get_hint_by_key(
                 cmd.session_id, cmd.hint_idempotency_key
             )
@@ -654,15 +657,22 @@ class InterviewEngine:
                     version=current.version,
                     question_id=existing.question_id,
                 )
+            hint = HintRecord(
+                hint_id=self.ids.new_id(),
+                session_id=current.session_id,
+                hint_idempotency_key=cmd.hint_idempotency_key,
+                question_id=current.current_question_id or "",
+                text=current.blueprint.slot(current.current_slot_id).hint_text,
+                hints_used=current.hint_count + 1,
+                created_at=self.clock.now(),
+            )
             session = Session.from_record(current)
-            if session.record.hint_count >= session.record.hint_budget:
-                raise HintLimitReached()
             session.record.hint_count += 1
             session.bump()
             event = self._event(
                 session,
                 "HintProvided",
-                {"question_id": hint.question_id, "hints_used": session.record.hint_count},
+                {"question_id": hint.question_id, "hints_used": hint.hints_used},
             )
             await self.store.put_hint(hint)
             if not await self.store.replace(
@@ -672,8 +682,8 @@ class InterviewEngine:
             await self.store.append_event(event)
         return HintResult(
             hint=hint.text,
-            hints_used=session.record.hint_count,
-            remaining=max(session.record.hint_budget - session.record.hint_count, 0),
+            hints_used=hint.hints_used,
+            remaining=max(session.record.hint_budget - hint.hints_used, 0),
             version=session.record.version,
             question_id=hint.question_id,
         )
@@ -704,7 +714,8 @@ class InterviewEngine:
             ):
                 raise VersionConflict()
             await self.store.append_event(event)
-            view = await self.session_view(session.to_record())
+        view = await self.session_view(session.to_record())
+        async with self.store.transaction():
             await self.store.put_turn_command(
                 TurnCommandRecord(
                     session_id=cmd.session_id,
@@ -776,16 +787,20 @@ class InterviewEngine:
                 raise VersionConflict()
             for event in events:
                 await self.store.append_event(event)
-            if paused and cmd.command_id:
-                result = ResumeSessionResult(
-                    session_id=current.session_id,
-                    status=current.status,
-                    fencing_token=current.fencing_token,
-                    question=current.outstanding_question,
-                    question_id=current.current_question_id,
-                    version=current.version,
-                    question_pending=current.question_pending,
-                )
+        if current.question_pending and current.pending_question_request:
+            await self.ensure_question(cmd.session_id, current.pending_question_request)
+            current = await self.store.load(cmd.session_id) or current
+        result = ResumeSessionResult(
+            session_id=current.session_id,
+            status=current.status,
+            fencing_token=current.fencing_token,
+            question=current.outstanding_question,
+            question_id=current.current_question_id,
+            version=current.version,
+            question_pending=current.question_pending,
+        )
+        if paused and cmd.command_id:
+            async with self.store.transaction():
                 await self.store.put_turn_command(
                     TurnCommandRecord(
                         session_id=cmd.session_id,
@@ -796,18 +811,7 @@ class InterviewEngine:
                         updated_at=self.clock.now(),
                     )
                 )
-        if current.question_pending and current.pending_question_request:
-            await self.ensure_question(cmd.session_id, current.pending_question_request)
-            current = await self.store.load(cmd.session_id) or current
-        return ResumeSessionResult(
-            session_id=current.session_id,
-            status=current.status,
-            fencing_token=current.fencing_token,
-            question=current.outstanding_question,
-            question_id=current.current_question_id,
-            version=current.version,
-            question_pending=current.question_pending,
-        )
+        return result
 
     async def end(self, cmd: EndSessionCommand) -> EndSessionResult:
         record = await self.load_owned(cmd.session_id, cmd.candidate_id)
@@ -862,6 +866,19 @@ class InterviewEngine:
                     updated_at=self.clock.now(),
                 )
             )
+            terminal = SubmitTurnResult(
+                session_id=current.session_id,
+                status=session.record.status,
+                next_action="end",
+                report_id=session.record.report_id,
+                report_outcome=session.record.report_outcome,
+                version=session.record.version,
+            )
+            for command in await self.store.turn_commands_for_session(cmd.session_id):
+                if command.status == "pending":
+                    await self.store.complete_turn_command(
+                        cmd.session_id, command.idempotency_key, terminal.dict()
+                    )
             if outcome == "evaluating":
                 await self.store.append_outbox(
                     self._outbox(
@@ -933,25 +950,59 @@ class InterviewEngine:
         processed = 0
         for item in claimed:
             try:
-                if item.event_type == "interview_engine.report.requested":
-                    await self._handle_report_requested(item.payload)
+                handler = self._outbox_handlers().get(item.event_type)
+                if handler is None:
+                    raise InvalidState(f"no handler for {item.event_type}")
+                await handler(item.payload)
                 await self.store.mark_outbox_processed(item.outbox_id)
                 processed += 1
             except Exception as exc:
                 await self.store.mark_outbox_failed(item.outbox_id, str(exc))
         return processed
 
+    def _outbox_handlers(self) -> dict:
+        return {
+            "interview_engine.report.requested": self._handle_report_requested,
+            "interview_engine.question.requested": self._handle_question_requested,
+        }
+
+    async def _handle_question_requested(self, payload: dict) -> None:
+        session_id = self._request_value(payload, "session_id")
+        request = {
+            "slot_id": self._request_value(payload, "slot_id"),
+            "purpose": self._request_value(payload, "purpose"),
+            "session_version_at_request": payload.get("session_version_at_request", 0),
+            "question_generation_key": self._request_value(payload, "question_generation_key"),
+        }
+        await self.ensure_question(session_id, request)
+
     async def _handle_report_requested(self, payload: dict) -> None:
         report_id = payload["report_id"]
         report = await self.store.get_report(report_id)
         if report is None or report.outcome != "evaluating":
             return
-        body = await self.build_report_body(report_id)
-        if body is None:
-            raise InvalidState("report body could not be assembled")
+        try:
+            body = await self.build_report_body(report_id)
+            if body is None:
+                raise InvalidState("report body could not be assembled")
+        except Exception:
+            report.attempts += 1
+            report.updated_at = self.clock.now()
+            if report.attempts >= self.report_max_attempts:
+                report.outcome = "failed"
+            await self.store.update_report(report, expected_outcome="evaluating")
+            raise
         report.outcome = "ready"
         report.body = body
         report.attempts += 1
         report.updated_at = self.clock.now()
         if not await self.store.update_report(report, expected_outcome="evaluating"):
-            raise InvalidState("report is no longer evaluating")
+            raise VersionConflict()
+        record = await self.store.load(report.session_id)
+        if record is not None and record.report_outcome == "evaluating":
+            async with self.store.transaction():
+                current = await self.store.load(report.session_id)
+                current.report_outcome = "ready"
+                current.updated_at = self.clock.now()
+                await self.store.replace(current, expected_version=current.version)
+

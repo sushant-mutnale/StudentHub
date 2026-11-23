@@ -160,6 +160,13 @@ class InMemorySessionStore:
             copy.deepcopy(command)
         )
 
+    async def turn_commands_for_session(self, session_id: str) -> List[TurnCommandRecord]:
+        return [
+            copy.deepcopy(item)
+            for key, item in self._commands.items()
+            if item.session_id == session_id
+        ]
+
     async def complete_turn_command(self, session_id: str, key: str, result: dict) -> None:
         command = self._commands.get(self._command_key(session_id, key))
         if command is None or command.session_id != session_id:

@@ -76,6 +76,9 @@ class SessionStore(Protocol):
     async def put_turn_command(self, command: TurnCommandRecord) -> None:
         ...
 
+    async def turn_commands_for_session(self, session_id: str) -> List[TurnCommandRecord]:
+        ...
+
     async def complete_turn_command(self, session_id: str, key: str, result: dict) -> None:
         ...
 

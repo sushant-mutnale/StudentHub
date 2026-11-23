@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 from backend.interview_engine.adapters.memory_store import InMemorySessionStore
@@ -9,6 +11,7 @@ from backend.interview_engine.adapters.scripted import (
 from backend.interview_engine.adapters.system import InMemoryLease, SystemClock, UuidIds
 from backend.interview_engine.application.engine import InterviewEngine
 from backend.interview_engine.contracts.enums import Mode, SessionStatus
+from backend.interview_engine.contracts.records import OutboxRecord, TurnCommandRecord
 from backend.interview_engine.contracts.messages import (
     EndSessionCommand,
     PauseSessionCommand,
@@ -27,7 +30,7 @@ from backend.interview_engine.errors import (
 )
 
 
-def _build(store=None, engine_class=InterviewEngine):
+def _build(store=None, engine_class=InterviewEngine, **engine_kwargs):
     store = store or InMemorySessionStore()
     engine = engine_class(
         store=store,
@@ -37,6 +40,7 @@ def _build(store=None, engine_class=InterviewEngine):
         analyzer=ScriptedAnalyzer([]),
         generator=ScriptedQuestionGenerator(),
         evaluator=DeterministicEvaluator(),
+        **engine_kwargs,
     )
     return engine, store
 
@@ -403,6 +407,135 @@ async def test_outbox_failure_is_marked_failed_and_not_retried_forever():
     assert report_rows[0].attempts == 5
 
 
+async def _put_pending_command(store, session_id, key):
+    now = datetime.utcnow()
+    command = TurnCommandRecord(
+        session_id=session_id,
+        idempotency_key=key,
+        status="pending",
+        created_at=now,
+        updated_at=now,
+    )
+    async with store.transaction():
+        await store.put_turn_command(command)
+    return command
+
+
+@pytest.mark.asyncio
+async def test_end_completes_pending_turn_command():
+    engine, store = _build()
+    start = await _started(engine)
+    record = await store.load(start.session_id)
+    request = {
+        "slot_id": record.current_slot_id,
+        "purpose": "next_question",
+        "question_generation_key": f"{start.session_id}:99:next_question",
+        "session_version_at_request": record.version,
+    }
+    await _force(store, start.session_id, pending_question_request=request)
+    await _put_pending_command(store, start.session_id, "turn-crash-1")
+
+    await engine.end(_end(start))
+
+    command = await store.get_turn_command(start.session_id, "turn-crash-1")
+    assert command.status == "complete"
+    assert command.result["next_action"] == "end"
+
+    replay = await _answer(engine, start, None, key="turn-crash-1")
+    assert replay.next_action == "end"
+    assert replay.status == SessionStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_drain_outbox_handles_question_requested_rows():
+    engine, store = _build()
+    start = await _started(engine)
+    rows = [
+        item
+        for item in store._outbox
+        if item.event_type == "interview_engine.question.requested"
+    ]
+    assert len(rows) == 1
+    before = len(await store.questions_for_session(start.session_id))
+
+    processed = await engine.drain_outbox()
+
+    assert processed == 1
+    assert rows[0].status == "processed"
+    after = await store.questions_for_session(start.session_id)
+    assert len(after) == before
+
+
+@pytest.mark.asyncio
+async def test_drain_outbox_fails_unknown_event_types():
+    engine, store = _build()
+    outbox = OutboxRecord(
+        outbox_id="unknown-1",
+        event_type="interview_engine.unknown",
+        payload={"session_id": "s1"},
+        created_at=datetime.utcnow(),
+    )
+    async with store.transaction():
+        await store.append_outbox(outbox)
+
+    processed = await engine.drain_outbox()
+
+    assert processed == 0
+    assert "unknown-1" in store.outbox_errors
+
+
+@pytest.mark.asyncio
+async def test_report_becomes_failed_after_attempt_budget():
+    engine, store = _build(engine_class=_FailingReportEngine, report_max_attempts=2)
+    start = await _started(engine)
+    ended = await engine.end(_end(start))
+
+    for _ in range(3):
+        await engine.drain_outbox()
+
+    report = await store.get_report(ended.report_id)
+    assert report.outcome == "failed"
+    record = await store.load(start.session_id)
+    assert record.report_outcome != "ready"
+
+
+@pytest.mark.asyncio
+async def test_report_ready_is_mirrored_onto_session_outcome():
+    engine, store = _build()
+    start = await _started(engine)
+    await engine.end(_end(start))
+
+    await engine.drain_outbox()
+
+    record = await store.load(start.session_id)
+    assert record.report_outcome == "ready"
+
+
+@pytest.mark.asyncio
+async def test_pending_turn_after_terminal_session_returns_end():
+    engine, store = _build()
+    start = await _started(engine)
+    await engine.end(_end(start))
+    await _put_pending_command(store, start.session_id, "turn-after-end")
+
+    result = await _answer(engine, start, None, key="turn-after-end")
+
+    assert result.next_action == "end"
+    assert result.status == SessionStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_hint_event_carries_hints_used():
+    engine, store = _build()
+    start = await _started(engine)
+    await engine.request_hint(_hint(start))
+
+    events = _events(store, start.session_id, "HintProvided")
+
+    assert len(events) == 1
+    assert events[0].payload["hints_used"] == 1
+
+
 @pytest.mark.asyncio
 async def test_report_body_has_no_score_key():
     engine, _ = _build()
@@ -429,3 +562,4 @@ async def test_report_body_has_no_score_key():
     assert supported
     for entry in supported:
         assert len(entry["excerpts"]) >= 2
+
