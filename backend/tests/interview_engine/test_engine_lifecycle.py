@@ -450,20 +450,22 @@ async def test_end_completes_pending_turn_command():
 async def test_drain_outbox_handles_question_requested_rows():
     engine, store = _build()
     start = await _started(engine)
-    rows = [
+    store._outbox[:] = [
         item
         for item in store._outbox
         if item.event_type == "interview_engine.question.requested"
     ]
-    assert len(rows) == 1
-    before = len(await store.questions_for_session(start.session_id))
+    assert len(store._outbox) == 1
+    before = await store.questions_for_session(start.session_id)
+    assert len(before) == 1
 
     processed = await engine.drain_outbox()
 
     assert processed == 1
-    assert rows[0].status == "processed"
+    persisted = store._outbox[0]
+    assert persisted.status == "processed"
     after = await store.questions_for_session(start.session_id)
-    assert len(after) == before
+    assert len(after) == 1
 
 
 @pytest.mark.asyncio
@@ -496,7 +498,15 @@ async def test_report_becomes_failed_after_attempt_budget():
     report = await store.get_report(ended.report_id)
     assert report.outcome == "failed"
     record = await store.load(start.session_id)
-    assert record.report_outcome != "ready"
+    assert record.report_outcome == "failed"
+    rows = [
+        item
+        for item in store._outbox
+        if item.event_type == "interview_engine.report.requested"
+    ]
+    assert len(rows) == 1
+    assert rows[0].status == "failed"
+    assert rows[0].outbox_id in store.outbox_errors
 
 
 @pytest.mark.asyncio
@@ -534,6 +544,8 @@ async def test_hint_event_carries_hints_used():
 
     assert len(events) == 1
     assert events[0].payload["hints_used"] == 1
+    hint = await store.get_hint_by_key(start.session_id, "hint-1")
+    assert hint.hints_used == 1
 
 
 @pytest.mark.asyncio
@@ -562,4 +574,161 @@ async def test_report_body_has_no_score_key():
     assert supported
     for entry in supported:
         assert len(entry["excerpts"]) >= 2
+
+
+class _RecordWriteFailingStore(InMemorySessionStore):
+    def __init__(self, prefix):
+        super().__init__()
+        self._prefix = prefix
+
+    async def put_turn_command(self, command):
+        if command.idempotency_key.startswith(self._prefix):
+            raise RuntimeError("command record write failed")
+        await super().put_turn_command(command)
+
+
+@pytest.mark.asyncio
+async def test_pause_record_commits_with_the_pause():
+    engine, store = _build()
+    start = await _started(engine)
+
+    view = await engine.pause(_pause(start, "p1"))
+
+    record = await store.get_turn_command(start.session_id, "pause:p1")
+    assert record is not None
+    assert record.status == "complete"
+    session = await store.load(start.session_id)
+    assert session.status == SessionStatus.PAUSED.value
+    assert view.status == SessionStatus.PAUSED.value
+    assert len(_events(store, start.session_id, "SessionPaused")) == 1
+
+    replay = await engine.pause(_pause(start, "p1"))
+    assert replay.dict() == view.dict()
+    assert len(_events(store, start.session_id, "SessionPaused")) == 1
+
+    failing_engine, failing_store = _build(store=_RecordWriteFailingStore("pause:"))
+    failing_start = await _started(failing_engine)
+    with pytest.raises(RuntimeError):
+        await failing_engine.pause(_pause(failing_start, "p1"))
+    assert await failing_store.load(failing_start.session_id) is not None
+    unchanged = await failing_store.load(failing_start.session_id)
+    assert unchanged.status == SessionStatus.IN_PROGRESS.value
+    assert _events(failing_store, failing_start.session_id, "SessionPaused") == []
+    assert await failing_store.get_turn_command(failing_start.session_id, "pause:p1") is None
+
+
+@pytest.mark.asyncio
+async def test_resume_record_commits_with_the_resume():
+    engine, store = _build()
+    start = await _started(engine)
+    await engine.pause(_pause(start, "p1"))
+
+    first = await engine.resume(_resume(start, command_id="r1"))
+
+    record = await store.get_turn_command(start.session_id, "resume:r1")
+    assert record is not None
+    assert record.status == "complete"
+    assert len(_events(store, start.session_id, "SessionResumed")) == 1
+
+    replay = await engine.resume(_resume(start, command_id="r1"))
+    assert replay.fencing_token == first.fencing_token
+    current = await store.load(start.session_id)
+    assert current.fencing_token == first.fencing_token
+    assert len(_events(store, start.session_id, "SessionResumed")) == 1
+    assert len(_events(store, start.session_id, "SessionLeaseTakenOver")) == 1
+
+    failing_engine, failing_store = _build(store=_RecordWriteFailingStore("resume:"))
+    failing_start = await _started(failing_engine)
+    await failing_engine.pause(_pause(failing_start, "p1"))
+    with pytest.raises(RuntimeError):
+        await failing_engine.resume(_resume(failing_start, command_id="r1"))
+    unchanged = await failing_store.load(failing_start.session_id)
+    assert unchanged.status == SessionStatus.PAUSED.value
+    assert unchanged.fencing_token == failing_start.fencing_token
+    assert _events(failing_store, failing_start.session_id, "SessionResumed") == []
+    assert await failing_store.get_turn_command(failing_start.session_id, "resume:r1") is None
+
+
+@pytest.mark.asyncio
+async def test_resume_replay_returns_the_recovered_question():
+    engine, store = _build()
+    start = await _started(engine)
+    await engine.pause(_pause(start, "p1"))
+    request = {
+        "slot_id": "problem_solving-1",
+        "purpose": "next_question",
+        "question_generation_key": f"{start.session_id}:77:next_question",
+        "session_version_at_request": 1,
+    }
+    await _force(
+        store,
+        start.session_id,
+        question_pending=True,
+        pending_question_request=request,
+        outstanding_question=None,
+        current_question_id=None,
+    )
+
+    first = await engine.resume(_resume(start, command_id="r1"))
+    second = await engine.resume(_resume(start, command_id="r1"))
+
+    assert first.question is not None
+    assert second.question == first.question
+    assert second.question_id == first.question_id
+    assert second.fencing_token == first.fencing_token
+    assert len(_events(store, start.session_id, "SessionResumed")) == 1
+
+
+@pytest.mark.asyncio
+async def test_end_early_return_completes_pending_commands():
+    engine, store = _build()
+    start = await _started(engine)
+    await engine.end(_end(start, "end-1"))
+    await _put_pending_command(store, start.session_id, "turn-late-1")
+
+    second = await engine.end(_end(start, "end-2"))
+
+    command = await store.get_turn_command(start.session_id, "turn-late-1")
+    assert command.status == "complete"
+    assert command.result["next_action"] == "end"
+    assert second.status == SessionStatus.COMPLETED.value
+
+
+@pytest.mark.asyncio
+async def test_failed_report_mirrors_onto_session():
+    engine, store = _build(engine_class=_FailingReportEngine, report_max_attempts=2)
+    start = await _started(engine)
+    ended = await engine.end(_end(start))
+
+    for _ in range(2):
+        await engine.drain_outbox()
+
+    report = await store.get_report(ended.report_id)
+    assert report.outcome == "failed"
+    record = await store.load(start.session_id)
+    assert record.report_outcome == "failed"
+    rows = [
+        item
+        for item in store._outbox
+        if item.event_type == "interview_engine.report.requested"
+    ]
+    assert len(rows) == 1
+    assert rows[0].status == "failed"
+    assert rows[0].outbox_id in store.outbox_errors
+
+
+@pytest.mark.asyncio
+async def test_report_ready_mirror_does_not_bump_version():
+    engine, store = _build()
+    start = await _started(engine)
+    ended = await engine.end(_end(start))
+    before = await store.load(start.session_id)
+
+    await engine.drain_outbox()
+
+    after = await store.load(start.session_id)
+    assert after.version == before.version
+    assert after.report_outcome == "ready"
+    report = await store.get_report(ended.report_id)
+    assert report.outcome == "ready"
 

@@ -354,10 +354,27 @@ class InterviewEngine:
         if not await self.lease.confirm(record.session_id, device_id, record.fencing_token):
             raise DeviceConflict()
 
+    async def _complete_pending_commands(self, record: SessionRecord) -> None:
+        terminal = SubmitTurnResult(
+            session_id=record.session_id,
+            status=record.status,
+            next_action="end",
+            report_id=record.report_id,
+            report_outcome=record.report_outcome,
+            version=record.version,
+        )
+        async with self.store.transaction():
+            for command in await self.store.turn_commands_for_session(record.session_id):
+                if command.status == "pending":
+                    await self.store.complete_turn_command(
+                        record.session_id, command.idempotency_key, terminal.dict()
+                    )
+
     async def _complete_pending_turn(
         self, cmd: SubmitTurnCommand, record: SessionRecord
     ) -> SubmitTurnResult:
         if is_terminal_status(record.status):
+            await self._complete_pending_commands(record)
             return SubmitTurnResult(
                 session_id=cmd.session_id,
                 status=record.status,
@@ -694,8 +711,8 @@ class InterviewEngine:
         existing = await self.store.get_turn_command(
             cmd.session_id, f"pause:{cmd.command_id}"
         )
-        if existing is not None and existing.status == "complete":
-            return SessionView(**existing.result)
+        if existing is not None:
+            return await self.session_view(await self.store.load(cmd.session_id))
         if record.question_pending:
             raise QuestionPendingConflict()
         if record.status != SessionStatus.IN_PROGRESS.value:
@@ -709,38 +726,35 @@ class InterviewEngine:
             session = Session.from_record(current)
             session.mark_paused()
             event = self._event(session, "SessionPaused", {"reason": cmd.reason})
-            if not await self.store.replace(
-                session.to_record(), expected_version=current.version
-            ):
-                raise VersionConflict()
-            await self.store.append_event(event)
-        view = await self.session_view(session.to_record())
-        async with self.store.transaction():
             await self.store.put_turn_command(
                 TurnCommandRecord(
                     session_id=cmd.session_id,
                     idempotency_key=f"pause:{cmd.command_id}",
                     status="complete",
-                    result=view.dict(),
                     created_at=self.clock.now(),
                     updated_at=self.clock.now(),
                 )
             )
-        return view
+            if not await self.store.replace(
+                session.to_record(), expected_version=current.version
+            ):
+                raise VersionConflict()
+            await self.store.append_event(event)
+            updated = session.to_record()
+        return await self.session_view(updated)
 
     async def resume(self, cmd: ResumeSessionCommand) -> ResumeSessionResult:
         record = await self.load_owned(cmd.session_id, cmd.candidate_id)
         if is_terminal_status(record.status):
             raise InvalidState()
+        marker_key = f"resume:{cmd.command_id}" if cmd.command_id else None
+        if marker_key is not None:
+            existing = await self.store.get_turn_command(cmd.session_id, marker_key)
+            if existing is not None:
+                return await self._resume_result(cmd.session_id, record)
         paused = record.status == SessionStatus.PAUSED.value
         if paused and not cmd.command_id:
             raise CommandIdRequired()
-        if cmd.command_id:
-            existing = await self.store.get_turn_command(
-                cmd.session_id, f"resume:{cmd.command_id}"
-            )
-            if existing is not None and existing.status == "complete":
-                return ResumeSessionResult(**existing.result)
         token = self.ids.new_token()
         await self.lease.takeover(
             cmd.session_id, cmd.device_id, token, self.lease_ttl_seconds
@@ -783,40 +797,43 @@ class InterviewEngine:
             )
             current.event_sequence += 1
             current.last_applied_sequence = current.event_sequence
-            if not await self.store.replace(current, expected_version=record.version):
-                raise VersionConflict()
-            for event in events:
-                await self.store.append_event(event)
-        if current.question_pending and current.pending_question_request:
-            await self.ensure_question(cmd.session_id, current.pending_question_request)
-            current = await self.store.load(cmd.session_id) or current
-        result = ResumeSessionResult(
-            session_id=current.session_id,
-            status=current.status,
-            fencing_token=current.fencing_token,
-            question=current.outstanding_question,
-            question_id=current.current_question_id,
-            version=current.version,
-            question_pending=current.question_pending,
-        )
-        if paused and cmd.command_id:
-            async with self.store.transaction():
+            if marker_key is not None:
                 await self.store.put_turn_command(
                     TurnCommandRecord(
                         session_id=cmd.session_id,
-                        idempotency_key=f"resume:{cmd.command_id}",
+                        idempotency_key=marker_key,
                         status="complete",
-                        result=result.dict(),
                         created_at=self.clock.now(),
                         updated_at=self.clock.now(),
                     )
                 )
-        return result
+            if not await self.store.replace(current, expected_version=record.version):
+                raise VersionConflict()
+            for event in events:
+                await self.store.append_event(event)
+        return await self._resume_result(cmd.session_id, current)
+
+    async def _resume_result(
+        self, session_id: str, record: SessionRecord
+    ) -> ResumeSessionResult:
+        if record.question_pending and record.pending_question_request:
+            await self.ensure_question(session_id, record.pending_question_request)
+            record = await self.store.load(session_id) or record
+        return ResumeSessionResult(
+            session_id=record.session_id,
+            status=record.status,
+            fencing_token=record.fencing_token,
+            question=record.outstanding_question,
+            question_id=record.current_question_id,
+            version=record.version,
+            question_pending=record.question_pending,
+        )
 
     async def end(self, cmd: EndSessionCommand) -> EndSessionResult:
         record = await self.load_owned(cmd.session_id, cmd.candidate_id)
         await self._assert_lease(record, cmd.device_id, cmd.fencing_token)
         if is_terminal_status(record.status):
+            await self._complete_pending_commands(record)
             return EndSessionResult(
                 session_id=record.session_id,
                 status=record.status,
@@ -866,19 +883,6 @@ class InterviewEngine:
                     updated_at=self.clock.now(),
                 )
             )
-            terminal = SubmitTurnResult(
-                session_id=current.session_id,
-                status=session.record.status,
-                next_action="end",
-                report_id=session.record.report_id,
-                report_outcome=session.record.report_outcome,
-                version=session.record.version,
-            )
-            for command in await self.store.turn_commands_for_session(cmd.session_id):
-                if command.status == "pending":
-                    await self.store.complete_turn_command(
-                        cmd.session_id, command.idempotency_key, terminal.dict()
-                    )
             if outcome == "evaluating":
                 await self.store.append_outbox(
                     self._outbox(
@@ -886,6 +890,7 @@ class InterviewEngine:
                         {"session_id": current.session_id, "report_id": report_id},
                     )
                 )
+        await self._complete_pending_commands(session.to_record())
         return result
 
     async def get_report(
@@ -979,7 +984,11 @@ class InterviewEngine:
     async def _handle_report_requested(self, payload: dict) -> None:
         report_id = payload["report_id"]
         report = await self.store.get_report(report_id)
-        if report is None or report.outcome != "evaluating":
+        if report is None:
+            return
+        if report.outcome == "failed":
+            raise InvalidState("report is in a terminal failed state")
+        if report.outcome != "evaluating":
             return
         try:
             body = await self.build_report_body(report_id)
@@ -991,6 +1000,8 @@ class InterviewEngine:
             if report.attempts >= self.report_max_attempts:
                 report.outcome = "failed"
             await self.store.update_report(report, expected_outcome="evaluating")
+            if report.outcome == "failed":
+                await self._mirror_report_outcome(report.session_id, "failed")
             raise
         report.outcome = "ready"
         report.body = body
@@ -998,11 +1009,15 @@ class InterviewEngine:
         report.updated_at = self.clock.now()
         if not await self.store.update_report(report, expected_outcome="evaluating"):
             raise VersionConflict()
-        record = await self.store.load(report.session_id)
-        if record is not None and record.report_outcome == "evaluating":
-            async with self.store.transaction():
-                current = await self.store.load(report.session_id)
-                current.report_outcome = "ready"
-                current.updated_at = self.clock.now()
-                await self.store.replace(current, expected_version=current.version)
+        await self._mirror_report_outcome(report.session_id, "ready")
+
+    async def _mirror_report_outcome(self, session_id: str, outcome: str) -> None:
+        async with self.store.transaction():
+            current = await self.store.load(session_id)
+            if current is None or current.report_outcome == outcome:
+                return
+            current.report_outcome = outcome
+            current.updated_at = self.clock.now()
+            if not await self.store.replace(current, expected_version=current.version):
+                raise VersionConflict()
 
