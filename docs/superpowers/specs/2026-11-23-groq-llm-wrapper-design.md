@@ -80,6 +80,7 @@ Add to `backend/config.py` `Settings` (already reads `backend/.env`):
 | `groq_tpm_per_key` | `GROQ_TPM_PER_KEY` | `7000` | Token budget per key per minute |
 | `groq_tpd_per_key` | `GROQ_TPD_PER_KEY` | `180000` | Token budget per key per day |
 | `groq_max_wait_seconds` | `GROQ_MAX_WAIT_SECONDS` | `60` | Bounded wait before failing |
+| `groq_reasoning_effort` | `GROQ_REASONING_EFFORT` | `low` | `low`/`medium`/`high`; only these are valid for `gpt-oss-120b` |
 | `groq_request_timeout_seconds` | `GROQ_REQUEST_TIMEOUT_SECONDS` | `30` | Per HTTP call timeout |
 | `groq_llm_enabled` | `GROQ_LLM_ENABLED` | `false` | Master switch for the real adapters |
 
@@ -136,8 +137,9 @@ Reservation consumes:
 
 The output length is unknown before the call, so the reservation must assume
 the worst case the request is allowed to produce. `max_output_tokens` is
-role-specific and small (see Engine adapters), which keeps a reservation near 2,200
-tokens rather than the 4,096 an unbounded default would demand.
+role-specific and small (see Engine adapters), which keeps a reservation near
+2,000–2,700 tokens rather than the 4,096 an unbounded default would demand.
+The reservation must cover reasoning tokens, not just visible output.
 
 Input tokens are estimated as `ceil(len(text) / 4)` summed over the system and
 user messages. This is deliberately rough and slightly conservative for English
@@ -235,17 +237,35 @@ Implementation notes:
 - `complete` raises a typed `LLMUnavailable` when the bounded wait or attempt
   budget is exhausted, so callers can fall back without inspecting strings.
 
+### Reasoning tokens
+
+`gpt-oss-120b` is a reasoning model. Its hidden reasoning tokens are billed and
+counted against both the completion cap and the token budgets, which is why the
+8,000 TPM limit is the real constraint. Two consequences are binding:
+
+- `reasoning_effort` is set to `low` by default (Groq accepts only `low`,
+  `medium`, `high` for this model, with `medium` as the provider default). Higher
+  effort would multiply token cost for tasks that are short-form extraction.
+- `finish_reason == "length"` means the cap truncated the response, so the
+  content must be treated as unusable rather than parsed. A truncated JSON
+  object is the classic silent failure here; the client raises
+  `LLMUnavailable("truncated")` and the adapter degrades.
+
+The completion cap is passed as `max_completion_tokens`, not the deprecated
+`max_tokens`. Caps include room for reasoning, which is why they are not the
+small values a non-reasoning model would allow.
+
 ## Engine adapters
 
 `backend/interview_engine/adapters/llm.py` implements the existing port
 protocols (`ports/capabilities.py:49-61`) so the engine is untouched by
 transport concerns.
 
-| Adapter | Port method | Output shape | `max_output_tokens` |
+| Adapter | Port method | Output shape | `max_completion_tokens` |
 |---|---|---|---|
-| `GroqAnalyzer` | `analyze(AnalysisRequest) -> Analysis` | JSON: `instance`, `signal`, `substantively_deficient` | 300 |
-| `GroqQuestionGenerator` | `generate(QuestionRequest) -> GeneratedQuestion` | Plain text question | 200 |
-| `GroqEvaluator` | `evaluate(EvaluationRequest) -> EvaluatorOutput` | JSON: `reasons` per competency plus `narrative` | 900 |
+| `GroqAnalyzer` | `analyze(AnalysisRequest) -> Analysis` | JSON: `instance`, `signal`, `substantively_deficient` | 600 |
+| `GroqQuestionGenerator` | `generate(QuestionRequest) -> GeneratedQuestion` | Plain text question | 400 |
+| `GroqEvaluator` | `evaluate(EvaluationRequest) -> EvaluatorOutput` | JSON: `reasons` per competency plus `narrative` | 1200 |
 
 `response_format` is used where the port returns structured data, and parsing
 is strict: a malformed or out-of-contract response is treated as a failure, not
