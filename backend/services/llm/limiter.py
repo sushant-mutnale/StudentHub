@@ -100,16 +100,21 @@ class InMemoryRateLimiter:
             return
 
     async def block(self, keyhash: str, seconds: float) -> None:
-        self._blocked_until[keyhash] = self._clock() + int(seconds * 1000)
+        until = self._clock() + max(1, int(seconds * 1000))
+        self._blocked_until[keyhash] = max(self._blocked_until.get(keyhash, 0), until)
 
     def _purge(self, keyhash: str, now: int) -> None:
         cutoff = now - _MINUTE_MS
-        self._requests[keyhash] = [
-            entry for entry in self._requests.get(keyhash, []) if entry[0] > cutoff
-        ]
-        self._tokens[keyhash] = [
-            entry for entry in self._tokens.get(keyhash, []) if entry[0] > cutoff
-        ]
+        requests = self._requests.get(keyhash)
+        if requests is not None:
+            self._requests[keyhash] = [
+                entry for entry in requests if entry[0] > cutoff
+            ]
+        tokens = self._tokens.get(keyhash)
+        if tokens is not None:
+            self._tokens[keyhash] = [
+                entry for entry in tokens if entry[0] > cutoff
+            ]
         horizon = now // _HOUR_MS - (_DAY_BUCKETS - 1)
         for table in (self._day_requests, self._day_tokens):
             buckets = table.get(keyhash)

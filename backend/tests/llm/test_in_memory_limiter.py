@@ -91,14 +91,27 @@ async def test_daily_request_budget_outlives_the_minute_window():
     assert denied.reason == "daily"
 
 
-async def test_daily_token_budget_counts_settled_usage():
-    limiter, clock = _limiter(rpd=100, tpm=1000, tpd=1000)
+async def test_settle_lowers_the_daily_token_bucket_to_actual_usage():
+    limiter, clock = _limiter(rpd=1000, tpm=1000, tpd=1000)
     first = await limiter.reserve("kh", 700)
-    await limiter.settle(first.reservation, actual_tokens=700)
+    await limiter.settle(first.reservation, actual_tokens=400)
     clock.advance(61_000)
-    denied = await limiter.reserve("kh", 700)
-    assert denied.reservation is None
-    assert denied.reason == "daily"
+    allowed = await limiter.reserve("kh", 500)
+    assert allowed.reservation is not None
+
+
+async def test_daily_buckets_over_count_for_a_full_day_and_release_after():
+    limiter, clock = _limiter(rpm=100, rpd=2, tpm=100000, tpd=100000)
+    clock.now_ms = 0
+    await limiter.reserve("kh", 10)
+    await limiter.reserve("kh", 10)
+    clock.advance(24 * 3_600_000)
+    still = await limiter.reserve("kh", 10)
+    assert still.reservation is None
+    assert still.reason == "daily"
+    clock.advance(3_600_000)
+    freed = await limiter.reserve("kh", 10)
+    assert freed.reservation is not None
 
 
 async def test_block_makes_the_key_unavailable_until_it_lapses():
