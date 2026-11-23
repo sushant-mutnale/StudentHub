@@ -83,6 +83,21 @@ class Settings(BaseSettings):
     rate_limit_ai: str = "10/minute"
     rate_limit_auth: str = "5/minute"
 
+    # Groq LLM (free-tier budgets per organisation key)
+    groq_api_key_1: Optional[str] = None
+    groq_api_key_2: Optional[str] = None
+    groq_api_key_3: Optional[str] = None
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_rpm_per_key: int = 25
+    groq_rpd_per_key: int = 900
+    groq_tpm_per_key: int = 7000
+    groq_tpd_per_key: int = 180000
+    groq_max_wait_seconds: int = 60
+    groq_request_timeout_seconds: int = 30
+    groq_reasoning_effort: str = "low"
+    groq_llm_enabled: bool = False
+
     class Config:
         env_file = str(CONFIG_DIR / ".env")
         env_file_encoding = "utf-8"
