@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import List, Optional, Tuple
 
 from ..contracts.enums import InterviewType, Mode, NextAction, SessionStatus
@@ -17,6 +18,7 @@ from ..contracts.messages import (
     SubmitTurnResult,
 )
 from ..contracts.records import (
+    Analysis,
     ConsentSnapshot,
     EventRecord,
     EvidenceRecord,
@@ -56,6 +58,10 @@ from ..ports.capabilities import (
     QuestionRequest,
 )
 from .report_builder import build_report
+
+logger = logging.getLogger(__name__)
+
+_ANALYSIS_UNAVAILABLE = "analysis_unavailable"
 
 _MAX_QUESTION_CHARS = 400
 
@@ -503,16 +509,25 @@ class InterviewEngine:
                     await self.store.append_event(event)
             return result
 
-        analysis = await self.analyzer.analyze(
-            AnalysisRequest(
-                session_id=record.session_id,
-                turn_id=turn.turn_id,
-                question_id=turn.question_id,
-                slot_id=slot.slot_id,
-                competency=slot.competency,
-                text=cmd.text,
+        try:
+            analysis = await self.analyzer.analyze(
+                AnalysisRequest(
+                    session_id=record.session_id,
+                    turn_id=turn.turn_id,
+                    question_id=turn.question_id,
+                    slot_id=slot.slot_id,
+                    competency=slot.competency,
+                    text=cmd.text,
+                )
             )
-        )
+        except Exception:
+            logger.warning("analyzer failed, degrading turn", exc_info=True)
+            analysis = Analysis(
+                signal="incomplete",
+                instance="same",
+                substantively_deficient=True,
+                limitation=_ANALYSIS_UNAVAILABLE,
+            )
         evidence = None
         if analysis.instance == "new" and analysis.signal in ("sufficient", "incomplete"):
             evidence = EvidenceRecord(

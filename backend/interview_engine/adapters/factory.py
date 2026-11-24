@@ -1,3 +1,4 @@
+from .llm import build_llm_adapters
 from .redis_lease import RedisLease
 from .scripted import (
     DeterministicEvaluator,
@@ -5,6 +6,17 @@ from .scripted import (
     ScriptedQuestionGenerator,
 )
 from .system import InMemoryLease, SystemClock, UuidIds
+
+_llm_adapters_built = False
+_llm_adapters = None
+
+
+def _shared_llm_adapters(settings):
+    global _llm_adapters_built, _llm_adapters
+    if not _llm_adapters_built:
+        _llm_adapters = build_llm_adapters(settings)
+        _llm_adapters_built = True
+    return _llm_adapters
 
 
 def build_engine(
@@ -29,6 +41,16 @@ def build_engine(
         lease = lease or RedisLease(redis_client)
     if lease is None:
         lease = InMemoryLease()
+
+    if analyzer is None or generator is None or evaluator is None:
+        from ...config import settings
+
+        llm = _shared_llm_adapters(settings)
+        if llm is not None:
+            analyzer = analyzer or llm.analyzer
+            generator = generator or llm.generator
+            evaluator = evaluator or llm.evaluator
+
     return InterviewEngine(
         store=store,
         lease=lease,

@@ -259,3 +259,55 @@ async def test_adapters_use_the_spec_token_caps_and_temperatures():
     assert evaluator_llm.calls[0]["max_completion_tokens"] == 1200
     assert evaluator_llm.calls[0]["temperature"] == 0.0
     assert evaluator_llm.calls[0]["response_format"] == "json_object"
+
+
+class _Settings:
+    groq_llm_enabled = False
+    groq_api_key_1 = "gsk_a"
+    groq_api_key_2 = None
+    groq_api_key_3 = None
+    groq_model = "openai/gpt-oss-120b"
+    groq_base_url = "https://example.invalid"
+    groq_rpm_per_key = 25
+    groq_rpd_per_key = 900
+    groq_tpm_per_key = 7000
+    groq_tpd_per_key = 180000
+    groq_max_wait_seconds = 60
+    groq_request_timeout_seconds = 30
+    groq_reasoning_effort = "low"
+
+
+def _settings(**overrides):
+    settings = _Settings()
+    for name, value in overrides.items():
+        setattr(settings, name, value)
+    return settings
+
+
+def test_build_llm_adapters_returns_none_when_disabled():
+    from backend.interview_engine.adapters.llm import build_llm_adapters
+
+    assert build_llm_adapters(_settings(groq_llm_enabled=False)) is None
+
+
+def test_build_llm_adapters_returns_none_without_keys():
+    from backend.interview_engine.adapters.llm import build_llm_adapters
+
+    settings = _settings(groq_llm_enabled=True, groq_api_key_1=None)
+    assert build_llm_adapters(settings) is None
+
+
+def test_build_llm_adapters_wires_the_three_real_adapters():
+    from backend.interview_engine.adapters.llm import (
+        GroqAnalyzer,
+        GroqEvaluator,
+        GroqQuestionGenerator,
+        build_llm_adapters,
+    )
+
+    built = build_llm_adapters(
+        _settings(groq_llm_enabled=True), client=FakeLLM("unused")
+    )
+    assert isinstance(built.analyzer, GroqAnalyzer)
+    assert isinstance(built.generator, GroqQuestionGenerator)
+    assert isinstance(built.evaluator, GroqEvaluator)
