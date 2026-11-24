@@ -102,6 +102,22 @@ async def test_analyzer_maps_a_valid_response():
     assert analysis == Analysis(signal="sufficient", instance="new")
 
 
+async def test_analyzer_honours_the_boolean_fields():
+    text = json.dumps(
+        {
+            "instance": "new",
+            "signal": "sufficient",
+            "substantively_deficient": True,
+            "contradiction": True,
+            "limitation": "vague",
+        }
+    )
+    analysis = await GroqAnalyzer(FakeLLM(text)).analyze(_analysis_request())
+    assert analysis.contradiction is True
+    assert analysis.substantively_deficient is True
+    assert analysis.limitation == "vague"
+
+
 async def test_analyzer_normalises_off_topic_to_same_instance():
     text = json.dumps({"instance": "new", "signal": "off_topic"})
     analysis = await GroqAnalyzer(FakeLLM(text)).analyze(_analysis_request())
@@ -131,11 +147,35 @@ async def test_analyzer_degrades_on_an_out_of_contract_enum():
     assert analysis.limitation == "analysis_unavailable"
 
 
+async def test_analyzer_degrades_on_a_string_boolean():
+    text = json.dumps(
+        {"instance": "new", "signal": "sufficient", "contradiction": "false"}
+    )
+    analysis = await GroqAnalyzer(FakeLLM(text)).analyze(_analysis_request())
+    assert analysis.signal == "incomplete"
+    assert analysis.limitation == "analysis_unavailable"
+
+
 async def test_generator_returns_generated_text_stripped_of_quotes():
     generator = GroqQuestionGenerator(FakeLLM('"Tell me about a hard decision."'))
     question = await generator.generate(_question_request())
     assert question.text == "Tell me about a hard decision."
     assert question.source == "generated"
+
+
+async def test_generator_preserves_inner_quotes():
+    generator = GroqQuestionGenerator(FakeLLM('What did they mean by "shipped?"'))
+    question = await generator.generate(_question_request())
+    assert question.text == 'What did they mean by "shipped?"'
+    assert question.source == "generated"
+
+
+async def test_generator_labels_empty_text_as_fallback():
+    question = await GroqQuestionGenerator(FakeLLM("   ")).generate(
+        _question_request()
+    )
+    assert question.text == ""
+    assert question.source == "fallback"
 
 
 async def test_generator_returns_empty_text_when_the_call_fails():
@@ -173,24 +213,34 @@ async def test_evaluator_rejects_an_unknown_competency():
     assert caught.value.reason == "malformed_evaluation"
 
 
+async def test_evaluator_rejects_partial_competency_coverage():
+    text = json.dumps({"reasons": {}, "narrative": "n"})
+    with pytest.raises(LLMUnavailable) as caught:
+        await GroqEvaluator(FakeLLM(text)).evaluate(_evaluation_request())
+    assert caught.value.reason == "malformed_evaluation"
+
+
 async def test_evaluator_rejects_malformed_json():
-    with pytest.raises(LLMUnavailable):
+    with pytest.raises(LLMUnavailable) as caught:
         await GroqEvaluator(FakeLLM("nope")).evaluate(_evaluation_request())
+    assert caught.value.reason == "malformed_evaluation"
 
 
-async def test_evaluator_never_invents_scores():
+async def test_evaluator_rejects_out_of_contract_keys():
     text = json.dumps(
-        {"reasons": {}, "narrative": "n", "score": 99, "final_score": 1}
+        {"reasons": {"ownership": []}, "narrative": "n", "score": 99, "final_score": 1}
     )
-    output = await GroqEvaluator(FakeLLM(text)).evaluate(_evaluation_request())
-    assert not hasattr(output, "score")
-    assert output.reasons == {}
+    with pytest.raises(LLMUnavailable) as caught:
+        await GroqEvaluator(FakeLLM(text)).evaluate(_evaluation_request())
+    assert caught.value.reason == "malformed_evaluation"
 
 
 async def test_adapters_use_the_spec_token_caps_and_temperatures():
     analyzer_llm = FakeLLM(json.dumps({"instance": "new", "signal": "sufficient"}))
     generator_llm = FakeLLM("Question?")
-    evaluator_llm = FakeLLM(json.dumps({"reasons": {}, "narrative": "n"}))
+    evaluator_llm = FakeLLM(
+        json.dumps({"reasons": {"ownership": []}, "narrative": "n"})
+    )
     await GroqAnalyzer(analyzer_llm).analyze(_analysis_request())
     await GroqQuestionGenerator(generator_llm).generate(_question_request())
     await GroqEvaluator(evaluator_llm).evaluate(_evaluation_request())

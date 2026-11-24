@@ -4,6 +4,7 @@ from typing import Optional
 
 from ...services.llm import prompts
 from ...services.llm.groq import LLMUnavailable
+from ..contracts.enums import InstanceKind, Signal
 from ..contracts.records import Analysis
 from ..contracts.report import EvaluatorOutput
 from ..ports.capabilities import (
@@ -15,8 +16,8 @@ from ..ports.capabilities import (
 
 logger = logging.getLogger(__name__)
 
-_SIGNALS = {"sufficient", "incomplete", "off_topic"}
-_INSTANCES = {"new", "same"}
+_SIGNALS = {member.value for member in Signal}
+_INSTANCES = {member.value for member in InstanceKind}
 _UNAVAILABLE = "analysis_unavailable"
 
 
@@ -76,11 +77,17 @@ def _parse_analysis(text: str) -> Analysis:
     limitation = data.get("limitation")
     if limitation is not None and not isinstance(limitation, str):
         raise ValueError("limitation must be a string or null")
+    contradiction = data.get("contradiction", False)
+    if not isinstance(contradiction, bool):
+        raise ValueError("contradiction must be a boolean")
+    substantively_deficient = data.get("substantively_deficient", False)
+    if not isinstance(substantively_deficient, bool):
+        raise ValueError("substantively_deficient must be a boolean")
     return Analysis(
         signal=signal,
         instance=instance,
-        contradiction=bool(data.get("contradiction", False)),
-        substantively_deficient=bool(data.get("substantively_deficient", False)),
+        contradiction=contradiction,
+        substantively_deficient=substantively_deficient,
         limitation=limitation,
     )
 
@@ -92,20 +99,22 @@ def _parse_evaluation(text: str, request: EvaluationRequest) -> EvaluatorOutput:
         raise LLMUnavailable("malformed_evaluation") from exc
     if not isinstance(data, dict):
         raise LLMUnavailable("malformed_evaluation")
-    raw_reasons = data.get("reasons", {})
-    if not isinstance(raw_reasons, dict):
+    if set(data) - {"reasons", "narrative"}:
+        raise LLMUnavailable("malformed_evaluation")
+    raw_reasons = data.get("reasons")
+    narrative = data.get("narrative")
+    if not isinstance(raw_reasons, dict) or not isinstance(narrative, str):
         raise LLMUnavailable("malformed_evaluation")
     known = {item.competency for item in request.competencies}
+    if set(raw_reasons) != known:
+        raise LLMUnavailable("malformed_evaluation")
     reasons = {}
     for competency, values in raw_reasons.items():
-        if competency not in known:
+        if not isinstance(values, list):
             raise LLMUnavailable("malformed_evaluation")
-        if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        if not all(isinstance(value, str) for value in values):
             raise LLMUnavailable("malformed_evaluation")
         reasons[competency] = values
-    narrative = data.get("narrative", "")
-    if not isinstance(narrative, str):
-        raise LLMUnavailable("malformed_evaluation")
     return EvaluatorOutput(reasons=reasons, narrative=narrative)
 
 
@@ -147,7 +156,11 @@ class GroqQuestionGenerator:
         except Exception:
             logger.warning("question generation unavailable", exc_info=True)
             return GeneratedQuestion(text="", source="fallback")
-        text = completion.text.strip().strip('"').strip()
+        text = completion.text.strip()
+        if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
+            text = text[1:-1].strip()
+        if not text:
+            return GeneratedQuestion(text="", source="fallback")
         return GeneratedQuestion(text=text, source="generated")
 
 
