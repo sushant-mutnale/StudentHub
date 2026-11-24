@@ -235,6 +235,13 @@ async def test_evaluator_rejects_out_of_contract_keys():
     assert caught.value.reason == "malformed_evaluation"
 
 
+async def test_evaluator_rejects_an_empty_narrative():
+    text = json.dumps({"reasons": {"ownership": []}, "narrative": "   "})
+    with pytest.raises(LLMUnavailable) as caught:
+        await GroqEvaluator(FakeLLM(text)).evaluate(_evaluation_request())
+    assert caught.value.reason == "malformed_evaluation"
+
+
 async def test_adapters_use_the_spec_token_caps_and_temperatures():
     analyzer_llm = FakeLLM(json.dumps({"instance": "new", "signal": "sufficient"}))
     generator_llm = FakeLLM("Question?")

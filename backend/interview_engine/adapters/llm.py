@@ -105,6 +105,8 @@ def _parse_evaluation(text: str, request: EvaluationRequest) -> EvaluatorOutput:
     narrative = data.get("narrative")
     if not isinstance(raw_reasons, dict) or not isinstance(narrative, str):
         raise LLMUnavailable("malformed_evaluation")
+    if not narrative.strip():
+        raise LLMUnavailable("malformed_evaluation")
     known = {item.competency for item in request.competencies}
     if set(raw_reasons) != known:
         raise LLMUnavailable("malformed_evaluation")
