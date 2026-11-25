@@ -18,6 +18,7 @@ from backend.workers.worker_base import worker_manager
 from backend.workers.outbox_worker import OutboxWorker, OutboxCleanupWorker
 from backend.workers.recommendation_worker import RecommendationWorker
 from backend.workers.notification_worker import NotificationWorker
+from backend.interview_engine.worker import run_interview_engine_outbox
 
 # Configure logging
 logging.basicConfig(
@@ -57,6 +58,7 @@ async def main():
     # 4. Keep Alive / Handle Shutdown
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
+    engine_task = asyncio.create_task(run_interview_engine_outbox(stop_event=stop_event))
     
     def handle_signal():
         logger.info("Shutdown signal received")
@@ -79,6 +81,11 @@ async def main():
         logger.info("KeyboardInterrupt received")
     finally:
         logger.info("Shutting down workers...")
+        engine_task.cancel()
+        try:
+            await engine_task
+        except asyncio.CancelledError:
+            pass
         await worker_manager.stop_all()
         await close_mongo_connection()
         logger.info("Worker Service Stopped")
