@@ -31,7 +31,7 @@ from ..interview_engine.contracts.messages import (
     StartSessionCommand,
     SubmitTurnCommand,
 )
-from ..interview_engine.errors import EngineError
+from ..interview_engine.errors import DeviceConflict, EngineError
 from ..services.multi_agent_system import multi_agent_interview
 from ..services.resume_parser import resume_parser
 from ..utils.dependencies import get_current_user
@@ -201,6 +201,8 @@ async def get_feedback(
     _require_device(body.device_id)
     try:
         record = await engine.load_owned(body.session_id, str(current_user["_id"]))
+        if record.device_id != body.device_id:
+            raise DeviceConflict()
         report = await engine.get_report(str(current_user["_id"]), record.report_id)
     except EngineError as exc:
         _handle(exc)

@@ -145,6 +145,21 @@ async def test_full_agent_flow(client, student_user, student_token):
     )
     assert resp.status_code == 200
 
+    wrong_device = await client.post(
+        "/agent-interview/feedback",
+        json={"session_id": session_id, "device_id": "wrong-device"},
+        headers=auth_headers(student_token),
+    )
+    assert wrong_device.status_code == 409, wrong_device.text
+    assert wrong_device.json()["detail"]["code"] == "device_conflict"
+
+    correct_device = await client.post(
+        "/agent-interview/feedback",
+        json={"session_id": session_id, "device_id": "test-device"},
+        headers=auth_headers(student_token),
+    )
+    assert correct_device.status_code == 200, correct_device.text
+
 
 # ===== Test 6: Demo Endpoints (No Auth) =====
 
@@ -217,6 +232,41 @@ async def test_dsa_stage_by_stage_flow(student_user):
     await multi_agent_interview.answer(session_id, "I would return early for an empty array.")
     context = await multi_agent_interview.get_context(session_id)
     assert context.dsa_stage == "completed"
+
+
+@pytest.mark.asyncio
+async def test_clarification_request_returns_blueprint_reply(client, student_user, student_token):
+    from backend.interview_engine.domain.behavioral_blueprint import build_behavioral_blueprint
+
+    resp = await client.post(
+        "/agent-interview/start",
+        json={
+            "company": "Google",
+            "role": "Software Engineer",
+            "difficulty": "medium",
+            "device_id": "test-device",
+        },
+        headers=auth_headers(student_token),
+    )
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+    expected_reply = build_behavioral_blueprint("practice", "Software Engineer").ordered_slots()[0].clarification_text
+
+    resp = await client.post(
+        "/agent-interview/answer",
+        json={
+            "session_id": session_id,
+            "answer": "Could you clarify the question?",
+            "device_id": "test-device",
+            "request_id": "clarification-1",
+            "kind": "clarification_request",
+        },
+        headers=auth_headers(student_token),
+    )
+    assert resp.status_code == 200, resp.text
+    reply = resp.json()["reply"]
+    assert isinstance(reply, str) and reply
+    assert reply == expected_reply
 
 
 # ===== Test 9: Voice Interview Helper Logic =====

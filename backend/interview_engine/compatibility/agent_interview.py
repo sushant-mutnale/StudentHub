@@ -72,7 +72,7 @@ def to_start_response(result) -> dict:
 
 
 def to_answer_response(result, view: SessionView) -> dict:
-    return {
+    response = {
         "session_id": result.session_id,
         "status": result.status,
         "next_action": result.next_action,
@@ -84,6 +84,9 @@ def to_answer_response(result, view: SessionView) -> dict:
         "report_id": result.report_id,
         "report_status": result.report_outcome,
     }
+    if result.reply:
+        response["reply"] = result.reply
+    return response
 
 
 def to_end_response(result) -> dict:
