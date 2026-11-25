@@ -3,6 +3,7 @@ import { usePersistedState } from '../hooks/usePersistedState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
+import { getDeviceId, newRequestId } from '../lib/interviewClient';
 import { FiMic, FiPlay, FiSend, FiClock, FiTarget, FiAward, FiCode, FiMessageSquare, FiHelpCircle, FiCheck, FiCpu, FiVideo } from 'react-icons/fi';
 import '../App.css';
 
@@ -19,6 +20,10 @@ const MockInterview = () => {
     const [language, setLanguage] = useState('python');
     const [loading, setLoading] = useState(false);
     const [feedback, setFeedback] = useState(null);
+    const [requestId, setRequestId] = useState(null);
+    const [turnRequestId, setTurnRequestId] = useState(null);
+    const [report, setReport] = useState(null);
+    const [reportStatus, setReportStatus] = useState(null);
     const [messages, setMessages] = usePersistedState('interview_messages', [], { useSession: true });
     const [interviewMode, setInterviewMode] = useState('chat'); // 'chat' | 'voice'
     const [config, setConfig] = usePersistedState('interview_config', {
@@ -48,7 +53,9 @@ const MockInterview = () => {
     }, [timerActive]);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
     }, [messages]);
 
     const CODE_TEMPLATES = {
@@ -76,21 +83,75 @@ const MockInterview = () => {
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const loadReport = async () => {
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const { data } = await api.post('/agent-interview/feedback', {
+                session_id: session?.session_id,
+                device_id: getDeviceId()
+            });
+            const outcome = data?.report_status || data?.outcome;
+            const body = data?.report || data?.body;
+            if (outcome === 'ready' && body) {
+                setReport(body);
+                setReportStatus(outcome);
+                return;
+            }
+            setReportStatus(outcome || 'evaluating');
+            await delay(200);
+        }
+    };
+
+    const finishInterview = async (alreadyEnded = false) => {
+        setTimerActive(false);
+        if (!alreadyEnded) {
+            await api.post('/agent-interview/end', {
+                session_id: session?.session_id,
+                device_id: getDeviceId(),
+                end_request_id: newRequestId()
+            });
+        }
+        await loadReport();
+    };
+
     const startSession = async () => {
         setLoading(true);
+        const deviceId = getDeviceId();
+        const startRequestId = requestId || newRequestId();
+        setRequestId(startRequestId);
         try {
-            const { data } = await api.post('/agent-interview/start', {
-                company: config.company || 'Tech Company',
-                role: config.topic || 'Software Engineer',
-                difficulty: config.difficulty,
-                interview_type: config.type
-            });
+            let response;
+            try {
+                response = await api.post('/agent-interview/start', {
+                    company: config.company || 'Tech Company',
+                    role: config.topic || 'Software Engineer',
+                    difficulty: config.difficulty,
+                    interview_type: config.type,
+                    device_id: deviceId,
+                    request_id: startRequestId
+                });
+            } catch (err) {
+                const detail = err?.response?.data?.detail;
+                if (err?.response?.status === 409 && detail?.code === 'session_exists') {
+                    response = await api.post('/agent-interview/resume', {
+                        session_id: detail?.session_id || '',
+                        device_id: deviceId,
+                        command_id: newRequestId()
+                    });
+                } else {
+                    throw err;
+                }
+            }
 
-            // Store session ID separately since agent-interview doesn't return a session object
+            const { data } = response;
             const agentSessionId = data.session_id;
             setSession({ session_id: agentSessionId, ...config });
             setShowConfig(false);
             setTimerActive(true);
+            setReport(null);
+            setReportStatus(null);
+            setTurnRequestId(null);
 
             const firstMessage = data.interviewer_message || data.question || 'Welcome! Let\'s begin the interview.';
 
@@ -114,6 +175,7 @@ const MockInterview = () => {
         const userMessage = config.type === 'dsa' && code
             ? `${answer.trim()}\n\n\`\`\`${language}\n${code.trim()}\n\`\`\``
             : answer;
+        const answerText = answer.trim() || code.trim();
 
         setMessages(prev => [...prev, { role: 'candidate', content: userMessage }]);
         setAnswer('');
@@ -121,32 +183,46 @@ const MockInterview = () => {
         setLoading(true);
 
         try {
-            const agentSessionId = session?.session_id;
-
-            const { data } = await api.post('/agent-interview/answer', {
-                session_id: agentSessionId,
-                answer: answer.trim() || code.trim()
-            });
-
-            // Show evaluation feedback
-            const eval_ = data.evaluation || {};
-            if (eval_.feedback) {
-                setMessages(prev => [...prev, {
-                    role: 'feedback',
-                    content: eval_.feedback,
-                    score: eval_.score
-                }]);
+            const turnId = turnRequestId || newRequestId();
+            setTurnRequestId(turnId);
+            const payload = {
+                session_id: session?.session_id,
+                answer: answerText,
+                device_id: getDeviceId(),
+                request_id: turnId
+            };
+            let data;
+            for (let attempt = 0; attempt < 20; attempt++) {
+                try {
+                    const response = await api.post('/agent-interview/answer', payload);
+                    if (response?.status === 202) {
+                        await delay(200);
+                        continue;
+                    }
+                    data = response?.data;
+                    break;
+                } catch (err) {
+                    const detail = err?.response?.data?.detail;
+                    if (err?.response?.status === 409 && detail?.code === 'question_pending') {
+                        await delay(200);
+                        continue;
+                    }
+                    throw err;
+                }
             }
+            if (!data) throw new Error('Answer processing did not finish');
 
-            // Show next question
+            if (data.reply) {
+                setMessages(prev => [...prev, { role: 'interviewer', content: data.reply }]);
+            }
             if (data.next_question) {
                 setMessages(prev => [...prev, {
                     role: 'interviewer',
                     content: data.next_question
                 }]);
+                setTurnRequestId(null);
             } else {
-                // No more questions → end
-                await endSession();
+                await finishInterview(data.report_status === 'ready');
             }
         } catch (err) {
             console.error('Failed to submit answer:', err);
@@ -162,7 +238,8 @@ const MockInterview = () => {
         try {
             const { data } = await api.post('/agent-interview/hint', {
                 session_id: session?.session_id,
-                level: 1
+                level: 1,
+                device_id: getDeviceId()
             });
             setMessages(prev => [...prev, {
                 role: 'hint',
@@ -179,20 +256,10 @@ const MockInterview = () => {
     const endSession = async () => {
         setTimerActive(false);
         try {
-            const { data } = await api.post('/agent-interview/end', {
-                session_id: session?.session_id
-            });
-            setMessages(prev => [...prev, {
-                role: 'summary',
-                content: {
-                    overall_score: data.final_score,
-                    questions_answered: data.questions_answered,
-                    coaching: data.career_coaching || data.coaching,
-                    breakdown: data.performance_breakdown
-                }
-            }]);
+            await finishInterview();
         } catch (err) {
             console.error('Failed to end session:', err);
+            setMessages(prev => [...prev, { role: 'system', content: 'Could not end interview. Please try again.' }]);
         }
     };
 
@@ -225,6 +292,9 @@ const MockInterview = () => {
                                 <FiMic className="text-blue-500" />
                                 Configure Your Interview
                             </h3>
+                            <p style={{ marginBottom: '1rem', fontSize: '0.85rem', color: '#64748b' }}>
+                                AI-generated questions, AI-assisted evaluation, no proctoring, no human review.
+                            </p>
 
                             {/* Mode Toggle */}
                             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#f1f5f9', borderRadius: '10px', padding: '4px' }}>
@@ -250,29 +320,33 @@ const MockInterview = () => {
                                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                                         {[
                                             { value: 'behavioral', label: 'Behavioral', icon: FiMessageSquare },
-                                            { value: 'technical', label: 'Technical', icon: FiTarget },
-                                            { value: 'dsa', label: 'DSA/Coding', icon: FiCode }
+                                            { value: 'technical', label: 'Technical', icon: FiTarget, unavailable: true },
+                                            { value: 'dsa', label: 'DSA/Coding', icon: FiCode, unavailable: true }
                                         ].map(type => (
                                             <button
                                                 key={type.value}
                                                 onClick={() => setConfig({ ...config, type: type.value })}
+                                                disabled={type.unavailable}
+                                                title={type.unavailable ? 'Unavailable in this release' : undefined}
                                                 className={`interactive-card ${config.type === type.value ? 'bg-blue-50 border-blue-500' : 'bg-white border-gray-200'}`}
                                                 style={{
                                                     padding: '0.75rem 1.25rem',
                                                     border: `2px solid ${config.type === type.value ? '#3b82f6' : '#e2e8f0'}`,
                                                     borderRadius: '8px',
                                                     background: config.type === type.value ? '#eff6ff' : 'white',
-                                                    cursor: 'pointer',
+                                                    cursor: type.unavailable ? 'not-allowed' : 'pointer',
                                                     display: 'flex',
+                                                    flexDirection: 'column',
                                                     alignItems: 'center',
-                                                    gap: '0.5rem',
+                                                    gap: '0.25rem',
                                                     fontWeight: config.type === type.value ? 600 : 400,
                                                     color: config.type === type.value ? '#3b82f6' : '#64748b',
                                                     transition: 'all 0.2s'
                                                 }}
                                             >
                                                 <type.icon />
-                                                {type.label}
+                                                <span>{type.label}</span>
+                                                {type.unavailable && <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Unavailable in this release</span>}
                                             </button>
                                         ))}
                                     </div>
@@ -350,7 +424,7 @@ const MockInterview = () => {
                     ) : (
                         <div className="glass-card animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)', borderRadius: '16px', overflow: 'hidden' }}>
                             {/* Messages */}
-                            <div style={{
+                            <div role="log" aria-live="polite" style={{
                                 flex: 1,
                                 overflowY: 'auto',
                                 padding: '1.5rem',
@@ -388,26 +462,32 @@ const MockInterview = () => {
                                                     <FiCpu /> Interviewer {msg.type && `• ${msg.type}`}
                                                 </div>
                                             )}
-                                            {msg.role === 'feedback' && msg.score !== undefined && (
-                                                <div style={{ fontSize: '0.875rem', color: '#16a34a', marginBottom: '0.5rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                                    <FiCheck /> Score: {msg.score}/100
-                                                </div>
-                                            )}
-                                            {msg.role === 'summary' ? (
-                                                <div>
-                                                    <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: '1.1rem' }}>🎉 Interview Complete!</div>
-                                                    <div style={{ background: 'rgba(255,255,255,0.2)', padding: '0.5rem', borderRadius: '8px', marginBottom: '0.5rem' }}>Overall Score: {msg.content.overall_score || 'N/A'}</div>
-                                                    <div style={{ marginBottom: '0.5rem' }}>Questions Answered: {msg.content.questions_answered || 'N/A'}</div>
-                                                    {msg.content.strengths && (
-                                                        <div style={{ marginTop: '0.5rem' }}>Strengths: {msg.content.strengths.join(', ')}</div>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{msg.content}</div>
-                                            )}
+                                            <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{msg.content}</div>
                                         </div>
                                     </div>
                                 ))}
+                                {report && (
+                                    <div style={{ alignSelf: 'stretch', background: 'white', padding: '1.25rem', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: '1.1rem' }}>Interview Report</div>
+                                        <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6', marginBottom: '1rem' }}>{report.narrative}</div>
+                                        {report.competencies?.map((competency, idx) => (
+                                            <div key={`${competency.competency}-${idx}`} style={{ padding: '0.75rem 0', borderTop: '1px solid #e2e8f0' }}>
+                                                <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{competency.competency}</div>
+                                                <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                                                    {competency.level}{competency.confidence ? ` · ${competency.confidence} confidence` : ''}
+                                                </div>
+                                                <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                                                    {competency.reasons?.map((reason, reasonIdx) => (
+                                                        <li key={`${reason}-${reasonIdx}`}>{reason}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {!report && reportStatus === 'evaluating' && (
+                                    <div style={{ alignSelf: 'flex-start', color: '#64748b', fontSize: '0.9rem' }}>Preparing your report…</div>
+                                )}
                                 {loading && (
                                     <div className="animate-fade-in" style={{ alignSelf: 'flex-start', background: 'white', padding: '1rem', borderRadius: '20px 20px 20px 4px', border: '1px solid #e2e8f0' }}>
                                         <div style={{ display: 'flex', gap: '4px' }}>
