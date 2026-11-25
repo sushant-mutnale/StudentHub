@@ -64,6 +64,11 @@ async def clean_collections(managed_app):
         "session_questions", "session_answers", "posts",
         "notifications", "activities", "outbox_events",
         "multi_agent_sessions", "opportunities_jobs",
+        "interview_engine_sessions", "interview_engine_events",
+        "interview_engine_turns", "interview_engine_evidence",
+        "interview_engine_questions", "interview_engine_hints",
+        "interview_engine_turn_commands", "interview_engine_reports",
+        "interview_engine_outbox",
         "resume_uploads", "resume_cache",
         "saved_searches", "saved_jobs", "recommendation_feedback",
     ]

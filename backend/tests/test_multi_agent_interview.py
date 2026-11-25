@@ -18,6 +18,7 @@ async def test_start_agent_interview(client, student_user, student_token):
             "company": "Google",
             "role": "Software Engineer",
             "difficulty": "medium",
+            "device_id": "test-device",
         },
         headers=auth_headers(student_token),
     )
@@ -34,7 +35,7 @@ async def test_submit_answer_agent(client, student_user, student_token):
     # Start
     resp = await client.post(
         "/agent-interview/start",
-        json={"company": "Amazon", "role": "SDE-2", "difficulty": "easy"},
+        json={"company": "Amazon", "role": "SDE-2", "difficulty": "easy", "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     session_id = resp.json()["session_id"]
@@ -45,13 +46,15 @@ async def test_submit_answer_agent(client, student_user, student_token):
         json={
             "session_id": session_id,
             "answer": "I would use a hash map to track the frequency of each element, then iterate to find the most frequent one.",
+            "device_id": "test-device",
+            "request_id": "answer-1",
         },
         headers=auth_headers(student_token),
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert "evaluation" in data
-    assert "next_question" in data or "message" in data
+    assert "next_question" in data
+    assert "score" not in data
 
 
 # ===== Test 3: Request Hint =====
@@ -60,7 +63,7 @@ async def test_submit_answer_agent(client, student_user, student_token):
 async def test_request_hint(client, student_user, student_token):
     resp = await client.post(
         "/agent-interview/start",
-        json={"company": "Google", "role": "Software Engineer", "difficulty": "medium"},
+        json={"company": "Google", "role": "Software Engineer", "difficulty": "medium", "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     session_id = resp.json()["session_id"]
@@ -68,20 +71,22 @@ async def test_request_hint(client, student_user, student_token):
     # Request hint level 1
     resp = await client.post(
         "/agent-interview/hint",
-        json={"session_id": session_id, "level": 1},
+        json={"session_id": session_id, "level": 1, "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert "hint" in data
+    assert data["hints_used"] == 1
 
     # Request hint level 2
     resp = await client.post(
         "/agent-interview/hint",
-        json={"session_id": session_id, "level": 2},
+        json={"session_id": session_id, "level": 2, "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     assert resp.status_code == 200, resp.text
+    assert resp.json()["hints_used"] == 1
 
 
 # ===== Test 4: End Interview =====
@@ -90,19 +95,19 @@ async def test_request_hint(client, student_user, student_token):
 async def test_end_interview(client, student_user, student_token):
     resp = await client.post(
         "/agent-interview/start",
-        json={"company": "Amazon", "role": "Software Engineer", "difficulty": "easy"},
+        json={"company": "Amazon", "role": "Software Engineer", "difficulty": "easy", "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     session_id = resp.json()["session_id"]
 
     resp = await client.post(
         "/agent-interview/end",
-        json={"session_id": session_id},
+        json={"session_id": session_id, "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert "final_score" in data or "overall_score" in data or "performance" in data
+    assert data["report_id"] and data["report_status"] in ("evaluating", "ready", "suppressed")
 
 
 # ===== Test 5: Full Agent Flow =====
@@ -112,7 +117,7 @@ async def test_full_agent_flow(client, student_user, student_token):
     """Start → Answer 3 questions → End."""
     resp = await client.post(
         "/agent-interview/start",
-        json={"company": "Microsoft", "role": "SDE-1", "difficulty": "easy"},
+        json={"company": "Microsoft", "role": "SDE-1", "difficulty": "easy", "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     assert resp.status_code == 200
@@ -125,6 +130,8 @@ async def test_full_agent_flow(client, student_user, student_token):
             json={
                 "session_id": session_id,
                 "answer": f"For question {i+1}, I would use an iterative approach with clear separation of concerns to handle the problem efficiently.",
+                "device_id": "test-device",
+                "request_id": f"flow-{i+1}",
             },
             headers=auth_headers(student_token),
         )
@@ -133,7 +140,7 @@ async def test_full_agent_flow(client, student_user, student_token):
     # End
     resp = await client.post(
         "/agent-interview/end",
-        json={"session_id": session_id},
+        json={"session_id": session_id, "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     assert resp.status_code == 200
@@ -183,85 +190,31 @@ async def test_get_agent_info(client):
 # ===== Test 8: DSA Stage-by-Stage Interview Flow =====
 
 @pytest.mark.asyncio
-async def test_dsa_stage_by_stage_flow(client, student_user, student_token):
-    # Start DSA interview
-    resp = await client.post(
-        "/agent-interview/start",
-        json={
-            "company": "Google",
-            "role": "Software Engineer",
-            "difficulty": "medium",
-            "interview_type": "dsa"
-        },
-        headers=auth_headers(student_token),
-    )
-    assert resp.status_code == 200, resp.text
-    data = resp.json()
-    session_id = data["session_id"]
-    assert "session_id" in data
-    
-    # Verify stage starts at clarification by checking context
+async def test_dsa_stage_by_stage_flow(student_user):
     from backend.services.multi_agent_system import multi_agent_interview
+
+    session_id = f"dsa-{student_user['_id']}"
+    await multi_agent_interview.start(
+        session_id=session_id, student_id=str(student_user["_id"]),
+        company="Google", role="Software Engineer", difficulty="medium",
+        interview_type="dsa", resume_text="",
+    )
     context = await multi_agent_interview.get_context(session_id)
     assert context.dsa_stage == "clarification"
-    
-    # 1. Answer clarification stage -> approach
-    resp = await client.post(
-        "/agent-interview/answer",
-        json={
-            "session_id": session_id,
-            "answer": "What are the input size limits? Can the array contain negative numbers?"
-        },
-        headers=auth_headers(student_token)
-    )
-    assert resp.status_code == 200, resp.text
-    res = resp.json()
-    assert "evaluation" in res
-    
+
+    await multi_agent_interview.answer(session_id, "What are the input size limits?")
     context = await multi_agent_interview.get_context(session_id)
     assert context.dsa_stage == "approach"
-    
-    # 2. Answer approach stage -> coding
-    resp = await client.post(
-        "/agent-interview/answer",
-        json={
-            "session_id": session_id,
-            "answer": "I will use a two-pointer approach with O(N) time complexity and O(1) space complexity."
-        },
-        headers=auth_headers(student_token)
-    )
-    assert resp.status_code == 200, resp.text
-    
+
+    await multi_agent_interview.answer(session_id, "I will use two pointers with O(N) time.")
     context = await multi_agent_interview.get_context(session_id)
     assert context.dsa_stage == "coding"
-    
-    # 3. Answer coding stage -> optimization
-    resp = await client.post(
-        "/agent-interview/answer",
-        json={
-            "session_id": session_id,
-            "answer": "def solve(arr):\n    left, right = 0, len(arr)-1\n    return arr"
-        },
-        headers=auth_headers(student_token)
-    )
-    assert resp.status_code == 200, resp.text
-    
+
+    await multi_agent_interview.answer(session_id, "def solve(arr):\n    return arr")
     context = await multi_agent_interview.get_context(session_id)
     assert context.dsa_stage == "optimization"
-    
-    # 4. Answer optimization stage -> completed
-    resp = await client.post(
-        "/agent-interview/answer",
-        json={
-            "session_id": session_id,
-            "answer": "I would handle empty array by returning early, and null checks for safety."
-        },
-        headers=auth_headers(student_token)
-    )
-    assert resp.status_code == 200, resp.text
-    res = resp.json()
-    assert res["next_question"] == ""
-    
+
+    await multi_agent_interview.answer(session_id, "I would return early for an empty array.")
     context = await multi_agent_interview.get_context(session_id)
     assert context.dsa_stage == "completed"
 
