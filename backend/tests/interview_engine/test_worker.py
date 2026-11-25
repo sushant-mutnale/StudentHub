@@ -1,7 +1,5 @@
 import asyncio
 
-import pytest
-
 from backend.interview_engine import worker
 
 
