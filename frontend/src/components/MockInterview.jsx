@@ -19,6 +19,7 @@ const MockInterview = () => {
     const [code, setCode] = useState('');
     const [language, setLanguage] = useState('python');
     const [loading, setLoading] = useState(false);
+    const [preparing, setPreparing] = useState(false);
     const [feedback, setFeedback] = useState(null);
     const [requestId, setRequestId] = useState(null);
     const [turnRequestId, setTurnRequestId] = useState(null);
@@ -133,9 +134,13 @@ const MockInterview = () => {
                 });
             } catch (err) {
                 const detail = err?.response?.data?.detail;
-                if (err?.response?.status === 409 && detail?.code === 'session_exists') {
+                const deviceConflict = err?.response?.status === 409 && detail?.code === 'device_conflict';
+                if (deviceConflict && !localStorage.getItem('interview_session_id')) {
+                    throw err;
+                }
+                if (err?.response?.status === 409 && (detail?.code === 'session_exists' || deviceConflict)) {
                     response = await api.post('/agent-interview/resume', {
-                        session_id: detail?.session_id || '',
+                        session_id: deviceConflict ? localStorage.getItem('interview_session_id') : (detail?.session_id || ''),
                         device_id: deviceId,
                         command_id: newRequestId()
                     });
@@ -146,6 +151,7 @@ const MockInterview = () => {
 
             const { data } = response;
             const agentSessionId = data.session_id;
+            localStorage.setItem('interview_session_id', agentSessionId);
             setSession({ session_id: agentSessionId, ...config });
             setShowConfig(false);
             setTimerActive(true);
@@ -196,17 +202,21 @@ const MockInterview = () => {
                 try {
                     const response = await api.post('/agent-interview/answer', payload);
                     if (response?.status === 202) {
+                        setPreparing(true);
                         await delay(200);
                         continue;
                     }
                     data = response?.data;
+                    setPreparing(false);
                     break;
                 } catch (err) {
                     const detail = err?.response?.data?.detail;
                     if (err?.response?.status === 409 && detail?.code === 'question_pending') {
+                        setPreparing(true);
                         await delay(200);
                         continue;
                     }
+                    setPreparing(false);
                     throw err;
                 }
             }
@@ -226,6 +236,7 @@ const MockInterview = () => {
             }
         } catch (err) {
             console.error('Failed to submit answer:', err);
+            setPreparing(false);
             setMessages(prev => [...prev, { role: 'system', content: 'Could not submit answer. Please try again.' }]);
         } finally {
             setLoading(false);
@@ -487,6 +498,9 @@ const MockInterview = () => {
                                 )}
                                 {!report && reportStatus === 'evaluating' && (
                                     <div style={{ alignSelf: 'flex-start', color: '#64748b', fontSize: '0.9rem' }}>Preparing your report…</div>
+                                )}
+                                {preparing && (
+                                    <div style={{ alignSelf: 'flex-start', color: '#64748b', fontSize: '0.9rem' }}>Preparing your next question</div>
                                 )}
                                 {loading && (
                                     <div className="animate-fade-in" style={{ alignSelf: 'flex-start', background: 'white', padding: '1rem', borderRadius: '20px 20px 20px 4px', border: '1px solid #e2e8f0' }}>

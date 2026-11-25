@@ -32,6 +32,7 @@ describe("MockInterview canonical flow", () => {
     expect(payload.device_id).toBeTruthy();
     expect(localStorage.getItem("interview_device_id")).toBe(payload.device_id);
     expect(payload.request_id).toBeTruthy();
+    expect(localStorage.getItem("interview_session_id")).toBe("s1");
   });
 
   it("renders competency reasons and no overall score", async () => {
@@ -76,5 +77,37 @@ describe("MockInterview canonical flow", () => {
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
     expect(post.mock.calls[1][0]).toBe("/agent-interview/resume");
     expect(post.mock.calls[1][1].device_id).toBe("device-existing");
+  });
+
+  it("resumes the persisted session after device_conflict", async () => {
+    localStorage.setItem("interview_session_id", "s1");
+    post
+      .mockRejectedValueOnce({ response: { status: 409, data: { detail: { code: "device_conflict" } } } })
+      .mockResolvedValueOnce({
+        data: { session_id: "s1", question: "Q1", interviewer_message: "Q1", status: "in_progress" },
+      });
+    render(<MockInterview />);
+    await userEvent.click(screen.getByRole("button", { name: /start interview/i }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(post.mock.calls[1][0]).toBe("/agent-interview/resume");
+    expect(post.mock.calls[1][1].session_id).toBe("s1");
+    expect(post.mock.calls[1][1].device_id).toBeTruthy();
+  });
+
+  it("shows a preparing state while a pending answer is polled", async () => {
+    post
+      .mockResolvedValueOnce({
+        data: { session_id: "s1", question: "Q1", interviewer_message: "Q1", status: "in_progress" },
+      })
+      .mockResolvedValueOnce({ status: 202, data: { question_pending: true } })
+      .mockResolvedValueOnce({
+        data: { session_id: "s1", status: "in_progress", next_question: "Q2", question_pending: false },
+      });
+    render(<MockInterview />);
+    await userEvent.click(screen.getByRole("button", { name: /start interview/i }));
+    await userEvent.type(screen.getByPlaceholderText(/type your answer/i), "I owned the migration and cut errors.");
+    await userEvent.click(screen.getByRole("button", { name: /submit/i }));
+    await waitFor(() => expect(screen.getByText(/preparing your next question/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/preparing your next question/i)).not.toBeInTheDocument());
   });
 });

@@ -6,6 +6,7 @@ API endpoints for AI-powered interview simulation using multiple agents.
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 
 from ..interview_engine.compatibility.agent_interview import (
     LegacyAnswerRequest,
@@ -141,6 +142,8 @@ async def submit_answer(
         _handle(exc)
     response = to_answer_response(result, view)
     response["turn_request_id"] = body.request_id
+    if response["question_pending"]:
+        return JSONResponse(response, status_code=202)
     return response
 
 

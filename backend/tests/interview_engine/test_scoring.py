@@ -88,6 +88,11 @@ def test_confidence_ordered_rule():
     assert confidence_for(repeated) == ConfidenceBand.MEDIUM
 
 
+def test_confidence_high_accepts_consistent_incomplete_instances():
+    facts = [fact("sufficient", "q1"), fact("incomplete", "q2"), fact("incomplete", "q3")]
+    assert confidence_for(facts) == ConfidenceBand.HIGH
+
+
 def test_level_total_function():
     assert level_for([]) == Level.NOT_ASSESSED
     assert level_for([fact("incomplete")]) == Level.EMERGING

@@ -83,7 +83,6 @@ class Settings(BaseSettings):
     rate_limit_ai: str = "10/minute"
     rate_limit_auth: str = "5/minute"
 
-    # Groq LLM (free-tier budgets per organisation key)
     groq_api_key_1: Optional[str] = None
     groq_api_key_2: Optional[str] = None
     groq_api_key_3: Optional[str] = None

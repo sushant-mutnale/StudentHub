@@ -50,7 +50,7 @@ def confidence_for(facts: Sequence[InstanceFact]) -> ConfidenceBand:
     if (
         len(facts) >= 3
         and len(distinct_questions) >= 3
-        and all(f.signal == Signal.SUFFICIENT.value for f in facts)
+        and all(f.signal in (Signal.SUFFICIENT.value, Signal.INCOMPLETE.value) for f in facts)
     ):
         return ConfidenceBand.HIGH
     return ConfidenceBand.MEDIUM

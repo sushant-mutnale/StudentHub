@@ -83,12 +83,6 @@ class Session:
         return self.record.plan_position + 1 < len(self.record.blueprint.ordered_slots())
 
     def advance_slot(self) -> None:
-        """Move the plan position forward and clear the question.
-
-        This is a plan-position mutation only: it does not bump ``version`` or
-        append an event. Callers that persist the change must call ``bump()``
-        once themselves; ``apply_answer`` already does so.
-        """
         self.record.plan_position += 1
         ordered = self.record.blueprint.ordered_slots()
         if self.record.plan_position < len(ordered):
@@ -98,10 +92,6 @@ class Session:
             self.record.question_pending = True
 
     def set_question(self, question_id: str, text: str, slot_id: str, pending: bool = False) -> None:
-        """Make ``text`` the outstanding question for ``slot_id``.
-
-        Does not bump ``version``; the caller persists with a single ``bump()``.
-        """
         if self.is_terminal():
             raise ValueError("session is terminal")
         self.record.current_question_id = question_id
@@ -114,10 +104,6 @@ class Session:
             self.record.started_at = self.record.started_at or datetime.utcnow()
 
     def set_question_pending(self, request: Optional[dict]) -> None:
-        """Clear the outstanding question and record a pending generation request.
-
-        Does not bump ``version``; the caller persists with a single ``bump()``.
-        """
         self.record.question_pending = True
         self.record.pending_question_request = request
         self.record.outstanding_question = None

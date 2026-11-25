@@ -147,7 +147,7 @@ async def test_hint_returns_authored_text_and_is_idempotent():
     assert first.hint == second.hint
     assert first.hints_used == 1
     assert second.hints_used == 1
-    assert first.remaining == 1
+    assert first.remaining == 2
     assert first.question_id == start.question_id
     record = await store.load(start.session_id)
     assert record.hint_count == 1
@@ -159,8 +159,9 @@ async def test_hint_budget_is_bounded():
     start = await _started(engine)
     await engine.request_hint(_hint(start, "h1"))
     await engine.request_hint(_hint(start, "h2"))
+    await engine.request_hint(_hint(start, "h3"))
     with pytest.raises(HintLimitReached):
-        await engine.request_hint(_hint(start, "h3"))
+        await engine.request_hint(_hint(start, "h4"))
 
 
 @pytest.mark.asyncio

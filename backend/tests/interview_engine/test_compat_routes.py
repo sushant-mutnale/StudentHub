@@ -9,6 +9,7 @@ from backend.interview_engine.adapters.scripted import (
 )
 from backend.interview_engine.adapters.system import InMemoryLease
 from backend.interview_engine.compatibility.dependencies import get_engine
+from backend.interview_engine.contracts.messages import SessionView, SubmitTurnResult
 from backend.main import app
 
 
@@ -132,3 +133,42 @@ async def test_resume_returns_new_token_and_question(client, student_token, engi
     payload = resumed.json()
     assert payload["fencing_token"] != body["fencing_token"]
     assert payload["question"] == body["question"]
+
+
+class _PendingEngine:
+    async def submit_turn(self, cmd):
+        return SubmitTurnResult(
+            session_id="s1", status="in_progress", next_action="next_slot",
+            question_pending=True,
+        )
+
+    async def load_owned(self, session_id, candidate_id):
+        return object()
+
+    async def session_view(self, record):
+        return SessionView(
+            session_id="s1", status="in_progress", version=1,
+            question_pending=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_answer_returns_202_when_question_is_pending(client, student_token):
+    previous = app.dependency_overrides.get(get_engine)
+    app.dependency_overrides[get_engine] = lambda: _PendingEngine()
+    try:
+        response = await client.post(
+            "/agent-interview/answer",
+            json={
+                "session_id": "s1", "answer": "text", "device_id": "dev-1",
+                "request_id": "t1",
+            },
+            headers={"Authorization": f"Bearer {student_token}"},
+        )
+    finally:
+        if previous is None:
+            app.dependency_overrides.pop(get_engine, None)
+        else:
+            app.dependency_overrides[get_engine] = previous
+    assert response.status_code == 202
+    assert response.json()["question_pending"] is True

@@ -35,7 +35,7 @@ class SessionRecord(BaseModel):
     pending_question_request: Optional[Dict[str, Any]] = None
     follow_up_used: Dict[str, int] = Field(default_factory=dict)
     hint_count: int = 0
-    hint_budget: int = 2
+    hint_budget: int = 3
     pause_count: int = 0
     pause_started_at: Optional[datetime] = None
     total_pause_seconds: int = 0
