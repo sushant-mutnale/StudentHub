@@ -98,6 +98,14 @@ class GroqLLMClient:
             self._clients[api_key.keyhash] = client
         return client
 
+    async def _settle_safely(self, reservation, actual: int, keyhash: str) -> None:
+        try:
+            await self._limiter.settle(reservation, actual)
+        except Exception:
+            logger.warning(
+                "LLM settlement failed for key=%s", keyhash, exc_info=True
+            )
+
     async def complete(
         self,
         *,
@@ -143,10 +151,10 @@ class GroqLLMClient:
                     response_format=response_format,
                 )
             except LLMUnavailable:
-                await self._limiter.settle(reservation, 0)
+                await self._settle_safely(reservation, 0, key.keyhash)
                 raise
             except Exception as exc:
-                await self._limiter.settle(reservation, 0)
+                await self._settle_safely(reservation, 0, key.keyhash)
                 retry_after = _retry_after_seconds(exc, attempt_index)
                 if retry_after is not None:
                     logger.warning(
@@ -160,7 +168,7 @@ class GroqLLMClient:
                 raise LLMUnavailable("transport_error") from exc
 
             actual = prompt_tokens + completion_tokens
-            await self._limiter.settle(reservation, actual)
+            await self._settle_safely(reservation, actual, key.keyhash)
             logger.info(
                 "LLM call ok key=%s prompt=%s completion=%s",
                 key.keyhash,

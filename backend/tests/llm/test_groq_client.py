@@ -451,3 +451,58 @@ async def test_daily_failure_on_one_key_does_not_mask_a_shorter_minute_wait():
     assert completion.text == "after the wait"
     assert completion.keyhash == minute_key.keyhash
     assert clock.now_ms == 1_040_000
+
+
+class _SettleBoom:
+    def __init__(self, inner):
+        self._inner = inner
+
+    async def reserve(self, keyhash, tokens):
+        return await self._inner.reserve(keyhash, tokens)
+
+    async def block(self, keyhash, seconds):
+        return await self._inner.block(keyhash, seconds)
+
+    async def settle(self, reservation, actual):
+        raise RuntimeError("redis exploded")
+
+
+async def test_successful_call_survives_a_settlement_failure():
+    clock = FakeClock()
+    budgets = Budgets(rpm=10, rpd=100, tpm=100000, tpd=1000000)
+    limiter = _SettleBoom(InMemoryRateLimiter(budgets, clock=clock))
+    fake = FakeClient([_response("good answer")])
+    client = GroqLLMClient(
+        ApiKeyPool(["gsk_a"]),
+        limiter,
+        model="m",
+        base_url="https://example.invalid",
+        request_timeout_seconds=5,
+        max_wait_seconds=1,
+        client_factory=lambda api_key: fake,
+        clock=clock,
+        sleep=NoSleep(clock),
+    )
+    completion = await client.complete(system="s", user="u", max_completion_tokens=10)
+    assert completion.text == "good answer"
+
+
+async def test_transport_error_is_not_masked_by_a_settlement_failure():
+    clock = FakeClock()
+    budgets = Budgets(rpm=10, rpd=100, tpm=100000, tpd=1000000)
+    limiter = _SettleBoom(InMemoryRateLimiter(budgets, clock=clock))
+    fake = FakeClient([RuntimeError("connection reset")])
+    client = GroqLLMClient(
+        ApiKeyPool(["gsk_a"]),
+        limiter,
+        model="m",
+        base_url="https://example.invalid",
+        request_timeout_seconds=5,
+        max_wait_seconds=1,
+        client_factory=lambda api_key: fake,
+        clock=clock,
+        sleep=NoSleep(clock),
+    )
+    with pytest.raises(LLMUnavailable) as caught:
+        await client.complete(system="s", user="u", max_completion_tokens=10)
+    assert caught.value.reason == "transport_error"
