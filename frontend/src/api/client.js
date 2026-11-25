@@ -129,6 +129,8 @@ api.interceptors.response.use(
         `[API] Error ${error.response?.status ?? 'network'} ${original?.url ?? ''}: ${message}`
       );
     }
-    return Promise.reject(new Error(message));
+    const normalizedError = new Error(message);
+    normalizedError.response = error.response;
+    return Promise.reject(normalizedError);
   }
 );
