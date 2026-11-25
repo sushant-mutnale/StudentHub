@@ -1,5 +1,3 @@
-import pytest
-
 from backend.interview_engine.adapters.memory_store import InMemorySessionStore
 from backend.interview_engine.adapters.scripted import (
     DeterministicEvaluator,
@@ -96,11 +94,9 @@ async def test_second_turn_still_works_after_a_degraded_analysis():
     assert len(await store.turns_for_session(started.session_id)) == 2
 
 
-async def test_build_engine_reuses_one_limiter_across_calls():
+async def test_build_engine_reuses_one_limiter_across_calls(monkeypatch):
+    from backend import config
     from backend.interview_engine.adapters import factory
-
-    factory._llm_adapters_built = False
-    factory._llm_adapters = None
 
     class _Settings:
         groq_llm_enabled = True
@@ -117,11 +113,14 @@ async def test_build_engine_reuses_one_limiter_across_calls():
         groq_request_timeout_seconds = 30
         groq_reasoning_effort = "low"
 
-        def __getattr__(self, name):
-            raise AttributeError(name)
+    monkeypatch.setattr(factory, "_llm_adapters_built", False)
+    monkeypatch.setattr(factory, "_llm_adapters", None)
+    monkeypatch.setattr(config, "settings", _Settings())
 
-    first = factory._shared_llm_adapters(_Settings())
-    second = factory._shared_llm_adapters(_Settings())
-    assert first is second
-    factory._llm_adapters_built = False
-    factory._llm_adapters = None
+    store = InMemorySessionStore()
+    lease = InMemoryLease()
+    first = factory.build_engine(store=store, lease=lease)
+    second = factory.build_engine(store=store, lease=lease)
+
+    assert first.analyzer is second.analyzer
+    assert first.analyzer.__class__.__name__ == "GroqAnalyzer"

@@ -311,3 +311,5 @@ def test_build_llm_adapters_wires_the_three_real_adapters():
     assert isinstance(built.analyzer, GroqAnalyzer)
     assert isinstance(built.generator, GroqQuestionGenerator)
     assert isinstance(built.evaluator, GroqEvaluator)
+    assert built.analyzer._client is built.generator._client
+    assert built.generator._client is built.evaluator._client
