@@ -1,6 +1,6 @@
 # Canonical Interview Engine — Design
 
-Status: proposed for review
+Status: implemented (first slice)
 
 Date: 2026-11-21
 

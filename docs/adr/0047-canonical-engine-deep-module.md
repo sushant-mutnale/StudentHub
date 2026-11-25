@@ -2,7 +2,7 @@
 
 The canonical interview engine is a new deep module at `backend/interview_engine/`. It owns interview semantics and exposes a small facade plus versioned contracts. API, worker, voice, and sandbox processes share the package rather than calling a separate engine service. `/agent-interview/*` remains the UI-facing contract through a compatibility adapter. The structured orchestrator and multi-agent loop are retired after parity, not extended. Existing interview data is not migrated or dual-written.
 
-**Status:** accepted — engine boundary and migration contract. Provider selections remain open.
+**Status:** accepted, implemented (first slice).
 
 ## Consequences
 
