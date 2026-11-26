@@ -2,7 +2,7 @@
 
 Development, testing and CI run the full stack (frontend, backend, workers, MongoDB, Redis and other self-hostable supporting services) through Docker Compose, reusing the same application images that production runs. Production uses Kubernetes so application services and workers can be deployed and scaled independently, with MongoDB and Redis self-hosted rather than consumed as managed Atlas/ElastiCache offerings. Vercel serverless and Render remain historical/optional paths, not the production deployment model.
 
-**Status:** accepted — direction only; infrastructure details remain open.
+**Status:** accepted — implemented for the production security foundation.
 
 ## Considered options
 

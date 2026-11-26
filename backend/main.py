@@ -251,15 +251,3 @@ app.include_router(calendar_routes.router)
 app.include_router(saved_search_routes.router)
 app.include_router(demo_routes.router, tags=["demo"])
 app.include_router(sidebar_routes.router)
-
-
-
-# Vercel Serverless Handler
-# This allows FastAPI to work with Vercel's serverless Python functions
-try:
-    from mangum import Mangum
-    handler = Mangum(app, lifespan="off")
-except ImportError:
-    # Mangum not installed (local dev), ignore
-    handler = None
-
