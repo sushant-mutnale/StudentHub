@@ -23,8 +23,6 @@
 | **MongoDB Atlas** | Database | https://cloud.mongodb.com |
 | **Google AI (Gemini)** | AI Features | https://makersuite.google.com/app/apikey |
 | **SendGrid** | Email | https://signup.sendgrid.com |
-| **Render** | Backend Host | https://render.com |
-| **Vercel** | Frontend Host | https://vercel.com |
 | **Upstash** (Optional) | Redis Cache | https://upstash.com |
 
 ---
@@ -104,29 +102,21 @@ npm run dev
 1. Create free cluster at https://cloud.mongodb.com
 2. Create database user
 3. Get connection string
-4. Allow IP: 0.0.0.0/0 (for Render)
+4. Allow connections from your backend host
 
-### Deploy Backend (Render)
-1. Push code to GitHub
-2. Go to https://render.com
-3. Create "New Web Service"
-4. Connect to GitHub repo
-5. Set:
-   - Root Directory: `backend`
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `gunicorn backend.main:app -w 4 -k uvicorn.workers.UvicornWorker`
-6. Add Environment Variables in Render dashboard
+### Deploy Backend and Frontend
+1. Deploy the backend behind HTTPS with non-local MongoDB and Redis services.
+2. Set these backend environment variables in your hosting environment:
+   - `APP_ENV=production`
+   - `JWT_SECRET=<strong random secret>`
+   - `MONGODB_URI=<non-local MongoDB connection string>`
+   - `REDIS_HOST=<non-local Redis host>`
+   - `FRONTEND_ORIGIN=https://app.example.com`
+3. Build the frontend with `npm run build` and serve `dist/` over HTTPS.
+4. Set the frontend environment variable:
+   - `VITE_API_URL=https://api.example.com`
 
-### Deploy Frontend (Vercel)
-1. Go to https://vercel.com
-2. Import GitHub repo
-3. Set:
-   - Framework: Vite
-   - Root Directory: `frontend`
-   - Build Command: `npm run build`
-   - Output Directory: `dist`
-4. Add Environment Variable:
-   - `VITE_API_BASE_URL` = `https://your-backend.onrender.com`
+Backend startup fails fast when production values use defaults or localhost services.
 
 ---
 
@@ -152,5 +142,3 @@ Once you give me the API keys, I will:
 | MongoDB Atlas account | ⬜ |
 | Google AI API key | ⬜ |
 | SendGrid API key | ⬜ |
-| Render account | ⬜ |
-| Vercel account | ⬜ |
