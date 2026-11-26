@@ -41,3 +41,16 @@ def test_unknown_environment_is_rejected():
     errors = validate_runtime_settings(settings(app_env="staging"))
 
     assert errors == ["APP_ENV must be development, testing, or production"]
+
+
+def test_example_jwt_placeholder_is_rejected():
+    errors = validate_runtime_settings(
+        settings(
+            jwt_secret="replace-with-a-random-secret",
+            mongodb_uri="mongodb://mongo:27017",
+            redis_host="redis",
+            frontend_origin="https://app.example.com",
+        )
+    )
+
+    assert errors == ["JWT_SECRET must be set to a strong value in production"]

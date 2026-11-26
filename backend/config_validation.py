@@ -1,4 +1,5 @@
 DEFAULT_JWT_SECRET = "dev-only-change-me-in-production"
+EXAMPLE_JWT_SECRET = "replace-with-a-random-secret"
 
 
 def validate_runtime_settings(settings) -> list[str]:
@@ -8,7 +9,10 @@ def validate_runtime_settings(settings) -> list[str]:
         errors.append("APP_ENV must be development, testing, or production")
 
     if settings.app_env == "production":
-        if not settings.jwt_secret or settings.jwt_secret == DEFAULT_JWT_SECRET:
+        if not settings.jwt_secret or settings.jwt_secret in {
+            DEFAULT_JWT_SECRET,
+            EXAMPLE_JWT_SECRET,
+        }:
             errors.append("JWT_SECRET must be set to a strong value in production")
         if not settings.mongodb_uri or settings.mongodb_uri.startswith("mongodb://localhost"):
             errors.append("MONGODB_URI must not point to localhost in production")
