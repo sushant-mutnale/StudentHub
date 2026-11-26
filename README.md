@@ -35,7 +35,7 @@ D:\project\
       ├── package.json
       ├── vite.config.js
       ├── index.html
-      └── .env               # VITE_API_BASE_URL=http://127.0.0.1:8000
+      └── .env               # VITE_API_URL=http://127.0.0.1:8000
 ```
 
 ## ⚙️ Prerequisites
@@ -75,10 +75,10 @@ APP_ENV=development
 Create `frontend/.env` with:
 
 ```
-VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_URL=http://127.0.0.1:8000
 ```
 
-This tells the React app where to find the backend API. The default fallback is `http://127.0.0.1:8000` if the env var is missing.
+This tells the React app where to find the backend API. When `VITE_API_URL` is unset, the frontend uses same-origin requests.
 
 ## 🛠️ Setup & Run
 
@@ -111,10 +111,10 @@ Vite serves the UI at `http://localhost:5173`.
 **Important**: Create `frontend/.env` file with the following content:
 
 ```
-VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_URL=http://127.0.0.1:8000
 ```
 
-This tells the React app where to find the backend API. Without this file, the frontend will still work (using the default `http://127.0.0.1:8000`), but it's best practice to have it explicitly set.
+This tells the React app where to find the backend API. Without this file, the frontend uses same-origin requests, so set it explicitly for local development.
 
 ## 🔗 Key API Endpoints
 
@@ -231,7 +231,7 @@ curl "http://127.0.0.1:8000/jobs?q=java&skills=Java,SQL&limit=20" \
    - Login as `demo_student` / `Student@123`
    - If you see "Network Error", check:
      - Backend is running at `http://127.0.0.1:8000`
-     - `frontend/.env` has `VITE_API_BASE_URL=http://127.0.0.1:8000`
+     - `frontend/.env` has `VITE_API_URL=http://127.0.0.1:8000`
      - Browser console shows detailed error logs (not just "Network Error")
 
 5. **Test Features**:

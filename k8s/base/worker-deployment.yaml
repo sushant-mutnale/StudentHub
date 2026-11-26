@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: studenthub-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: studenthub-worker
+  template:
+    metadata:
+      labels:
+        app: studenthub-worker
+    spec:
+      containers:
+        - name: worker
+          image: studenthub-worker:latest
+          envFrom:
+            - configMapRef:
+                name: studenthub-config
+            - secretRef:
+                name: studenthub-secrets

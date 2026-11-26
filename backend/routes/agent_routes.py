@@ -3,17 +3,54 @@ Multi-Agent Interview Routes
 API endpoints for AI-powered interview simulation using multiple agents.
 """
 
-from typing import Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel, Field
 import uuid
 
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
+
+from ..interview_engine.compatibility.agent_interview import (
+    LegacyAnswerRequest,
+    LegacyEndRequest,
+    LegacyFeedbackRequest,
+    LegacyHintRequest,
+    LegacyResumeRequest,
+    LegacyStartRequest,
+    answer_idempotency_key,
+    end_command_id,
+    to_answer_response,
+    to_end_response,
+    to_feedback_response,
+    to_hint_response,
+    to_resume_response,
+    to_start_response,
+)
+from ..interview_engine.compatibility.dependencies import engine_dependency
+from ..interview_engine.contracts.messages import (
+    EndSessionCommand,
+    RequestHintCommand,
+    ResumeSessionCommand,
+    StartSessionCommand,
+    SubmitTurnCommand,
+)
+from ..interview_engine.errors import DeviceConflict, EngineError
 from ..services.multi_agent_system import multi_agent_interview
 from ..services.resume_parser import resume_parser
 from ..utils.dependencies import get_current_user
 
 
 router = APIRouter(prefix="/agent-interview", tags=["multi-agent-interview"])
+
+
+def _handle(exc: EngineError):
+    raise HTTPException(
+        status_code=exc.status_code,
+        detail={"code": exc.code, **exc.details},
+    )
+
+
+def _require_device(device_id):
+    if not device_id:
+        raise HTTPException(status_code=400, detail={"code": "device_id_required"})
 
 
 # ============ Helper Logic ============
@@ -52,218 +89,154 @@ async def extract_resume_text(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============ Request/Response Models ============
-
-class StartInterviewRequest(BaseModel):
-    """Request to start a multi-agent interview."""
-    company: str = Field(default="Tech Company", description="Target company")
-    role: str = Field(default="Software Engineer", description="Target role")
-    difficulty: str = Field(default="medium", description="Difficulty: easy, medium, hard")
-    interview_type: Optional[str] = Field(default="mixed", description="behavioral | technical | mixed")
-    resume_text: Optional[str] = Field(default=None, description="Candidate resume text for personalized questions")
-
-
-class AnswerRequest(BaseModel):
-    """Request to submit an answer."""
-    session_id: str = Field(..., description="Interview session ID")
-    answer: str = Field(..., min_length=1, description="Your answer")
-
-
-class HintRequest(BaseModel):
-    """Request for a hint."""
-    session_id: str = Field(..., description="Interview session ID")
-    level: int = Field(default=1, ge=1, le=3, description="Hint level: 1=small, 2=medium, 3=large")
-
-
-class EndInterviewRequest(BaseModel):
-    """Request to end interview."""
-    session_id: str = Field(..., description="Interview session ID")
-
-
-# ============ Start Interview ============
-
 @router.post("/start")
 async def start_interview(
-    payload: StartInterviewRequest,
-    current_user=Depends(get_current_user)
+    body: LegacyStartRequest,
+    current_user=Depends(get_current_user),
+    engine=Depends(engine_dependency),
 ):
-    """
-    Start a new multi-agent interview session.
-    
-    The AI interviewer will greet you and ask the first question.
-    """
-    session_id = str(uuid.uuid4())
-    student_id = str(current_user.get("_id", "demo_student"))
-    
+    _require_device(body.device_id)
     try:
-        result = await multi_agent_interview.start(
-            session_id=session_id,
-            student_id=student_id,
-            company=payload.company,
-            role=payload.role,
-            difficulty=payload.difficulty,
-            interview_type=payload.interview_type or "mixed",
-            resume_text=payload.resume_text or ""
+        result = await engine.start(
+            StartSessionCommand(
+                candidate_id=str(current_user["_id"]),
+                interview_type=body.interview_type,
+                mode=body.mode,
+                device_id=body.device_id,
+                client_request_id=body.request_id or uuid.uuid4().hex,
+                role=body.role,
+                company=body.company,
+            )
         )
-        
-        return {
-            "status": "success",
-            "session_id": session_id,
-            "company": payload.company,
-            "role": payload.role,
-            "difficulty": payload.difficulty,
-            "interviewer_message": result.get("question", ""),
-            "instructions": [
-                "Answer the question using POST /agent-interview/answer",
-                "Request hints with POST /agent-interview/hint (reduces score)",
-                "End session with POST /agent-interview/end"
-            ]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start interview: {str(e)}")
+    except EngineError as exc:
+        _handle(exc)
+    response = to_start_response(result)
+    response["request_id"] = body.request_id or response["request_id"]
+    return response
 
-
-# ============ Submit Answer ============
 
 @router.post("/answer")
 async def submit_answer(
-    payload: AnswerRequest,
-    current_user=Depends(get_current_user)
+    body: LegacyAnswerRequest,
+    current_user=Depends(get_current_user),
+    engine=Depends(engine_dependency),
 ):
-    """
-    Submit answer to current question.
-    
-    Returns evaluation and next question.
-    """
+    _require_device(body.device_id)
     try:
-        result = await multi_agent_interview.answer(
-            session_id=payload.session_id,
-            answer=payload.answer
+        result = await engine.submit_turn(
+            SubmitTurnCommand(
+                candidate_id=str(current_user["_id"]),
+                session_id=body.session_id,
+                device_id=body.device_id,
+                turn_idempotency_key=answer_idempotency_key(
+                    str(current_user["_id"]), body.session_id, body.request_id, body.answer
+                ),
+                kind=body.kind,
+                text=body.answer,
+                question_id=body.question_id,
+            )
         )
-        
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
-        
-        return {
-            "status": "success",
-            "session_id": payload.session_id,
-            "evaluation": result.get("evaluation", {}),
-            "next_question": result.get("next_question", ""),
-            "agent_used": result.get("agent", "evaluator")
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process answer: {str(e)}")
+        record = await engine.load_owned(body.session_id, str(current_user["_id"]))
+        view = await engine.session_view(record)
+    except EngineError as exc:
+        _handle(exc)
+    response = to_answer_response(result, view)
+    response["turn_request_id"] = body.request_id
+    if response["question_pending"]:
+        return JSONResponse(response, status_code=202)
+    return response
 
-
-# ============ Request Hint ============
 
 @router.post("/hint")
 async def request_hint(
-    payload: HintRequest,
-    current_user=Depends(get_current_user)
+    body: LegacyHintRequest,
+    current_user=Depends(get_current_user),
+    engine=Depends(engine_dependency),
 ):
-    """
-    Request a hint for the current question.
-    
-    Hints come in 3 levels:
-    - Level 1: Small nudge (-5% score)
-    - Level 2: Moderate hint (-10% score)
-    - Level 3: Significant hint (-15% score)
-    """
+    _require_device(body.device_id)
     try:
-        result = await multi_agent_interview.hint(
-            session_id=payload.session_id,
-            level=payload.level
+        record = await engine.load_owned(body.session_id, str(current_user["_id"]))
+        question_id = record.current_question_id or ""
+        result = await engine.request_hint(
+            RequestHintCommand(
+                candidate_id=str(current_user["_id"]),
+                session_id=body.session_id,
+                device_id=body.device_id,
+                hint_idempotency_key=f"{current_user['_id']}:{body.session_id}:{question_id}",
+                question_id=question_id or None,
+            )
         )
-        
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
-        
-        return {
-            "status": "success",
-            "session_id": payload.session_id,
-            "hint": result.get("hint", ""),
-            "hint_level": result.get("hint_level", 1),
-            "score_penalty": f"-{result.get('penalty', 0.05)*100:.0f}%",
-            "total_hints_used": result.get("hints_used", 0),
-            "agent_used": result.get("agent", "hint_provider")
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get hint: {str(e)}")
+    except EngineError as exc:
+        _handle(exc)
+    return to_hint_response(result)
 
-
-# ============ End Interview ============
 
 @router.post("/end")
 async def end_interview(
-    payload: EndInterviewRequest,
-    current_user=Depends(get_current_user)
+    body: LegacyEndRequest,
+    current_user=Depends(get_current_user),
+    engine=Depends(engine_dependency),
 ):
-    """
-    End the interview session and get final results.
-    
-    Returns overall score, performance breakdown, and career coaching.
-    """
+    _require_device(body.device_id)
     try:
-        result = await multi_agent_interview.finish(payload.session_id)
-        
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
-        
-        return {
-            "status": "completed",
-            "session_id": payload.session_id,
-            "final_score": result.get("final_score", 0),
-            "questions_answered": result.get("questions_answered", 0),
-            "hints_used": result.get("hints_used", 0),
-            "performance_breakdown": result.get("performance_breakdown", {}),
-            "career_coaching": result.get("coaching", ""),
-            "agent_used": result.get("agent", "career_coach")
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to end interview: {str(e)}")
-
-
-# ============ Structured Feedback ============
-
-class FeedbackRequest(BaseModel):
-    """Request structured interview feedback."""
-    session_id: str = Field(..., description="Interview session ID")
+        result = await engine.end(
+            EndSessionCommand(
+                candidate_id=str(current_user["_id"]),
+                session_id=body.session_id,
+                device_id=body.device_id,
+                end_command_id=end_command_id(
+                    str(current_user["_id"]), body.session_id, body.end_request_id
+                ),
+                reason="candidate_completed",
+            )
+        )
+    except EngineError as exc:
+        _handle(exc)
+    return to_end_response(result)
 
 
 @router.post("/feedback")
-async def get_interview_feedback(
-    payload: FeedbackRequest,
-    current_user=Depends(get_current_user)
+async def get_feedback(
+    body: LegacyFeedbackRequest,
+    current_user=Depends(get_current_user),
+    engine=Depends(engine_dependency),
 ):
-    """
-    Generate structured AI feedback after interview.
-    Returns 7-dimension analysis: communication, technical depth,
-    confidence, strengths, improvements, suggested answers, overall rating.
-    """
+    _require_device(body.device_id)
     try:
-        result = await multi_agent_interview.feedback(payload.session_id)
+        record = await engine.load_owned(body.session_id, str(current_user["_id"]))
+        if record.device_id != body.device_id:
+            raise DeviceConflict()
+        report = await engine.get_report(str(current_user["_id"]), record.report_id)
+    except EngineError as exc:
+        _handle(exc)
+    if report.outcome == "evaluating":
+        await engine.drain_outbox()
+        report = await engine.get_report(str(current_user["_id"]), record.report_id)
+    body_dict = report.body
+    if report.outcome == "ready" and body_dict is None:
+        body_dict = await engine.build_report_body(report.report_id)
+    return to_feedback_response(report, body_dict)
 
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
 
-        return {
-            "status": "success",
-            "session_id": payload.session_id,
-            "feedback": result
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate feedback: {str(e)}")
-
-
+@router.post("/resume")
+async def resume_interview(
+    body: LegacyResumeRequest,
+    current_user=Depends(get_current_user),
+    engine=Depends(engine_dependency),
+):
+    _require_device(body.device_id)
+    try:
+        result = await engine.resume(
+            ResumeSessionCommand(
+                candidate_id=str(current_user["_id"]),
+                session_id=body.session_id,
+                device_id=body.device_id,
+                command_id=body.command_id,
+            )
+        )
+    except EngineError as exc:
+        _handle(exc)
+    return to_resume_response(result)
 
 
 # ============ Quick Demo ============

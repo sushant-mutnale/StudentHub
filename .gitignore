@@ -29,14 +29,15 @@ env/
 # Environment variables
 .env
 .env.local
-.env.*.local
-.env.production
+.env.*
+!.env.example
 backend/.env
-backend/.env.production
+backend/.env.example
 backend/*.env
 backend/* - Copy.env
 *Copy*.env
 * - Copy.env
+!backend/.env.example
 
 # IDE
 .vscode/
@@ -80,3 +81,9 @@ htmlcov/
 # Database
 *.db
 *.sqlite3
+
+# Runtime uploaded resumes (keep the directory placeholder)
+backend/uploads/resumes/*.pdf
+!backend/uploads/resumes/.gitkeep
+
+.worktrees/

@@ -154,7 +154,8 @@ async def test_multi_agent_conversation_demo(client, student_user, student_token
         json={
             "company": "Google",
             "role": "Software Engineer L4",
-            "difficulty": "hard"
+            "difficulty": "hard",
+            "device_id": "test-device",
         },
         headers=auth_headers(student_token),
     )
@@ -172,7 +173,9 @@ async def test_multi_agent_conversation_demo(client, student_user, student_token
         "/agent-interview/answer",
         json={
             "session_id": session_id,
-            "answer": "I would use dynamic programming with memoization. Create a DP table where dp[i][j] represents the solution for substring s[0:i] and pattern p[0:j]. Base cases: dp[0][0] = true, dp[i][0] = false for i > 0. For each cell, check if characters match or if pattern has wildcard."
+            "answer": "I would use dynamic programming with memoization. Create a DP table where dp[i][j] represents the solution for substring s[0:i] and pattern p[0:j]. Base cases: dp[0][0] = true, dp[i][0] = false for i > 0. For each cell, check if characters match or if pattern has wildcard.",
+            "device_id": "test-device",
+            "request_id": "demo-answer-1",
         },
         headers=auth_headers(student_token),
     )
@@ -180,15 +183,14 @@ async def test_multi_agent_conversation_demo(client, student_user, student_token
     assert resp.status_code == 200
     data = resp.json()
     
-    print(f"\n[EVALUATOR] Agent:")
-    print(f"   Score: {data['evaluation']['score']}/100")
-    print(f"   Feedback: {data['evaluation'].get('feedback', 'N/A')}\n")
+    print(f"\n[INTERVIEWER] Next question:")
+    print(f"   {data.get('next_question', 'N/A')}\n")
     
     # Request hint
     print(f"[HINT] Requesting hint (Level 1)...")
     resp = await client.post(
         "/agent-interview/hint",
-        json={"session_id": session_id, "level": 1},
+        json={"session_id": session_id, "level": 1, "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     
@@ -196,26 +198,22 @@ async def test_multi_agent_conversation_demo(client, student_user, student_token
     data = resp.json()
     
     print(f"\n[HINT PROVIDER] Agent:")
-    print(f"   {data['hint']}")
-    print(f"   Score Penalty: {data['score_penalty']}\n")
+    print(f"   {data['hint']}\n")
     
     # End interview
     print(f"[END] Ending interview...")
     resp = await client.post(
         "/agent-interview/end",
-        json={"session_id": session_id},
+        json={"session_id": session_id, "device_id": "test-device"},
         headers=auth_headers(student_token),
     )
     
     assert resp.status_code == 200
     data = resp.json()
     
-    print(f"\n[CAREER COACH] Agent:")
-    print(f"   Final Score: {data['final_score']}/100")
-    print(f"   Questions Answered: {data['questions_answered']}")
-    print(f"   Hints Used: {data['hints_used']}")
-    print(f"\n   Coaching:")
-    print(f"   {data['career_coaching']}\n")
+    print(f"\n[REPORT] Agent:")
+    print(f"   Report ID: {data.get('report_id')}")
+    print(f"   Report Status: {data.get('report_status')}\n")
     
     print("\n" + "="*80)
     print("  DEMO COMPLETED SUCCESSFULLY")

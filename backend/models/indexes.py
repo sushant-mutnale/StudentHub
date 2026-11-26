@@ -10,6 +10,7 @@ from .user import ensure_user_indexes
 from .notification import ensure_notification_indexes
 from .outbox import ensure_outbox_indexes
 from .post import ensure_post_indexes
+from .interview_engine_indexes import ensure_interview_engine_indexes
 
 
 async def ensure_database_indexes():
@@ -28,4 +29,5 @@ async def ensure_database_indexes():
     await ensure_notification_indexes()
     await ensure_outbox_indexes()
     await ensure_post_indexes()
+    await ensure_interview_engine_indexes()
 

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+import { API_BASE_URL } from '../config/env';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -129,6 +129,8 @@ api.interceptors.response.use(
         `[API] Error ${error.response?.status ?? 'network'} ${original?.url ?? ''}: ${message}`
       );
     }
-    return Promise.reject(new Error(message));
+    const normalizedError = new Error(message);
+    normalizedError.response = error.response;
+    return Promise.reject(normalizedError);
   }
 );

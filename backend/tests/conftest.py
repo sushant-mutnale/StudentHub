@@ -17,10 +17,11 @@ from asgi_lifespan import LifespanManager
 # Force testing mode BEFORE importing app
 os.environ["APP_ENV"] = "testing"
 os.environ["MONGODB_DB"] = "student_hub_test"
+os.environ["MONGODB_URI"] = "mongodb://localhost:27017"
 
 # Force LOCAL Redis for hermetic tests (see root tests/conftest.py)
 os.environ["REDIS_HOST"] = "127.0.0.1"
-os.environ["REDIS_PORT"] = "6380"
+os.environ.setdefault("REDIS_PORT", "6379")
 os.environ["REDIS_USERNAME"] = ""
 os.environ["REDIS_PASSWORD"] = ""
 os.environ["REDIS_SSL"] = "false"
@@ -63,6 +64,11 @@ async def clean_collections(managed_app):
         "session_questions", "session_answers", "posts",
         "notifications", "activities", "outbox_events",
         "multi_agent_sessions", "opportunities_jobs",
+        "interview_engine_sessions", "interview_engine_events",
+        "interview_engine_turns", "interview_engine_evidence",
+        "interview_engine_questions", "interview_engine_hints",
+        "interview_engine_turn_commands", "interview_engine_reports",
+        "interview_engine_outbox",
         "resume_uploads", "resume_cache",
         "saved_searches", "saved_jobs", "recommendation_feedback",
     ]

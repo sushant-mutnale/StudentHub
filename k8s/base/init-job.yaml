@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: studenthub-init
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: studenthub-worker:latest
+          command:
+            - python
+            - -c
+            - import asyncio; from backend.init_jobs import run_init_job; asyncio.run(run_init_job())
+          envFrom:
+            - configMapRef:
+                name: studenthub-config
+            - secretRef:
+                name: studenthub-secrets

@@ -18,6 +18,8 @@ from backend.workers.worker_base import worker_manager
 from backend.workers.outbox_worker import OutboxWorker, OutboxCleanupWorker
 from backend.workers.recommendation_worker import RecommendationWorker
 from backend.workers.notification_worker import NotificationWorker
+from backend.interview_engine.worker import run_interview_engine_outbox
+from backend.worker_health import record_worker_heartbeat
 
 # Configure logging
 logging.basicConfig(
@@ -25,6 +27,23 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+async def record_heartbeat_with_retry(attempts=3, base_delay=0.25, sleep=None):
+    delay = base_delay
+    for attempt in range(attempts):
+        try:
+            await record_worker_heartbeat()
+            return
+        except Exception:
+            if attempt == attempts - 1:
+                logger.warning(
+                    "worker heartbeat failed after %s attempts", attempts
+                )
+                return
+            await (sleep or asyncio.sleep)(delay)
+            delay *= 2
+
 
 async def main():
     """Main worker entry point."""
@@ -57,6 +76,7 @@ async def main():
     # 4. Keep Alive / Handle Shutdown
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
+    engine_task = asyncio.create_task(run_interview_engine_outbox(stop_event=stop_event))
     
     def handle_signal():
         logger.info("Shutdown signal received")
@@ -72,13 +92,18 @@ async def main():
         pass
 
     try:
-        # Wait until asked to stop
         while not stop_event.is_set():
+            await record_heartbeat_with_retry()
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received")
     finally:
         logger.info("Shutting down workers...")
+        engine_task.cancel()
+        try:
+            await engine_task
+        except asyncio.CancelledError:
+            pass
         await worker_manager.stop_all()
         await close_mongo_connection()
         logger.info("Worker Service Stopped")

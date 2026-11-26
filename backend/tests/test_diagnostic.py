@@ -107,7 +107,7 @@ async def test_diag_agent_interview(client, student_user, student_token):
     # Start
     resp = await client.post(
         "/agent-interview/start",
-        json={"company": "Google", "role": "Software Engineer", "difficulty": "medium"},
+        json={"company": "Google", "role": "Software Engineer", "difficulty": "medium", "device_id": "diag-device"},
         headers=auth_headers(student_token),
     )
     pretty("POST /agent-interview/start", resp)
@@ -120,6 +120,8 @@ async def test_diag_agent_interview(client, student_user, student_token):
         json={
             "session_id": session_id,
             "answer": "I would use dynamic programming to solve this. Break the problem into subproblems and build up the solution bottom-up.",
+            "device_id": "diag-device",
+            "request_id": "diag-answer-1",
         },
         headers=auth_headers(student_token),
     )
@@ -129,7 +131,7 @@ async def test_diag_agent_interview(client, student_user, student_token):
     # Hint
     resp = await client.post(
         "/agent-interview/hint",
-        json={"session_id": session_id, "level": 1},
+        json={"session_id": session_id, "level": 1, "device_id": "diag-device"},
         headers=auth_headers(student_token),
     )
     pretty("POST /agent-interview/hint", resp)
@@ -138,7 +140,7 @@ async def test_diag_agent_interview(client, student_user, student_token):
     # End
     resp = await client.post(
         "/agent-interview/end",
-        json={"session_id": session_id},
+        json={"session_id": session_id, "device_id": "diag-device"},
         headers=auth_headers(student_token),
     )
     pretty("POST /agent-interview/end", resp)

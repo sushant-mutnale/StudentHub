@@ -3,6 +3,8 @@ from pydantic import model_validator, Field
 from typing import List, Optional
 from pathlib import Path
 
+from .config_validation import validate_runtime_settings
+
 # Get the directory where this config file lives
 CONFIG_DIR = Path(__file__).parent
 
@@ -83,22 +85,30 @@ class Settings(BaseSettings):
     rate_limit_ai: str = "10/minute"
     rate_limit_auth: str = "5/minute"
 
+    groq_api_key_1: Optional[str] = None
+    groq_api_key_2: Optional[str] = None
+    groq_api_key_3: Optional[str] = None
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_rpm_per_key: int = 25
+    groq_rpd_per_key: int = 900
+    groq_tpm_per_key: int = 7000
+    groq_tpd_per_key: int = 180000
+    groq_max_wait_seconds: int = 60
+    groq_request_timeout_seconds: int = 30
+    groq_reasoning_effort: str = "low"
+    groq_llm_enabled: bool = False
+
     class Config:
         env_file = str(CONFIG_DIR / ".env")
         env_file_encoding = "utf-8"
         env_prefix = ""
 
     @model_validator(mode="after")
-    def _validate_production_secrets(self) -> "Settings":
-        """Enforce that production deployments use a real JWT secret."""
-        if (
-            self.app_env == "production"
-            and self.jwt_secret == "dev-only-change-me-in-production"
-        ):
-            raise ValueError(
-                "JWT_SECRET must be changed from the default value in production. "
-                "Set a strong random secret in your environment variables."
-            )
+    def _validate_runtime_settings(self) -> "Settings":
+        errors = validate_runtime_settings(self)
+        if errors:
+            raise ValueError("; ".join(errors))
         return self
 
     @property

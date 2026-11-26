@@ -1,0 +1,17 @@
+title = "StudentHub gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Historical backend/.env.production entries pending an authorized history purge"
+condition = "AND"
+commits = [
+  "451102e1c3c84f9ba35685be94cc19988ad2f4e6",
+  "62caa901961dc259fa42d5d04188e45226025376",
+]
+paths = ['''^backend/\.env\.production$''']
+
+[[allowlists]]
+description = "Placeholder-only templates and testing documentation"
+paths = ['''^backend/\.env\.example$''', '''^backend/docs/TESTING_NOTES\.md$''']
