@@ -1,12 +1,15 @@
 import logging
 from datetime import datetime, timedelta
 
+from .config import settings
+from .logging_config import configure_logging
+
+configure_logging(settings.app_env)
 logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import settings
 from .database import close_mongo_connection, connect_to_mongo, get_database
 from .models.indexes import ensure_database_indexes
 from .routes import (
@@ -64,8 +67,13 @@ from bson.errors import InvalidId
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(
-        f"Unhandled exception on {request.method} {request.url.path}: {exc}",
-        exc_info=True
+        {
+            "event": "unhandled_exception",
+            "method": request.method,
+            "path": request.url.path,
+            "error": str(exc),
+        },
+        exc_info=True,
     )
     return JSONResponse(
         status_code=500,
@@ -82,15 +90,36 @@ async def invalid_id_exception_handler(request: Request, exc: InvalidId):
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     import time
-    logger.info(f"Incoming Request: {request.method} {request.url.path}")
+    logger.info(
+        {
+            "event": "request.started",
+            "method": request.method,
+            "path": request.url.path,
+        }
+    )
     start_time = time.time()
     try:
         response = await call_next(request)
-        process_time = time.time() - start_time
-        logger.info(f"Request Completed: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.4f}s")
+        logger.info(
+            {
+                "event": "request.completed",
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "duration_seconds": round(time.time() - start_time, 4),
+            }
+        )
         return response
     except Exception as e:
-        logger.error(f"Request Failed: {request.method} {request.url.path} - Error: {str(e)}")
+        logger.error(
+            {
+                "event": "request.failed",
+                "method": request.method,
+                "path": request.url.path,
+                "error": str(e),
+            },
+            exc_info=True,
+        )
         raise e
 
 from starlette.middleware.base import BaseHTTPMiddleware
