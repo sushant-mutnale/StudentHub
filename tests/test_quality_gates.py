@@ -21,3 +21,17 @@ def test_summary_lines_are_ignored():
     ]
 
     assert new_findings(current, []) == []
+
+
+def test_posix_current_matches_windows_baseline():
+    current = ["backend/main.py:1:1: F401 unused import"]
+    baseline = ["backend\\main.py:1:1: F401 unused import"]
+
+    assert new_findings(current, baseline) == []
+
+
+def test_windows_current_matches_posix_baseline():
+    current = ["backend\\main.py:1:1: F401 unused import"]
+    baseline = ["backend/main.py:1:1: F401 unused import"]
+
+    assert new_findings(current, baseline) == []

@@ -6,13 +6,17 @@ ROOT = Path(__file__).resolve().parents[1]
 IGNORED_PREFIXES = ("Success:", "Found ")
 
 
+def _normalize(line):
+    return line.strip().replace("\\", "/")
+
+
 def new_findings(current, baseline):
     current_lines = [
-        line.strip()
+        _normalize(line)
         for line in current
         if line.strip() and not line.strip().startswith(IGNORED_PREFIXES)
     ]
-    baseline_lines = {line.strip() for line in baseline if line.strip()}
+    baseline_lines = {_normalize(line) for line in baseline if line.strip()}
     return [line for line in current_lines if line not in baseline_lines]
 
 
