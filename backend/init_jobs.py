@@ -19,6 +19,8 @@ async def run_startup_ingestion_check():
         needs_ingestion = True
     else:
         last_run = latest_log.get("timestamp")
+        if last_run and last_run.tzinfo is None:
+            last_run = last_run.replace(tzinfo=timezone.utc)
         if last_run and (datetime.now(timezone.utc) - last_run) > timedelta(hours=24):
             needs_ingestion = True
 
@@ -30,12 +32,14 @@ async def run_init_job():
     await connect_to_mongo()
 
     try:
-        await ensure_database_indexes()
-    except Exception:
-        raise
+        try:
+            await ensure_database_indexes()
+        except Exception:
+            raise
 
-    if settings.app_env.lower() != "production":
-        await seed_default_users()
+        if settings.app_env.lower() != "production":
+            await seed_default_users()
 
-    await run_startup_ingestion_check()
-    await close_mongo_connection()
+        await run_startup_ingestion_check()
+    finally:
+        await close_mongo_connection()
