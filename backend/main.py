@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta
 
 from .config import settings
-from .logging_config import configure_logging
+from .logging_config import configure_logging, redact_text
 
 configure_logging(settings.app_env)
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             "event": "unhandled_exception",
             "method": request.method,
             "path": request.url.path,
-            "error": str(exc),
+            "error": redact_text(str(exc)),
         },
         exc_info=True,
     )
@@ -116,7 +116,7 @@ async def log_requests(request: Request, call_next):
                 "event": "request.failed",
                 "method": request.method,
                 "path": request.url.path,
-                "error": str(e),
+                "error": redact_text(str(e)),
             },
             exc_info=True,
         )
