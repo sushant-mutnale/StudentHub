@@ -45,3 +45,20 @@ def test_worker_health_endpoint_returns_state_only(monkeypatch):
         "pending_outbox": 2,
         "heartbeat": True,
     }
+
+
+def test_worker_health_endpoint_degrades_without_error_detail(monkeypatch):
+    async def failing_worker_health():
+        raise RuntimeError("secret://outbox-host")
+
+    monkeypatch.setattr("backend.main.get_worker_health", failing_worker_health)
+
+    response = client.get("/health/worker")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "degraded",
+        "pending_outbox": 0,
+        "heartbeat": False,
+    }
+    assert "secret://outbox-host" not in response.text

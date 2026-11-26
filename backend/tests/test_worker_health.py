@@ -22,6 +22,16 @@ class FakeOutbox:
         return {"pending": 7, "processing": 1, "processed": 10, "failed": 0}
 
 
+class FailingRedis:
+    async def get(self, key):
+        raise RuntimeError("secret://redis-host")
+
+
+class FailingOutbox:
+    async def get_stats(self):
+        raise RuntimeError("secret://outbox-host")
+
+
 @pytest.mark.asyncio
 async def test_worker_health_reports_heartbeat_and_pending_outbox(monkeypatch):
     redis = FakeRedis("2026-11-26T00:00:00+00:00")
@@ -54,6 +64,42 @@ async def test_worker_health_degrades_without_heartbeat(monkeypatch):
 
     assert result["status"] == "degraded"
     assert result["heartbeat"] is False
+
+
+@pytest.mark.asyncio
+async def test_worker_health_degrades_when_redis_fails(monkeypatch):
+    monkeypatch.setattr(
+        worker_health,
+        "RedisClient",
+        SimpleNamespace(get_instance=lambda: FailingRedis()),
+    )
+    monkeypatch.setattr(worker_health, "outbox", FakeOutbox())
+
+    result = await worker_health.get_worker_health()
+
+    assert result == {
+        "status": "degraded",
+        "pending_outbox": 0,
+        "heartbeat": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_worker_health_degrades_when_outbox_fails(monkeypatch):
+    monkeypatch.setattr(
+        worker_health,
+        "RedisClient",
+        SimpleNamespace(get_instance=lambda: FakeRedis("2026-11-26T00:00:00+00:00")),
+    )
+    monkeypatch.setattr(worker_health, "outbox", FailingOutbox())
+
+    result = await worker_health.get_worker_health()
+
+    assert result == {
+        "status": "degraded",
+        "pending_outbox": 0,
+        "heartbeat": False,
+    }
 
 
 @pytest.mark.asyncio

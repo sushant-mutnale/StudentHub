@@ -55,7 +55,7 @@ from .routes import (
 from .utils.auth import hash_password
 from .events.handlers import register_all_handlers
 from .workers import worker_manager, OutboxWorker, OutboxCleanupWorker, RecommendationWorker, RetentionWorker, IngestionWorker
-from .worker_health import get_worker_health
+from .worker_health import DEGRADED_WORKER_HEALTH, get_worker_health
 from .middleware import RateLimitMiddleware, CorrelationIdMiddleware, IdempotencyMiddleware, SecurityHeadersMiddleware
 
 app = FastAPI(title="Student Hub API")
@@ -195,7 +195,10 @@ async def readiness_check():
 
 @app.get("/health/worker", tags=["health"])
 async def worker_health_check():
-    result = await get_worker_health()
+    try:
+        result = await get_worker_health()
+    except Exception:
+        result = dict(DEGRADED_WORKER_HEALTH)
     status_code = 200 if result["status"] == "ok" else 503
     return JSONResponse(status_code=status_code, content=result)
 
