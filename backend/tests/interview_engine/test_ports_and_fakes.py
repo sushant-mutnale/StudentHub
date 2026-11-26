@@ -132,10 +132,13 @@ async def test_deterministic_evaluator_produces_reasons():
 async def test_in_memory_lease_conflicts_and_takeover():
     lease = InMemoryLease()
     assert await lease.acquire("s1", "d1", "t1", 60) is True
+    assert await lease.current("s1") == ("d1", "t1")
     assert await lease.confirm("s1", "d1", "t1") is True
     assert await lease.confirm("s1", "d2", "t2") is False
     assert await lease.acquire("s1", "d2", "t2", 60) is False
-    assert await lease.takeover("s1", "d2", "t2", 60) is True
+    assert (
+        await lease.takeover("s1", "d2", "t2", 60, expected_token="t1") is True
+    )
     assert await lease.confirm("s1", "d2", "t2") is True
     assert await lease.confirm("s1", "d1", "t1") is False
 

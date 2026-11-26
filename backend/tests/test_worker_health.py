@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend import worker_health
+from backend import run_workers, worker_health
 
 
 class FakeRedis:
@@ -116,3 +116,52 @@ async def test_record_worker_heartbeat_uses_short_ttl(monkeypatch):
     assert len(redis.sets) == 1
     assert redis.sets[0][0] == worker_health.WORKER_HEARTBEAT_KEY
     assert redis.sets[0][2] == 60
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_retry_recovers_from_a_transient_failure(monkeypatch):
+    attempts = []
+
+    async def flaky_heartbeat():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise ConnectionError("transient")
+
+    sleeps = []
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(
+        run_workers, "record_worker_heartbeat", flaky_heartbeat
+    )
+
+    await run_workers.record_heartbeat_with_retry(sleep=fake_sleep)
+
+    assert len(attempts) == 2
+    assert sleeps == [0.25]
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_retry_keeps_workers_running_when_redis_is_down(
+    monkeypatch,
+):
+    attempts = []
+
+    async def broken_heartbeat():
+        attempts.append(1)
+        raise ConnectionError("unavailable")
+
+    sleeps = []
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(
+        run_workers, "record_worker_heartbeat", broken_heartbeat
+    )
+
+    await run_workers.record_heartbeat_with_retry(sleep=fake_sleep)
+
+    assert len(attempts) == 3
+    assert sleeps == [0.25, 0.5]

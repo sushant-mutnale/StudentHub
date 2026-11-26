@@ -15,10 +15,12 @@ backend\config.py:66:1: W293 blank line contains whitespace
 backend\config.py:73:1: W293 blank line contains whitespace
 backend\config.py:76:1: W293 blank line contains whitespace
 backend\config.py:81:1: W293 blank line contains whitespace
-backend\config_validation.py:16:80: E501 line too long (83 > 79 characters)
-backend\config_validation.py:17:80: E501 line too long (94 > 79 characters)
-backend\config_validation.py:18:80: E501 line too long (82 > 79 characters)
-backend\config_validation.py:21:80: E501 line too long (95 > 79 characters)
+backend\config_validation.py:22:80: E501 line too long (83 > 79 characters)
+backend\config_validation.py:23:80: E501 line too long (94 > 79 characters)
+backend\config_validation.py:24:80: E501 line too long (82 > 79 characters)
+backend\config_validation.py:27:80: E501 line too long (95 > 79 characters)
+backend\config_validation.py:34:80: E501 line too long (82 > 79 characters)
+backend\config_validation.py:49:80: E501 line too long (82 > 79 characters)
 backend\data\company_interview_data.py:13:80: E501 line too long (138 > 79 characters)
 backend\data\company_interview_data.py:14:80: E501 line too long (140 > 79 characters)
 backend\data\company_interview_data.py:15:80: E501 line too long (156 > 79 characters)
@@ -320,20 +322,17 @@ backend\interview_engine\adapters\mongo_store.py:214:80: E501 line too long (83 
 backend\interview_engine\adapters\mongo_store.py:217:80: E501 line too long (87 > 79 characters)
 backend\interview_engine\adapters\mongo_store.py:234:80: E501 line too long (83 > 79 characters)
 backend\interview_engine\adapters\mongo_store.py:268:80: E501 line too long (81 > 79 characters)
-backend\interview_engine\adapters\redis_lease.py:26:80: E501 line too long (99 > 79 characters)
-backend\interview_engine\adapters\redis_lease.py:28:80: E501 line too long (97 > 79 characters)
-backend\interview_engine\adapters\redis_lease.py:30:80: E501 line too long (81 > 79 characters)
-backend\interview_engine\adapters\redis_lease.py:42:80: E501 line too long (80 > 79 characters)
-backend\interview_engine\adapters\redis_lease.py:44:80: E501 line too long (100 > 79 characters)
-backend\interview_engine\adapters\redis_lease.py:46:80: E501 line too long (88 > 79 characters)
+backend\interview_engine\adapters\redis_lease.py:38:80: E501 line too long (99 > 79 characters)
+backend\interview_engine\adapters\redis_lease.py:40:80: E501 line too long (97 > 79 characters)
+backend\interview_engine\adapters\redis_lease.py:59:80: E501 line too long (81 > 79 characters)
+backend\interview_engine\adapters\redis_lease.py:71:80: E501 line too long (80 > 79 characters)
 backend\interview_engine\adapters\scripted.py:45:80: E501 line too long (93 > 79 characters)
 backend\interview_engine\adapters\scripted.py:46:80: E501 line too long (88 > 79 characters)
 backend\interview_engine\adapters\scripted.py:56:80: E501 line too long (115 > 79 characters)
 backend\interview_engine\adapters\scripted.py:57:80: E501 line too long (83 > 79 characters)
 backend\interview_engine\adapters\scripted.py:59:80: E501 line too long (94 > 79 characters)
 backend\interview_engine\adapters\system.py:23:80: E501 line too long (99 > 79 characters)
-backend\interview_engine\adapters\system.py:29:80: E501 line too long (81 > 79 characters)
-backend\interview_engine\adapters\system.py:33:80: E501 line too long (100 > 79 characters)
+backend\interview_engine\adapters\system.py:32:80: E501 line too long (81 > 79 characters)
 backend\interview_engine\application\engine.py:34:80: E501 line too long (88 > 79 characters)
 backend\interview_engine\application\engine.py:104:80: E501 line too long (86 > 79 characters)
 backend\interview_engine\application\engine.py:122:80: E501 line too long (84 > 79 characters)
@@ -371,20 +370,21 @@ backend\interview_engine\application\engine.py:707:80: E501 line too long (81 > 
 backend\interview_engine\application\engine.py:730:80: E501 line too long (81 > 79 characters)
 backend\interview_engine\application\engine.py:743:80: E501 line too long (81 > 79 characters)
 backend\interview_engine\application\engine.py:767:80: E501 line too long (84 > 79 characters)
-backend\interview_engine\application\engine.py:825:80: E501 line too long (86 > 79 characters)
-backend\interview_engine\application\engine.py:835:80: E501 line too long (83 > 79 characters)
-backend\interview_engine\application\engine.py:864:80: E501 line too long (86 > 79 characters)
-backend\interview_engine\application\engine.py:905:80: E501 line too long (83 > 79 characters)
-backend\interview_engine\application\engine.py:937:80: E501 line too long (86 > 79 characters)
-backend\interview_engine\application\engine.py:986:80: E501 line too long (83 > 79 characters)
-backend\interview_engine\application\engine.py:994:80: E501 line too long (87 > 79 characters)
-backend\interview_engine\application\engine.py:995:80: E501 line too long (95 > 79 characters)
-backend\interview_engine\application\engine.py:1017:80: E501 line too long (85 > 79 characters)
-backend\interview_engine\application\engine.py:1019:80: E501 line too long (82 > 79 characters)
-backend\interview_engine\application\engine.py:1025:80: E501 line too long (85 > 79 characters)
-backend\interview_engine\application\engine.py:1029:80: E501 line too long (82 > 79 characters)
-backend\interview_engine\application\engine.py:1036:80: E501 line too long (87 > 79 characters)
-backend\interview_engine\application\engine.py:1038:1: W391 blank line at end of file
+backend\interview_engine\application\engine.py:822:80: E501 line too long (86 > 79 characters)
+backend\interview_engine\application\engine.py:843:80: E501 line too long (82 > 79 characters)
+backend\interview_engine\application\engine.py:851:80: E501 line too long (83 > 79 characters)
+backend\interview_engine\application\engine.py:880:80: E501 line too long (86 > 79 characters)
+backend\interview_engine\application\engine.py:921:80: E501 line too long (83 > 79 characters)
+backend\interview_engine\application\engine.py:953:80: E501 line too long (86 > 79 characters)
+backend\interview_engine\application\engine.py:1002:80: E501 line too long (83 > 79 characters)
+backend\interview_engine\application\engine.py:1010:80: E501 line too long (87 > 79 characters)
+backend\interview_engine\application\engine.py:1011:80: E501 line too long (95 > 79 characters)
+backend\interview_engine\application\engine.py:1033:80: E501 line too long (85 > 79 characters)
+backend\interview_engine\application\engine.py:1035:80: E501 line too long (82 > 79 characters)
+backend\interview_engine\application\engine.py:1041:80: E501 line too long (85 > 79 characters)
+backend\interview_engine\application\engine.py:1045:80: E501 line too long (82 > 79 characters)
+backend\interview_engine\application\engine.py:1052:80: E501 line too long (87 > 79 characters)
+backend\interview_engine\application\engine.py:1054:1: W391 blank line at end of file
 backend\interview_engine\application\report_builder.py:12:80: E501 line too long (88 > 79 characters)
 backend\interview_engine\application\report_builder.py:25:80: E501 line too long (89 > 79 characters)
 backend\interview_engine\application\report_builder.py:36:80: E501 line too long (90 > 79 characters)
@@ -2143,21 +2143,20 @@ backend\run_workers.py:19:1: E402 module level import not at top of file
 backend\run_workers.py:20:1: E402 module level import not at top of file
 backend\run_workers.py:21:1: E402 module level import not at top of file
 backend\run_workers.py:22:1: E402 module level import not at top of file
-backend\run_workers.py:31:1: E302 expected 2 blank lines, found 1
-backend\run_workers.py:34:1: W293 blank line contains whitespace
-backend\run_workers.py:37:1: W293 blank line contains whitespace
-backend\run_workers.py:42:1: W293 blank line contains whitespace
-backend\run_workers.py:45:1: W293 blank line contains whitespace
-backend\run_workers.py:50:70: W291 trailing whitespace
 backend\run_workers.py:51:1: W293 blank line contains whitespace
-backend\run_workers.py:54:66: W291 trailing whitespace
-backend\run_workers.py:55:1: W293 blank line contains whitespace
-backend\run_workers.py:58:1: W293 blank line contains whitespace
-backend\run_workers.py:62:80: E501 line too long (89 > 79 characters)
-backend\run_workers.py:63:1: W293 blank line contains whitespace
-backend\run_workers.py:68:80: E501 line too long (82 > 79 characters)
-backend\run_workers.py:74:80: E501 line too long (80 > 79 characters)
-backend\run_workers.py:98:1: W293 blank line contains whitespace
+backend\run_workers.py:54:1: W293 blank line contains whitespace
+backend\run_workers.py:59:1: W293 blank line contains whitespace
+backend\run_workers.py:62:1: W293 blank line contains whitespace
+backend\run_workers.py:67:70: W291 trailing whitespace
+backend\run_workers.py:68:1: W293 blank line contains whitespace
+backend\run_workers.py:71:66: W291 trailing whitespace
+backend\run_workers.py:72:1: W293 blank line contains whitespace
+backend\run_workers.py:75:1: W293 blank line contains whitespace
+backend\run_workers.py:79:80: E501 line too long (89 > 79 characters)
+backend\run_workers.py:80:1: W293 blank line contains whitespace
+backend\run_workers.py:85:80: E501 line too long (82 > 79 characters)
+backend\run_workers.py:91:80: E501 line too long (80 > 79 characters)
+backend\run_workers.py:115:1: W293 blank line contains whitespace
 backend\schemas\__init__.py:4:1: W391 blank line at end of file
 backend\schemas\application_schema.py:84:28: E261 at least two spaces before inline comment
 backend\schemas\auth_schema.py:25:1: E302 expected 2 blank lines, found 1
@@ -2764,8 +2763,8 @@ backend\services\answer_evaluator.py:972:1: W293 blank line contains whitespace
 backend\services\audit_service.py:12:1: E302 expected 2 blank lines, found 1
 backend\services\audit_service.py:21:1: E302 expected 2 blank lines, found 1
 backend\services\audit_service.py:23:1: W293 blank line contains whitespace
-backend\services\audit_service.py:32:16: E251 unexpected spaces around keyword / parameter equals
-backend\services\audit_service.py:32:18: E251 unexpected spaces around keyword / parameter equals
+backend\services\audit_service.py:32:16: E251 unexpected spaces around keyword \ parameter equals
+backend\services\audit_service.py:32:18: E251 unexpected spaces around keyword \ parameter equals
 backend\services\audit_service.py:41:1: W293 blank line contains whitespace
 backend\services\audit_service.py:52:1: E305 expected 2 blank lines after class or function definition, found 1
 backend\services\background_scheduler.py:6:1: F401 'os' imported but unused
@@ -5315,27 +5314,28 @@ backend\tests\interview_engine\test_e2e_practice_slice.py:43:80: E501 line too l
 backend\tests\interview_engine\test_e2e_practice_slice.py:68:80: E501 line too long (82 > 79 characters)
 backend\tests\interview_engine\test_engine_analyzer_guard.py:6:80: E501 line too long (88 > 79 characters)
 backend\tests\interview_engine\test_engine_analyzer_guard.py:8:80: E501 line too long (94 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:11:80: E501 line too long (88 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:14:80: E501 line too long (86 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:78:80: E501 line too long (86 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:248:80: E501 line too long (88 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:300:80: E501 line too long (84 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:305:80: E501 line too long (89 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:362:80: E501 line too long (80 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:367:80: E501 line too long (89 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:402:80: E501 line too long (84 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:454:80: E501 line too long (94 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:486:80: E501 line too long (84 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:542:80: E501 line too long (96 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:567:80: E501 line too long (88 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:603:80: E501 line too long (84 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:610:80: E501 line too long (82 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:611:80: E501 line too long (93 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:634:80: E501 line too long (85 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:642:80: E501 line too long (83 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:643:80: E501 line too long (94 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:693:80: E501 line too long (84 > 79 characters)
-backend\tests\interview_engine\test_engine_lifecycle.py:728:1: W391 blank line at end of file
+backend\tests\interview_engine\test_engine_lifecycle.py:12:80: E501 line too long (88 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:15:80: E501 line too long (86 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:82:80: E501 line too long (86 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:254:80: E501 line too long (83 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:358:80: E501 line too long (88 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:410:80: E501 line too long (84 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:415:80: E501 line too long (89 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:472:80: E501 line too long (80 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:477:80: E501 line too long (89 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:512:80: E501 line too long (84 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:564:80: E501 line too long (94 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:596:80: E501 line too long (84 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:652:80: E501 line too long (96 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:677:80: E501 line too long (88 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:713:80: E501 line too long (84 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:720:80: E501 line too long (82 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:721:80: E501 line too long (93 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:744:80: E501 line too long (85 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:752:80: E501 line too long (83 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:753:80: E501 line too long (94 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:803:80: E501 line too long (84 > 79 characters)
+backend\tests\interview_engine\test_engine_lifecycle.py:838:1: W391 blank line at end of file
 backend\tests\interview_engine\test_engine_start.py:12:80: E501 line too long (88 > 79 characters)
 backend\tests\interview_engine\test_engine_start.py:15:80: E501 line too long (81 > 79 characters)
 backend\tests\interview_engine\test_engine_start.py:16:80: E501 line too long (91 > 79 characters)
@@ -5407,7 +5407,7 @@ backend\tests\interview_engine\test_ports_and_fakes.py:103:80: E501 line too lon
 backend\tests\interview_engine\test_ports_and_fakes.py:104:80: E501 line too long (87 > 79 characters)
 backend\tests\interview_engine\test_ports_and_fakes.py:105:80: E501 line too long (83 > 79 characters)
 backend\tests\interview_engine\test_ports_and_fakes.py:122:80: E501 line too long (86 > 79 characters)
-backend\tests\interview_engine\test_ports_and_fakes.py:239:80: E501 line too long (86 > 79 characters)
+backend\tests\interview_engine\test_ports_and_fakes.py:242:80: E501 line too long (86 > 79 characters)
 backend\tests\interview_engine\test_report_builder.py:3:80: E501 line too long (94 > 79 characters)
 backend\tests\interview_engine\test_report_builder.py:4:80: E501 line too long (97 > 79 characters)
 backend\tests\interview_engine\test_report_builder.py:5:80: E501 line too long (96 > 79 characters)

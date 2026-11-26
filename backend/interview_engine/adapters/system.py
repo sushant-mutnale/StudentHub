@@ -26,11 +26,24 @@ class InMemoryLease:
         self._leases[session_id] = (device_id, token)
         return True
 
+    async def current(self, session_id: str):
+        return self._leases.get(session_id)
+
     async def confirm(self, session_id: str, device_id: str, token: str) -> bool:
         held = self._leases.get(session_id)
         return held == (device_id, token)
 
-    async def takeover(self, session_id: str, device_id: str, token: str, ttl_seconds: int) -> bool:
+    async def takeover(
+        self,
+        session_id: str,
+        device_id: str,
+        token: str,
+        ttl_seconds: int,
+        expected_token: str,
+    ) -> bool:
+        held = self._leases.get(session_id)
+        if held is not None and held[1] != expected_token:
+            return False
         self._leases[session_id] = (device_id, token)
         return True
 

@@ -3,7 +3,7 @@ import json
 import pytest
 
 from backend.interview_engine.adapters.memory_store import InMemorySessionStore
-from backend.interview_engine.adapters.redis_lease import RedisLease
+from backend.interview_engine.adapters.redis_lease import _TAKEOVER, RedisLease
 from backend.interview_engine.adapters.system import InMemoryLease
 
 
@@ -24,7 +24,16 @@ class FakeRedis:
         return self.values.get(key)
 
     async def eval(self, script, numkeys, *args):
-        key, token = args[0], args[1]
+        key = args[0]
+        if script == _TAKEOVER:
+            expected, value, ttl = args[1], args[2], args[3]
+            raw = self.values.get(key)
+            if raw is not None and json.loads(raw).get("token") != expected:
+                return 0
+            self.values[key] = value
+            self.expiries[key] = int(ttl)
+            return 1
+        token = args[1]
         raw = self.values.get(key)
         if raw is None:
             return 0
@@ -41,10 +50,36 @@ async def test_redis_lease_acquire_confirm_takeover():
     assert await lease.acquire("s1", "d2", "t2", 60) is False
     assert await lease.confirm("s1", "d1", "t1") is True
     assert await lease.confirm("s1", "d2", "t2") is False
-    assert await lease.takeover("s1", "d2", "t2", 60) is True
+    assert (
+        await lease.takeover("s1", "d2", "t2", 60, expected_token="t1") is True
+    )
     assert await lease.confirm("s1", "d2", "t2") is True
     await lease.release("s1", "t2")
     assert await lease.acquire("s1", "d3", "t3", 60) is True
+
+
+@pytest.mark.asyncio
+async def test_current_returns_the_lease_holder():
+    lease = RedisLease(FakeRedis())
+    assert await lease.current("s1") is None
+    assert await lease.acquire("s1", "d1", "t1", 60) is True
+    assert await lease.current("s1") == ("d1", "t1")
+
+
+@pytest.mark.asyncio
+async def test_takeover_ignores_a_stale_lease():
+    lease = RedisLease(FakeRedis())
+    assert await lease.acquire("s1", "d1", "t1", 60) is True
+    assert (
+        await lease.takeover(
+            "s1", "d2", "t2", 60, expected_token="stale"
+        ) is False
+    )
+    assert await lease.confirm("s1", "d1", "t1") is True
+    assert (
+        await lease.takeover("s1", "d2", "t2", 60, expected_token="t1") is True
+    )
+    assert await lease.confirm("s1", "d2", "t2") is True
 
 
 @pytest.mark.asyncio
@@ -90,6 +125,37 @@ async def test_release_script_is_token_guarded_in_real_redis():
 
 
 @pytest.mark.asyncio
+async def test_takeover_script_is_token_guarded_in_real_redis():
+    import os
+
+    import redis.asyncio as aioredis
+
+    port = int(os.environ.get("REDIS_PORT", "6379"))
+    client = aioredis.Redis(host="localhost", port=port, decode_responses=True)
+    try:
+        await client.ping()
+    except Exception:
+        pytest.skip(f"no Redis reachable on localhost:{port}")
+
+    key = "interview_engine:lease:fix5-probe"
+    try:
+        await client.delete(key)
+        lease = RedisLease(client)
+        assert await lease.acquire("fix5-probe", "d1", "t1", 60) is True
+        assert await lease.takeover(
+            "fix5-probe", "d2", "t2", 60, expected_token="stale"
+        ) is False
+        assert await lease.confirm("fix5-probe", "d1", "t1") is True
+        assert await lease.takeover(
+            "fix5-probe", "d2", "t2", 60, expected_token="t1"
+        ) is True
+        assert await lease.confirm("fix5-probe", "d2", "t2") is True
+    finally:
+        await client.delete(key)
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_lease_ttl_and_per_session_keys():
     redis = FakeRedis()
     lease = RedisLease(redis)
@@ -107,7 +173,9 @@ async def test_acquire_and_takeover_return_strict_bools_for_a_raw_ok_reply():
     redis.set_reply = "OK"
     lease = RedisLease(redis)
     assert await lease.acquire("s1", "d1", "t1", 60) is True
-    assert await lease.takeover("s1", "d2", "t2", 60) is True
+    assert (
+        await lease.takeover("s1", "d2", "t2", 60, expected_token="t1") is True
+    )
 
 
 @pytest.mark.asyncio

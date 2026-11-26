@@ -28,6 +28,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+async def record_heartbeat_with_retry(attempts=3, base_delay=0.25, sleep=None):
+    delay = base_delay
+    for attempt in range(attempts):
+        try:
+            await record_worker_heartbeat()
+            return
+        except Exception:
+            if attempt == attempts - 1:
+                logger.warning(
+                    "worker heartbeat failed after %s attempts", attempts
+                )
+                return
+            await (sleep or asyncio.sleep)(delay)
+            delay *= 2
+
+
 async def main():
     """Main worker entry point."""
     logger.info("Starting Worker Service...")
@@ -76,7 +93,7 @@ async def main():
 
     try:
         while not stop_event.is_set():
-            await record_worker_heartbeat()
+            await record_heartbeat_with_retry()
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received")

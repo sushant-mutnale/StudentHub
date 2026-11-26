@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 
 import pytest
@@ -27,14 +28,17 @@ from backend.interview_engine.errors import (
     NoReport,
     PauseLimitReached,
     QuestionPendingConflict,
+    VersionConflict,
 )
 
 
-def _build(store=None, engine_class=InterviewEngine, **engine_kwargs):
+def _build(
+    store=None, engine_class=InterviewEngine, lease=None, **engine_kwargs
+):
     store = store or InMemorySessionStore()
     engine = engine_class(
         store=store,
-        lease=InMemoryLease(),
+        lease=lease or InMemoryLease(),
         clock=SystemClock(),
         ids=UuidIds(),
         analyzer=ScriptedAnalyzer([]),
@@ -162,6 +166,112 @@ async def test_hint_budget_is_bounded():
     await engine.request_hint(_hint(start, "h3"))
     with pytest.raises(HintLimitReached):
         await engine.request_hint(_hint(start, "h4"))
+
+
+class _RecordingLease(InMemoryLease):
+    def __init__(self, calls):
+        super().__init__()
+        self.calls = calls
+
+    async def takeover(
+        self, session_id, device_id, token, ttl_seconds, expected_token
+    ):
+        self.calls.append("lease")
+        return await super().takeover(
+            session_id, device_id, token, ttl_seconds, expected_token
+        )
+
+
+class _FailingStore(InMemorySessionStore):
+    def __init__(self, calls):
+        super().__init__()
+        self.calls = calls
+        self.fail_replace = False
+
+    async def replace(self, record, expected_version):
+        self.calls.append("persist")
+        if self.fail_replace:
+            raise VersionConflict()
+        return await super().replace(record, expected_version)
+
+
+@pytest.mark.asyncio
+async def test_resume_does_not_publish_lease_when_persist_fails():
+    calls = []
+    store = _FailingStore(calls)
+    lease = _RecordingLease(calls)
+    engine, _ = _build(store=store, lease=lease)
+    start = await _started(engine)
+    before = await store.load(start.session_id)
+    calls.clear()
+    store.fail_replace = True
+
+    with pytest.raises(VersionConflict):
+        await engine.resume(_resume(start, device_id="d2"))
+
+    assert calls == ["persist"]
+    after = await store.load(start.session_id)
+    assert after.fencing_token == before.fencing_token
+    assert await lease.confirm(start.session_id, "d1", start.fencing_token)
+
+
+@pytest.mark.asyncio
+async def test_resume_rejects_a_stale_lease_and_restores_persisted_owner():
+    engine, store = _build()
+    start = await _started(engine)
+    await engine.lease.takeover(
+        start.session_id, "d-other", "stale-token", 60,
+        expected_token=start.fencing_token,
+    )
+
+    with pytest.raises(VersionConflict):
+        await engine.resume(_resume(start, device_id="d2"))
+
+    persisted = await store.load(start.session_id)
+    assert persisted.fencing_token == "stale-token"
+    assert persisted.device_id == "d-other"
+    assert await engine.lease.confirm(
+        start.session_id, "d-other", "stale-token"
+    )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_resumes_keep_persisted_and_redis_owners_equal():
+    class _YieldingStore(InMemorySessionStore):
+        async def replace(self, record, expected_version):
+            await asyncio.sleep(0)
+            return await super().replace(record, expected_version)
+
+    engine, store = _build(store=_YieldingStore())
+    start = await _started(engine)
+
+    results = await asyncio.gather(
+        engine.resume(_resume(start, device_id="d2", command_id=None)),
+        engine.resume(_resume(start, device_id="d3", command_id=None)),
+        return_exceptions=True,
+    )
+
+    successes = [result for result in results if not isinstance(result, Exception)]
+    assert len(successes) >= 1
+    persisted = await store.load(start.session_id)
+    holder = await engine.lease.current(start.session_id)
+    assert holder is not None
+    assert (persisted.device_id, persisted.fencing_token) == holder
+    assert await engine.lease.confirm(start.session_id, holder[0], holder[1])
+
+
+@pytest.mark.asyncio
+async def test_successful_resume_publishes_the_persisted_token():
+    engine, store = _build()
+    start = await _started(engine)
+
+    resumed = await engine.resume(_resume(start, device_id="d2"))
+
+    persisted = await store.load(start.session_id)
+    assert persisted.fencing_token == resumed.fencing_token
+    assert await engine.lease.confirm(
+        start.session_id, "d2", resumed.fencing_token
+    )
 
 
 @pytest.mark.asyncio

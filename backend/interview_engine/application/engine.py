@@ -771,9 +771,6 @@ class InterviewEngine:
         if paused and not cmd.command_id:
             raise CommandIdRequired()
         token = self.ids.new_token()
-        await self.lease.takeover(
-            cmd.session_id, cmd.device_id, token, self.lease_ttl_seconds
-        )
         async with self.store.transaction():
             current = await self.store.load(cmd.session_id)
             if current is None:
@@ -826,6 +823,25 @@ class InterviewEngine:
                 raise VersionConflict()
             for event in events:
                 await self.store.append_event(event)
+        published = await self.lease.takeover(
+            cmd.session_id,
+            cmd.device_id,
+            token,
+            self.lease_ttl_seconds,
+            expected_token=record.fencing_token,
+        )
+        if not published:
+            holder = await self.lease.current(cmd.session_id)
+            restored = record.copy(deep=True)
+            if holder is not None:
+                restored.device_id, restored.fencing_token = holder
+            async with self.store.transaction():
+                fresh = await self.store.load(cmd.session_id)
+                if fresh is None:
+                    raise VersionConflict()
+                restored.version = fresh.version
+                await self.store.replace(restored, expected_version=fresh.version)
+            raise VersionConflict()
         return await self._resume_result(cmd.session_id, current)
 
     async def _resume_result(
