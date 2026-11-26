@@ -19,6 +19,7 @@ from backend.workers.outbox_worker import OutboxWorker, OutboxCleanupWorker
 from backend.workers.recommendation_worker import RecommendationWorker
 from backend.workers.notification_worker import NotificationWorker
 from backend.interview_engine.worker import run_interview_engine_outbox
+from backend.worker_health import record_worker_heartbeat
 
 # Configure logging
 logging.basicConfig(
@@ -74,8 +75,8 @@ async def main():
         pass
 
     try:
-        # Wait until asked to stop
         while not stop_event.is_set():
+            await record_worker_heartbeat()
             await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received")

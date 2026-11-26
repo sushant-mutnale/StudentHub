@@ -55,6 +55,7 @@ from .routes import (
 from .utils.auth import hash_password
 from .events.handlers import register_all_handlers
 from .workers import worker_manager, OutboxWorker, OutboxCleanupWorker, RecommendationWorker, RetentionWorker, IngestionWorker
+from .worker_health import get_worker_health
 from .middleware import RateLimitMiddleware, CorrelationIdMiddleware, IdempotencyMiddleware, SecurityHeadersMiddleware
 
 app = FastAPI(title="Student Hub API")
@@ -165,36 +166,38 @@ async def health_check():
 
 @app.get("/health/ready", tags=["health"])
 async def readiness_check():
-    """Deep readiness check — verifies DB and Redis connectivity."""
-    checks = {}
+    checks = {"mongodb": "ok", "redis": "ok"}
     overall = "ready"
-    
-    # Check MongoDB
+
     try:
         db = get_database()
         await db.command("ping")
-        checks["mongodb"] = "ok"
-    except Exception as e:
-        checks["mongodb"] = f"error: {str(e)}"
+    except Exception:
+        checks["mongodb"] = "error"
         overall = "degraded"
-    
-    # Check Redis
+
     try:
         from .redis_client import RedisClient
         ok = await RedisClient.ping()
-        checks["redis"] = "ok" if ok else "error: ping failed"
         if not ok:
+            checks["redis"] = "error"
             overall = "degraded"
-    except Exception as e:
-        checks["redis"] = f"error: {str(e)}"
+    except Exception:
+        checks["redis"] = "error"
         overall = "degraded"
-    
+
     status_code = 200 if overall == "ready" else 503
-    from fastapi.responses import JSONResponse
     return JSONResponse(
         status_code=status_code,
-        content={"status": overall, "checks": checks, "version": "1.0.0"}
+        content={"status": overall, "checks": checks, "version": "1.0.0"},
     )
+
+
+@app.get("/health/worker", tags=["health"])
+async def worker_health_check():
+    result = await get_worker_health()
+    status_code = 200 if result["status"] == "ok" else 503
+    return JSONResponse(status_code=status_code, content=result)
 
 
 @app.on_event("startup")
