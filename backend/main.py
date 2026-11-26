@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime, timedelta
 
 from .config import settings
 from .logging_config import configure_logging, redact_text
@@ -52,9 +51,9 @@ from .routes import (
     demo_routes,
     sidebar_routes,
 )
-from .utils.auth import hash_password
+from .seed import seed_default_users
 from .events.handlers import register_all_handlers
-from .workers import worker_manager, OutboxWorker, OutboxCleanupWorker, RecommendationWorker, RetentionWorker, IngestionWorker
+from .workers import worker_manager
 from .worker_health import DEGRADED_WORKER_HEALTH, get_worker_health
 from .middleware import RateLimitMiddleware, CorrelationIdMiddleware, IdempotencyMiddleware, SecurityHeadersMiddleware
 
@@ -206,61 +205,11 @@ async def worker_health_check():
 @app.on_event("startup")
 async def startup_event():
     await connect_to_mongo()
-    try:
-        await ensure_database_indexes()
-    except Exception as e:
-        logger.warning(f"Failed to ensure database indexes: {e}")
-    
-    # Initialize Event-Driven System
     register_all_handlers()
-    
-    # Start Background Workers (skip during testing to avoid loop conflicts)
-    if settings.app_env != "testing":
-        worker_manager.register(OutboxWorker(poll_interval=2.0))
-        worker_manager.register(OutboxCleanupWorker(poll_interval=3600))
-        worker_manager.register(RecommendationWorker(poll_interval=300))
-        worker_manager.register(RetentionWorker(poll_interval=86400))
-        worker_manager.register(IngestionWorker(poll_interval=43200)) # 12 hours
-        from .workers.rag_worker import RAGWorker
-        worker_manager.register(RAGWorker())
-        await worker_manager.start_all()
-        
-        # Check if we need immediate ingestion (startup check)
-        from .services.opportunity_ingestion import ingestion_log_collection, opportunity_ingestion
-        from datetime import timedelta
-        
-        try:
-            latest_log = await ingestion_log_collection().find_one(sort=[("timestamp", -1)])
-            
-            needs_ingestion = False
-            if not latest_log:
-                # No logs exist, run first time
-                needs_ingestion = True
-            else:
-                last_run = latest_log.get("timestamp")
-                if last_run and (datetime.utcnow() - last_run) > timedelta(hours=24):
-                    # More than 24h since last run
-                    needs_ingestion = True
-                    
-            if needs_ingestion:
-                logger.info("Running initial opportunity ingestion check on startup...")
-                # Fire and forget
-                import asyncio
-                asyncio.create_task(opportunity_ingestion.ingest_all(use_mock=False))
-        except Exception as e:
-            logger.error(f"Failed to check ingestion status on startup: {e}")
-    
-    if settings.app_env.lower() != "production":
-        try:
-            await seed_default_users()
-        except Exception as e:
-            logger.warning(f"Failed to seed default users: {e}")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    if settings.app_env != "testing":
-        await worker_manager.stop_all()
     await close_mongo_connection()
 
 
@@ -303,139 +252,6 @@ app.include_router(saved_search_routes.router)
 app.include_router(demo_routes.router, tags=["demo"])
 app.include_router(sidebar_routes.router)
 
-async def seed_default_users():
-    db = get_database()
-    if await db["users"].count_documents({}) > 3:
-        return
-    now = datetime.utcnow()
-    
-    # 1. Seed Diverse Users for Suggestions
-    demo_users = [
-        {
-            "role": "student",
-            "username": "demo_student",
-            "email": "student@example.com",
-            "password_hash": hash_password("Student@123"),
-            "full_name": "Demo Student",
-            "prn": "PRN00123",
-            "college": "Sample University",
-            "branch": "Computer Science",
-            "year": "3rd Year",
-            "skills": ["React", "Python", "MongoDB"],
-            "connections": [],
-            "created_at": now,
-            "updated_at": now,
-        },
-        {
-            "role": "student",
-            "username": "alice_coder",
-            "email": "alice@example.com",
-            "password_hash": hash_password("Alice@123"),
-            "full_name": "Alice Johnson",
-            "prn": "PRN00456",
-            "college": "Sample University",
-            "branch": "Computer Science",
-            "year": "3rd Year",
-            "skills": ["React", "JavaScript", "UI Design"],
-            "connections": [],
-            "created_at": now,
-            "updated_at": now,
-        },
-        {
-            "role": "student",
-            "username": "bob_data",
-            "email": "bob@example.com",
-            "password_hash": hash_password("Bob@123"),
-            "full_name": "Bob Smith",
-            "prn": "PRN00789",
-            "college": "Tech Institute",
-            "branch": "IT",
-            "year": "2nd Year",
-            "skills": ["Python", "SQL", "Data Science"],
-            "connections": [],
-            "created_at": now,
-            "updated_at": now,
-        },
-        {
-            "role": "student",
-            "username": "charlie_dev",
-            "email": "charlie@example.com",
-            "password_hash": hash_password("Charlie@123"),
-            "full_name": "Charlie Brown",
-            "prn": "PRN00111",
-            "college": "Sample University",
-            "branch": "Data Science",
-            "year": "4th Year",
-            "skills": ["Python", "Machine Learning", "FastAPI"],
-            "connections": [],
-            "created_at": now,
-            "updated_at": now,
-        },
-        {
-            "role": "recruiter",
-            "username": "demo_recruiter",
-            "email": "recruiter@example.com",
-            "password_hash": hash_password("Recruiter@123"),
-            "company_name": "Talent Seekers",
-            "contact_number": "+1-555-0101",
-            "website": "https://talentseekers.example.com",
-            "company_description": "Connecting graduates with dream jobs.",
-            "skills": [],
-            "connections": [],
-            "created_at": now,
-            "updated_at": now,
-        }
-    ]
-    
-    for u in demo_users:
-        if not await db["users"].find_one({"username": u["username"]}):
-            await db["users"].insert_one(u)
-
-    # 2. Seed Opportunities if empty
-    if await db["opportunities_hackathons"].count_documents({}) == 0:
-        await db["opportunities_hackathons"].insert_many([
-            {
-                "source": "seed",
-                "source_id": "seed_h1",
-                "event_url": "https://devpost.com/hackathons",
-                "event_name": "Global AI Challenge 2026",
-                "organizer": "Google Cloud",
-                "theme_tags": ["AI", "ML", "Cloud"],
-                "start_date": now + timedelta(days=20),
-                "status": "open"
-            },
-            {
-                "source": "seed",
-                "source_id": "seed_h2",
-                "event_url": "https://devpost.com/hackathons",
-                "event_name": "Web3 Innovation Summit",
-                "organizer": "Solana Foundation",
-                "theme_tags": ["Web3", "Blockchain"],
-                "start_date": now + timedelta(days=15),
-                "status": "upcoming"
-            }
-        ])
-
-    # 3. Seed Learning Resources if empty
-    if await db["opportunities_content"].count_documents({}) == 0:
-        await db["opportunities_content"].insert_many([
-            {
-                "source_id": "seed_r1",
-                "title": "Mastering React Server Components",
-                "publisher": "React Blog",
-                "topic": "Frontend",
-                "url": "https://react.dev/blog",
-                "published_at": now - timedelta(days=2)
-            },
-            {
-                "source_id": "seed_r2",
-                "title": "System Design: The Complete Guide",
-                "publisher": "Medium",
-                "topic": "Architecture",
-                "url": "https://medium.com",
-                "published_at": now - timedelta(days=5)
-            }
-        ])
 
 
 # Vercel Serverless Handler
